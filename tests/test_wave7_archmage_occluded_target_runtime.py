@@ -242,6 +242,9 @@ public class OccludedArchmageProbe {
     boolean launchMarksmanFan(LivingEntity a,Player p,Wave7NamedTrialActorPolicy.Attack attack,int fan){damageActions+=8;return true;}
     boolean spawnNamedTrialFangs(LivingEntity a,Player p,Wave7NamedTrialActorPolicy.Attack attack){damageActions++;return true;}
     void resolveNamedTrialBeam(LivingEntity a,Player p,int chamber){damageActions++;}
+    boolean spawnNamedTrialFangCircle(LivingEntity a,Player p,Wave7NamedTrialActorPolicy.Attack attack){damageActions++;return true;}
+    boolean beginNamedTrialFangCrown(LivingEntity a,Player p){damageActions++;return true;}
+    boolean resolveNamedTrialRepulse(LivingEntity a,Player p,Wave7NamedTrialActorPolicy.Attack attack){damageActions++;return true;}
 
     void setup(boolean marksman,long attackIndex){
         int room=marksman?2:3;
@@ -346,6 +349,9 @@ public class OccludedArchmageProbe {
     fixture.write_text(HARNESS, encoding="utf-8")
     files = [str(BASE / rel) for rel in PRODUCTION]
     files += [str(BASE / "domain/Wave7NamedTrialActorPolicy.java"),
+             # V5.1: the Archmage rotation now delegates its circle/crown/repulse
+             # contracts to this pure policy, so the probe compiles the real one.
+             str(BASE / "domain/ArchmageV5CombatPolicy.java"),
              # MARK-005/006: the checkpoint now derives the vanish cooldown from
              # the persisted hide deadline, so the policy must be on the probe's
              # classpath rather than stubbed away.

@@ -25,8 +25,8 @@ public final class Wave7NamedTrialActorPolicyTest {
                 "Marksman is a real miniboss with three distinct attack patterns");
         check(archmage != null && "EVOKER".equals(archmage.entityType())
                         && archmage.maxHealth() >= Wave7NamedTrialActorPolicy.MIN_MINIBOSS_HEALTH
-                        && archmage.attacks().size() == 4,
-                "Archmage is a real miniboss with four distinct spells");
+                        && archmage.attacks().size() == 7,
+                "Archmage is a real miniboss with the ratified V5.1 spell portfolio");
         checkMinibossHealthCurve();
         checkMarksmanFanShape();
         check(Wave7NamedTrialActorPolicy.hasActorAdapter(NamedTrial.MOBILE_MARKSMAN)
@@ -43,17 +43,23 @@ public final class Wave7NamedTrialActorPolicyTest {
                         == Attack.MARKSMAN_QUICK_SHOT,
                 "Marksman cycles quick, heavy and spread shots deterministically");
         check(Wave7NamedTrialActorPolicy.attackFor(NamedTrial.RIFT_ARCHMAGE, 0) == Attack.ARCHMAGE_FANGS
-                        && Wave7NamedTrialActorPolicy.attackFor(NamedTrial.RIFT_ARCHMAGE, 1) == Attack.ARCHMAGE_SPEAR
-                        && Wave7NamedTrialActorPolicy.attackFor(NamedTrial.RIFT_ARCHMAGE, 2) == Attack.ARCHMAGE_STEP
-                        && Wave7NamedTrialActorPolicy.attackFor(NamedTrial.RIFT_ARCHMAGE, 3) == Attack.ARCHMAGE_BEAM,
-                "Archmage cycles Fangs, Spears, Step and Beam");
+                        && Wave7NamedTrialActorPolicy.attackFor(NamedTrial.RIFT_ARCHMAGE, 1) == Attack.ARCHMAGE_CIRCLE
+                        && Wave7NamedTrialActorPolicy.attackFor(NamedTrial.RIFT_ARCHMAGE, 2) == Attack.ARCHMAGE_REPULSE
+                        && Wave7NamedTrialActorPolicy.attackFor(NamedTrial.RIFT_ARCHMAGE, 3) == Attack.ARCHMAGE_SPEAR
+                        && Wave7NamedTrialActorPolicy.attackFor(NamedTrial.RIFT_ARCHMAGE, 4) == Attack.ARCHMAGE_CROWN
+                        && Wave7NamedTrialActorPolicy.attackFor(NamedTrial.RIFT_ARCHMAGE, 5) == Attack.ARCHMAGE_STEP
+                        && Wave7NamedTrialActorPolicy.attackFor(NamedTrial.RIFT_ARCHMAGE, 6) == Attack.ARCHMAGE_BEAM,
+                "Archmage cycles Fangs, Circle, Repulse, Spear, Crown, Step and Beam");
+        // The legacy ranged/step beats stay in the live rotation.
+        check(Wave7NamedTrialActorPolicy.attackFor(NamedTrial.RIFT_ARCHMAGE, 7) == Attack.ARCHMAGE_FANGS,
+                "the Archmage rotation wraps deterministically");
         // MAGE7-005: when Step is refused, the rotation steps over it instead of
         // stalling or repeating the refused move.
-        check(Wave7NamedTrialActorPolicy.attackForExcluding(NamedTrial.RIFT_ARCHMAGE, 2,
+        check(Wave7NamedTrialActorPolicy.attackForExcluding(NamedTrial.RIFT_ARCHMAGE, 5,
                         Attack.ARCHMAGE_STEP) == Attack.ARCHMAGE_BEAM,
                 "a refused Step is replaced by the next authored spell");
-        check(Wave7NamedTrialActorPolicy.attackForExcluding(NamedTrial.RIFT_ARCHMAGE, 4,
-                        Attack.ARCHMAGE_STEP) == Attack.ARCHMAGE_FANGS,
+        check(Wave7NamedTrialActorPolicy.attackForExcluding(NamedTrial.RIFT_ARCHMAGE, 6,
+                        Attack.ARCHMAGE_BEAM) == Attack.ARCHMAGE_FANGS,
                 "the fallback wraps around the Archmage rotation");
         check(Wave7NamedTrialActorPolicy.attackForExcluding(NamedTrial.MOBILE_MARKSMAN, 1,
                         Attack.MARKSMAN_HEAVY_SHOT) == Attack.MARKSMAN_SPREAD_SHOT,
@@ -62,7 +68,8 @@ public final class Wave7NamedTrialActorPolicyTest {
                         Attack.NONE_INTERNAL) == Attack.NONE,
                 "excluding the only move of a trial yields NONE, never a fabricated attack");
         for (Attack attack : List.of(Attack.MARKSMAN_QUICK_SHOT, Attack.MARKSMAN_HEAVY_SHOT,
-                Attack.MARKSMAN_SPREAD_SHOT, Attack.ARCHMAGE_FANGS, Attack.ARCHMAGE_SPEAR,
+                Attack.MARKSMAN_SPREAD_SHOT, Attack.ARCHMAGE_FANGS, Attack.ARCHMAGE_CIRCLE,
+                Attack.ARCHMAGE_REPULSE, Attack.ARCHMAGE_SPEAR, Attack.ARCHMAGE_CROWN,
                 Attack.ARCHMAGE_STEP, Attack.ARCHMAGE_BEAM)) {
             check(Wave7NamedTrialActorPolicy.telegraphTicks(attack) >= 10,
                     "every damaging action exposes a visible counter window: " + attack);

@@ -268,6 +268,16 @@ Invoke-GateStep 'Wave 7 Echo presentation and no-loot probe' {
   }
 }
 
+Invoke-GateStep 'V5.1 Wave 7 Archmage, Warden, Guardian and Crushing Gravity runtime probes' {
+  Push-Location $root
+  try {
+    & python -m pytest -q '.\tests\test_wave7_named_trial_warning_audio_runtime.py' '.\tests\test_wave7_archmage_obstruction_runtime.py' '.\tests\test_wave7_archmage_occluded_target_runtime.py' '.\tests\test_guardian_melee_runtime.py' '.\tests\test_warden_v5_runtime.py' '.\tests\test_crushing_gravity_runtime.py'
+    if ($LASTEXITCODE -ne 0) { throw "V5.1 runtime probes failed with exit code $LASTEXITCODE" }
+  } finally {
+    Pop-Location
+  }
+}
+
 Invoke-GateStep 'Wave navigation and physical passage regression' {
   Push-Location $root
   try {
@@ -519,6 +529,14 @@ $pureTests = @(
   'RealitySplitChamberControllerTest',
   'Wave7RoomLayoutPolicyTest',
   'Wave7NamedTrialActorPolicyTest',
+  # V5.1 actor combat contracts: the Archmage's short lane / gap circle /
+  # bounded rotating Crown / warned Repulse, the Warden's committed 5x4 sweep,
+  # wall-piercing radius-6 burst and counterable Sculk trace, the Guardian's
+  # melee-first move set and the arena-wide Crushing Gravity field.
+  'ArchmageV5CombatPolicyTest',
+  'WardenV5CombatPolicyTest',
+  'GuardianV5MeleePolicyTest',
+  'CrushingGravityPolicyTest',
   'Wave7EchoDuelCellPolicyTest',
   'Wave7EchoDuelLifecyclePolicyTest',
   'EchoFrameBroadcastPolicyTest',

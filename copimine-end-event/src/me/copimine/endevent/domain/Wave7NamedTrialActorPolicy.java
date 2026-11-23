@@ -25,6 +25,20 @@ public final class Wave7NamedTrialActorPolicy {
         ARCHMAGE_SPEAR,
         ARCHMAGE_STEP,
         ARCHMAGE_BEAM,
+        /**
+         * V5.1 Circle of Fangs: 7..9 real jaws with one announced, genuinely
+         * walkable gap. A one-shot ring, not a group-wide fang line.
+         */
+        ARCHMAGE_CIRCLE,
+        /**
+         * V5.1 Crown of Fangs: five rotating curved spoke-arms, a bounded
+         * 12..18 s channel with a hard 30 s finish.
+         */
+        ARCHMAGE_CROWN,
+        /**
+         * V5.1 Staff Repulse: one warned anti-crowd push on a cooldown.
+         */
+        ARCHMAGE_REPULSE,
         /** Plaque sentinelle: the Warden uses its native combat loop, not a scripted spell. */
         NONE_INTERNAL
     }
@@ -114,7 +128,12 @@ public final class Wave7NamedTrialActorPolicy {
     private static final List<Attack> MARKSMAN_ATTACKS = List.of(
             Attack.MARKSMAN_QUICK_SHOT, Attack.MARKSMAN_HEAVY_SHOT, Attack.MARKSMAN_SPREAD_SHOT);
     private static final List<Attack> ARCHMAGE_ATTACKS = List.of(
-            Attack.ARCHMAGE_FANGS, Attack.ARCHMAGE_SPEAR,
+            // V5.1 final portfolio. The legacy ids stay in the enum and in the
+            // ledger, but the live rotation is the ratified one: short fang
+            // line -> gap circle -> rotating crown -> anti-crowd repulse, with
+            // the existing ranged/step beats between the majors.
+            Attack.ARCHMAGE_FANGS, Attack.ARCHMAGE_CIRCLE, Attack.ARCHMAGE_REPULSE,
+            Attack.ARCHMAGE_SPEAR, Attack.ARCHMAGE_CROWN,
             Attack.ARCHMAGE_STEP, Attack.ARCHMAGE_BEAM);
 
     /**
@@ -333,6 +352,12 @@ public final class Wave7NamedTrialActorPolicy {
             case ARCHMAGE_SPEAR -> 24;
             case ARCHMAGE_STEP -> 18;
             case ARCHMAGE_BEAM -> 26;
+            // V5.1 tells come from the ratified policy so the runtime and the
+            // pure tests cannot drift apart: a 1.0..1.3 s Circle ring, a 1.5 s
+            // Crown charge and a 0.6 s anti-crowd Repulse.
+            case ARCHMAGE_CIRCLE -> ArchmageV5CombatPolicy.CIRCLE_WARNING_TICKS;
+            case ARCHMAGE_CROWN -> ArchmageV5CombatPolicy.CROWN_CHARGE_TICKS;
+            case ARCHMAGE_REPULSE -> ArchmageV5CombatPolicy.REPULSE_WARNING_TICKS;
             case NONE, NONE_INTERNAL -> 0;
         };
     }
@@ -345,10 +370,18 @@ public final class Wave7NamedTrialActorPolicy {
             case MARKSMAN_SPREAD_SHOT -> 48;
             case MARKSMAN_SUPPORT -> 90;
             case MARKSMAN_PAIRED_CROSSFIRE -> 140;
-            case ARCHMAGE_FANGS -> 58;
+            case ARCHMAGE_FANGS -> ArchmageV5CombatPolicy.FANG_LINE_WARNING_TICKS + 20;
             case ARCHMAGE_SPEAR -> 62;
             case ARCHMAGE_STEP -> 46;
             case ARCHMAGE_BEAM -> 78;
+            // V5.1: the Circle is a frequent group beat, the Crown owns the
+            // long authored reset and the Repulse sits between them.
+            case ARCHMAGE_CIRCLE -> ArchmageV5CombatPolicy.cooldownTicks(
+                    ArchmageV5CombatPolicy.Action.CIRCLE_OF_FANGS);
+            case ARCHMAGE_CROWN -> ArchmageV5CombatPolicy.cooldownTicks(
+                    ArchmageV5CombatPolicy.Action.CROWN_OF_FANGS);
+            case ARCHMAGE_REPULSE -> ArchmageV5CombatPolicy.cooldownTicks(
+                    ArchmageV5CombatPolicy.Action.STAFF_REPULSE);
             case NONE, NONE_INTERNAL -> 1;
         };
     }

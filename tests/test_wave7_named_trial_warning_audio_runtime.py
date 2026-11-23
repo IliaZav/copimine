@@ -22,15 +22,17 @@ def test_named_trial_warning_sound_fires_once_but_visual_updates_each_tick(tmp_p
     production = extract_method(source, "private void renderNamedTrialTelegraph(")
     java = r"""
 import java.util.*;
+import me.copimine.endevent.domain.ArchmageV5CombatPolicy;
 public class Wave7WarningAudioProbe {
     enum Particle { CRIT, ELECTRIC_SPARK, HAPPY_VILLAGER, SOUL_FIRE_FLAME, END_ROD, PORTAL, DRAGON_BREATH }
     enum Sound { BLOCK_AMETHYST_BLOCK_CHIME, BLOCK_BEACON_POWER_SELECT,
         ENTITY_EVOKER_PREPARE_ATTACK, ENTITY_ENDER_DRAGON_GROWL,
-        ENTITY_ENDERMAN_STARE, ENTITY_SKELETON_SHOOT }
+        ENTITY_ENDERMAN_STARE, ENTITY_SKELETON_SHOOT,
+        BLOCK_RESPAWN_ANCHOR_CHARGE, ITEM_TRIDENT_RETURN }
     static class Wave7NamedTrialActorPolicy {
         enum Attack { MARKSMAN_QUICK_SHOT, MARKSMAN_HEAVY_SHOT, MARKSMAN_SPREAD_SHOT,
             MARKSMAN_SUPPORT, ARCHMAGE_FANGS, ARCHMAGE_SPEAR, ARCHMAGE_STEP,
-            ARCHMAGE_BEAM, NONE }
+            ARCHMAGE_BEAM, ARCHMAGE_CIRCLE, ARCHMAGE_CROWN, ARCHMAGE_REPULSE, NONE }
     }
     static class World {
         int sounds=0;
@@ -53,6 +55,9 @@ public class Wave7WarningAudioProbe {
         @Override public Location clone(){return new Location(world,x,y,z);}
         Location add(double dx,double dy,double dz){x+=dx;y+=dy;z+=dz;return this;}
         Location add(Vector vector){return add(vector.x,vector.y,vector.z);}
+        void setY(double y){this.y=y;}
+        double getY(){return y;}
+        double getYaw(){return 0.0D;}
     }
     static class LivingEntity {
         final World world;final Location location;
@@ -70,6 +75,7 @@ public class Wave7WarningAudioProbe {
     final long generation=7;
     final Map<UUID,TrialAimLock> trialAimLocks=new HashMap<>();
     boolean valid=true;int visualFrames=0;
+    int wave7FrozenRosterSize(){return 10;}
     boolean isCurrentRealitySplitTrialTarget(LivingEntity actor,Player target){return valid;}
     Vector horizontalDirection(Location a,Location b){return new Vector(1,0,0);}
     void faceRealitySplitTrialMob(LivingEntity mob,Vector direction){}
@@ -132,17 +138,22 @@ public class Wave7WarningAudioProbe {
                 Wave7NamedTrialActorPolicy.Attack.ARCHMAGE_FANGS,
                 Wave7NamedTrialActorPolicy.Attack.ARCHMAGE_SPEAR,
                 Wave7NamedTrialActorPolicy.Attack.ARCHMAGE_STEP,
-                Wave7NamedTrialActorPolicy.Attack.ARCHMAGE_BEAM)) {
+                Wave7NamedTrialActorPolicy.Attack.ARCHMAGE_BEAM,
+                Wave7NamedTrialActorPolicy.Attack.ARCHMAGE_CIRCLE,
+                Wave7NamedTrialActorPolicy.Attack.ARCHMAGE_CROWN,
+                Wave7NamedTrialActorPolicy.Attack.ARCHMAGE_REPULSE)) {
             runtime.verify(a);
         }
-        System.out.println("PASS 8 named trial attacks: one sound on cast, repeated visual warning");
+        System.out.println("PASS 11 named trial attacks: one sound on cast, repeated visual warning");
     }
 }
 """
     path = tmp_path / "Wave7WarningAudioProbe.java"
     path.write_text(java, encoding="utf-8")
     compile = subprocess.run(
-        ["javac", "-encoding", "UTF-8", "-d", str(tmp_path), str(path)],
+        ["javac", "-encoding", "UTF-8", "-d", str(tmp_path),
+         str(ROOT / "copimine-end-event/src/me/copimine/endevent/domain/ArchmageV5CombatPolicy.java"),
+         str(path)],
         text=True, capture_output=True, timeout=30, encoding="utf-8", errors="replace",
     )
     assert compile.returncode == 0, compile.stdout + compile.stderr

@@ -10,10 +10,11 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "copimine-end-event/src/me/copimine/endevent/CopiMineEndEvent.java"
 
 
-def compile_probe(directory, name, body):
+def compile_probe(directory, name, body, extra_sources=()):
     path = directory / (name + ".java")
     path.write_text(body, encoding="utf-8")
-    result = subprocess.run(["javac", "-encoding", "UTF-8", "-d", str(directory), str(path)],
+    result = subprocess.run(["javac", "-encoding", "UTF-8", "-d", str(directory),
+                             *map(str, extra_sources), str(path)],
                             capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
     assert result.returncode == 0, result.stdout + result.stderr
     return directory, name
@@ -36,7 +37,8 @@ void renderWave7AbilityEffect(Object a,Object b,String c){}
     static class Wave7NamedTrialActorPolicy {
         enum Attack { NONE, MARKSMAN_QUICK_SHOT, MARKSMAN_HEAVY_SHOT, MARKSMAN_SPREAD_SHOT,
             MARKSMAN_SUPPORT, MARKSMAN_PAIRED_CROSSFIRE, ARCHMAGE_FANGS, ARCHMAGE_SPEAR,
-            ARCHMAGE_STEP, ARCHMAGE_BEAM, NONE_INTERNAL }
+            ARCHMAGE_STEP, ARCHMAGE_BEAM, ARCHMAGE_CIRCLE, ARCHMAGE_CROWN, ARCHMAGE_REPULSE,
+            NONE_INTERNAL }
     }
     enum Particle { HAPPY_VILLAGER }
     static class Location { Location add(double x,double y,double z){return this;} }
@@ -59,6 +61,9 @@ void renderWave7AbilityEffect(Object a,Object b,String c){}
     boolean spawnNamedTrialFangs(LivingEntity a,Player t,Wave7NamedTrialActorPolicy.Attack x){attacks++;return true;}
     boolean stepNamedTrialArchmage(LivingEntity a,Player p,int c){steps++;return true;}
     void resolveNamedTrialBeam(LivingEntity a,Player p,int c){attacks++;}
+    boolean spawnNamedTrialFangCircle(LivingEntity a,Player t,Wave7NamedTrialActorPolicy.Attack x){attacks++;return true;}
+    boolean beginNamedTrialFangCrown(LivingEntity a,Player t){attacks++;return true;}
+    boolean resolveNamedTrialRepulse(LivingEntity a,Player t,Wave7NamedTrialActorPolicy.Attack x){attacks++;return true;}
     void spawnEventParticle(Location l,Particle p,int n,double x,double y,double z,double v){}
 ''' + method + r'''
     public static void main(String[] args){
@@ -98,6 +103,7 @@ def fangs_probe(tmp_path_factory):
     method = method.replace("me.copimine.endevent.runtime.wave7.Wave7AdmissionRuntimeAdapter.Decision", "Decision")
     return compile_probe(directory, "ArchmageFangsProbe", r'''
 import java.util.*;
+import me.copimine.endevent.domain.ArchmageV5CombatPolicy;
 public class ArchmageFangsProbe {
     static class Wave7NamedTrialActorPolicy { enum Attack { ARCHMAGE_FANGS } }
     enum EntityType { EVOKER_FANGS }
@@ -208,7 +214,7 @@ public class ArchmageFangsProbe {
         // reachable victim; the probe supplies exactly one victim.
     }
 }
-''')
+''', extra_sources=[SOURCE.parent / "domain/ArchmageV5CombatPolicy.java"])
 
 
 @pytest.mark.parametrize("scenario", ["blocked-first", "blocked-second", "cancelled-first", "cancelled-second", "normal", "broken-ownership"])

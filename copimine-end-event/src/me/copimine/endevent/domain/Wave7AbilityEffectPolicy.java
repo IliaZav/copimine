@@ -102,6 +102,47 @@ public final class Wave7AbilityEffectPolicy {
             new Pass(Shape.IMPACT_BURST, 16, 0.0D, 1.4D, 1.1D, 0.04D,
                     "DRAGON_BREATH", DUST_PURPLE, false));
 
+    /**
+     * V5.1 Circle of Fangs: a jaw ring with one walkable gap.
+     *
+     * <p>The tell has to say "the ring is closing and one sector is open": a
+     * crimson ground ring for the jaws plus a violet inner ring the player can
+     * read the gap against.</p>
+     */
+    private static final List<Pass> ARCHMAGE_CIRCLE = List.of(
+            new Pass(Shape.GROUND_RING, 36, 0.0D, 2.6D, 0.0D, 0.0D,
+                    "SOUL_FIRE_FLAME", DUST_RED, false),
+            new Pass(Shape.GROUND_RING, 22, 0.0D, 2.0D, 0.0D, 0.0D,
+                    "SOUL", DUST_PURPLE, false),
+            new Pass(Shape.IMPACT_BURST, 18, 0.0D, 2.6D, 0.9D, 0.05D,
+                    "SOUL_FIRE_FLAME", DUST_MAGENTA, false));
+
+    /**
+     * V5.1 Crown of Fangs: five rotating curved spoke-arms.
+     *
+     * <p>Drawn as a wide rotating crown so the rotation itself reads from the
+     * caster, not only from the fangs landing at the arm tips.</p>
+     */
+    private static final List<Pass> ARCHMAGE_CROWN = List.of(
+            new Pass(Shape.HELIX, 30, 2.4D, 0.9D, 3.0D, 0.0D,
+                    "SOUL_FIRE_FLAME", DUST_MAGENTA, false),
+            new Pass(Shape.GROUND_RING, 40, 0.0D, 5.5D, 0.0D, 0.0D,
+                    "SOUL_FIRE_FLAME", DUST_RED, false),
+            new Pass(Shape.HELIX, 24, 1.8D, 0.6D, 2.4D, 0.0D,
+                    "SOUL", DUST_VIOLET, false),
+            new Pass(Shape.IMPACT_BURST, 22, 0.0D, 3.2D, 1.2D, 0.05D,
+                    "SOUL_FIRE_FLAME", DUST_PURPLE, false));
+
+    /** V5.1 Staff Repulse: a hard outward shockwave with a clear inner core. */
+    private static final List<Pass> ARCHMAGE_REPULSE = List.of(
+            new Pass(Shape.IMPACT_BURST, 26, 0.0D, 4.2D, 0.9D, 0.02D,
+                    "END_ROD", DUST_CYAN, true),
+            new Pass(Shape.GROUND_RING, 30, 0.0D, 4.2D, 0.0D, 0.0D,
+                    "END_ROD", DUST_CYAN, true),
+            new Pass(Shape.SELF_AURA, 12, 0.0D, 0.7D, 1.6D, 0.06D,
+                    "CRIT", DUST_WHITE, true));
+
+
     private static final List<Pass> WARDEN_NARROW = List.of(
             new Pass(Shape.GROUND_RING, 14, 0.0D, 1.6D, 0.0D, 0.0D,
                     "SOUL", DUST_PURPLE, false),
@@ -140,6 +181,44 @@ public final class Wave7AbilityEffectPolicy {
                     "SOUL", DUST_CYAN, false),
             new Pass(Shape.IMPACT_BURST, 20, 0.0D, 4.4D, 1.2D, 0.04D,
                     "SCULK_SOUL", DUST_CYAN, false));
+
+    /**
+     * V5.1 five-wide committed sweep: a wide ground fault that pushes forward,
+     * distinct from the radial echo and from the single-target narrow strike.
+     */
+    private static final List<Pass> WARDEN_SWEEP = List.of(
+            new Pass(Shape.GROUND_RING, 30, 0.0D, 2.55D, 0.0D, 0.0D,
+                    "SOUL_FIRE_FLAME", DUST_CYAN, false),
+            new Pass(Shape.AIM_LANCE, 26, 4.0D, 2.5D, 0.0D, 0.0D,
+                    "SCULK_SOUL", DUST_CYAN, true),
+            new Pass(Shape.IMPACT_BURST, 18, 0.0D, 3.4D, 1.0D, 0.04D,
+                    "SONIC_BOOM", DUST_PURPLE, false));
+
+    /**
+     * V5.1 Echo Space Explosion: a full spherical bloom that ignores cover so a
+     * player behind a pillar can still read that the sphere is closing on them.
+     */
+    private static final List<Pass> WARDEN_ECHO_SPACE = List.of(
+            new Pass(Shape.GROUND_RING, 46, 0.0D, 6.0D, 0.0D, 0.0D,
+                    "SONIC_BOOM", DUST_CYAN, true),
+            new Pass(Shape.HELIX, 30, 3.0D, 1.4D, 3.0D, 0.0D,
+                    "SCULK_SOUL", DUST_VIOLET, false),
+            new Pass(Shape.SELF_AURA, 20, 0.0D, 2.0D, 2.2D, 0.08D,
+                    "SONIC_BOOM", DUST_CYAN, false),
+            new Pass(Shape.IMPACT_BURST, 26, 0.0D, 5.6D, 1.4D, 0.06D,
+                    "SCULK_SOUL", DUST_CYAN, false));
+
+    /**
+     * V5.1 Sculk Resonance: a low, crawling trace that reads as the Warden
+     * listening to the floor instead of striking it.
+     */
+    private static final List<Pass> WARDEN_SCULK_TRACE = List.of(
+            new Pass(Shape.GROUND_RING, 26, 0.0D, 3.2D, 0.0D, 0.0D,
+                    "SCULK_SOUL", DUST_CYAN, false),
+            new Pass(Shape.HELIX, 28, 1.6D, 0.5D, 2.2D, 0.0D,
+                    "SCULK_CHARGE_POP", DUST_VIOLET, false),
+            new Pass(Shape.IMPACT_BURST, 16, 0.0D, 2.4D, 0.8D, 0.03D,
+                    "SONIC_BOOM", DUST_CYAN, false));
 
     /**
      * Archmage fang cast, now that it paints a line under every victim.
@@ -228,8 +307,19 @@ public final class Wave7AbilityEffectPolicy {
             case "ARCHMAGE_SPEAR" -> BossSpellGeometryPolicy.Shape.RIFT_LANCE;
             case "ARCHMAGE_STEP" -> BossSpellGeometryPolicy.Shape.RIFT_GATE;
             case "ARCHMAGE_BEAM" -> BossSpellGeometryPolicy.Shape.CHEST_IRIS;
+            // V5.1: the Circle is a jaw cage around the marked cell, the Crown is
+            // a literal rotating crown of fire and the Repulse is a radial bloom
+            // centred on the caster.
+            case "ARCHMAGE_CIRCLE" -> BossSpellGeometryPolicy.Shape.FIREBALL_CAGE;
+            case "ARCHMAGE_CROWN" -> BossSpellGeometryPolicy.Shape.INFERNO_CROWN;
+            case "ARCHMAGE_REPULSE" -> BossSpellGeometryPolicy.Shape.ECHO_BLOOM;
             case "WARDEN_NARROW_STRIKE" -> BossSpellGeometryPolicy.Shape.AMBUSH_TALONS;
             case "WARDEN_WIDE_STRIKE" -> BossSpellGeometryPolicy.Shape.SLAM_FAULT;
+            // V5.1 Warden identities: the committed sweep is a floor fault, the
+            // echo is a true spherical bloom, and the resonance is a ground rune.
+            case "WARDEN_SWEEP" -> BossSpellGeometryPolicy.Shape.SLAM_FAULT;
+            case "WARDEN_ECHO_SPACE" -> BossSpellGeometryPolicy.Shape.ECHO_BLOOM;
+            case "WARDEN_SCULK_TRACE" -> BossSpellGeometryPolicy.Shape.VOID_RUNE;
             case "WARDEN_SONIC_LUNGE" -> BossSpellGeometryPolicy.Shape.ECHO_BLOOM;
             case "WARDEN_SLAM" -> BossSpellGeometryPolicy.Shape.SLAM_FAULT;
             default -> null;
@@ -255,8 +345,14 @@ public final class Wave7AbilityEffectPolicy {
             case "ARCHMAGE_SPEAR" -> ARCHMAGE_SPEAR;
             case "ARCHMAGE_STEP" -> ARCHMAGE_STEP;
             case "ARCHMAGE_BEAM" -> ARCHMAGE_BEAM;
+            case "ARCHMAGE_CIRCLE" -> ARCHMAGE_CIRCLE;
+            case "ARCHMAGE_CROWN" -> ARCHMAGE_CROWN;
+            case "ARCHMAGE_REPULSE" -> ARCHMAGE_REPULSE;
             case "WARDEN_NARROW_STRIKE" -> WARDEN_NARROW;
             case "WARDEN_WIDE_STRIKE" -> WARDEN_WIDE;
+            case "WARDEN_SWEEP" -> WARDEN_SWEEP;
+            case "WARDEN_ECHO_SPACE" -> WARDEN_ECHO_SPACE;
+            case "WARDEN_SCULK_TRACE" -> WARDEN_SCULK_TRACE;
             case "WARDEN_SONIC_LUNGE" -> WARDEN_LUNGE;
             case "WARDEN_SLAM" -> WARDEN_SLAM;
             case "ARCHMAGE_FANGS_GROUP" -> ARCHMAGE_FANGS_GROUP;
@@ -283,8 +379,14 @@ public final class Wave7AbilityEffectPolicy {
             case "ARCHMAGE_SPEAR" -> "ITEM_TRIDENT_THROW";
             case "ARCHMAGE_STEP" -> "ENTITY_ENDERMAN_TELEPORT";
             case "ARCHMAGE_BEAM" -> "ENTITY_EVOKER_CAST_SPELL";
+            case "ARCHMAGE_CIRCLE" -> "ENTITY_EVOKER_CAST_SPELL";
+            case "ARCHMAGE_CROWN" -> "ENTITY_EVOKER_CAST_SPELL";
+            case "ARCHMAGE_REPULSE" -> "ITEM_TRIDENT_RETURN";
             case "WARDEN_NARROW_STRIKE" -> "ENTITY_WARDEN_ATTACK_IMPACT";
             case "WARDEN_WIDE_STRIKE" -> "ENTITY_WARDEN_ATTACK_IMPACT";
+            case "WARDEN_SWEEP" -> "ENTITY_WARDEN_ATTACK_IMPACT";
+            case "WARDEN_ECHO_SPACE" -> "ENTITY_WARDEN_SONIC_BOOM";
+            case "WARDEN_SCULK_TRACE" -> "ENTITY_WARDEN_SONIC_BOOM";
             case "WARDEN_SONIC_LUNGE" -> "ENTITY_WARDEN_SONIC_BOOM";
             case "WARDEN_SLAM" -> "ENTITY_WARDEN_SONIC_BOOM";
             case "ARCHMAGE_FANGS_GROUP" -> "ENTITY_EVOKER_CAST_SPELL";
@@ -301,7 +403,13 @@ public final class Wave7AbilityEffectPolicy {
             case "ARCHMAGE_SPEAR" -> "ENTITY_EVOKER_PREPARE_ATTACK";
             case "ARCHMAGE_STEP" -> "ENTITY_ILLUSIONER_PREPARE_MIRROR";
             case "ARCHMAGE_BEAM" -> "BLOCK_BEACON_ACTIVATE";
+            case "ARCHMAGE_CIRCLE" -> "BLOCK_RESPAWN_ANCHOR_CHARGE";
+            case "ARCHMAGE_CROWN" -> "BLOCK_RESPAWN_ANCHOR_DEPLETE";
+            case "ARCHMAGE_REPULSE" -> "ITEM_TRIDENT_RETURN";
             case "WARDEN_SLAM" -> "ENTITY_WARDEN_ROAR";
+            case "WARDEN_SWEEP" -> "ENTITY_WARDEN_HEARTBEAT";
+            case "WARDEN_ECHO_SPACE" -> "ENTITY_WARDEN_ROAR";
+            case "WARDEN_SCULK_TRACE" -> "ENTITY_WARDEN_LISTENING";
             case "ARCHMAGE_FANGS_GROUP" -> "BLOCK_RESPAWN_ANCHOR_CHARGE";
             case "WARDEN_NARROW_STRIKE", "WARDEN_WIDE_STRIKE" -> "ENTITY_WARDEN_HEARTBEAT";
             case "WARDEN_SONIC_LUNGE" -> "ENTITY_WARDEN_ROAR";

@@ -74,6 +74,9 @@ public class BossEdgeVolleyRuntimeProbe {
     void releaseBossHazardReservation(String s){}
     void clearBossSpellModels(){}
     void cancelBossFinalStrike(){}
+    // V5.1: cancelBossCastForPhaseChange also resets the Guardian physical
+    // melee / Crushing Gravity state, so the slice needs the seam.
+    void resetGuardianV5State(){}
     void clearArenaInferno(){}
     void clearVoidMarkZones(){}
     void aimBossCastAt(LivingEntity b,Location l){}

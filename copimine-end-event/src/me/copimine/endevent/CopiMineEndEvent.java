@@ -52,6 +52,10 @@ import me.copimine.endevent.domain.InfernoArenaLifecyclePolicy;
 import me.copimine.endevent.domain.EndEventDisplayItems;
 import me.copimine.endevent.domain.WaveSixSequencePolicy;
 import me.copimine.endevent.domain.Wave7MarksmanDefenderPolicy;
+import me.copimine.endevent.domain.ArchmageV5CombatPolicy;
+import me.copimine.endevent.domain.WardenV5CombatPolicy;
+import me.copimine.endevent.domain.GuardianV5MeleePolicy;
+import me.copimine.endevent.domain.CrushingGravityPolicy;
 import me.copimine.endevent.domain.BossAbilityState;
 import me.copimine.endevent.domain.BossAbilityId;
 import me.copimine.endevent.domain.SmallKagunePolicy;
@@ -1381,6 +1385,23 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Map<UUID, TrialFocus> trialMovementFocus = new HashMap<>();
     private record TrialArrival(String event, long generation, long startTick, String action) { }
     private final Map<UUID, TrialArrival> trialArrivals = new HashMap<>();
+    /**
+     * V5.1 Crown of Fangs: the casters that currently own a live rotating
+     * channel. The set is the single owner of the channel, so a second Crown
+     * can never be started on a caster that already has one, and the reason a
+     * Crown ends is always recorded here instead of being inferred.
+     */
+    private final Set<UUID> activeCrownChannels = new HashSet<>();
+    /**
+     * V5.1 Sculk Resonance: the Warden is the only reader of these footfalls.
+     * Samples are recorded only while the Warden is live and are pruned to the
+     * 20-tick history window, so a player who left the fight long ago can never
+     * be traced from stale data.
+     */
+    private record WardenStepSample(double x, double y, double z, long tick,
+                                    boolean sneaking, boolean moving) { }
+    private final Map<UUID, java.util.ArrayDeque<WardenStepSample>> wardenStepHistory =
+            new HashMap<>();
 
     /** Locomotion keeps one legal target; cast fairness is handled independently. */
     private Player namedTrialMovementTarget(Entity actor) {
@@ -2010,6 +2031,48 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      */
     private long bossSpellRetryAtMillis;
     private long nextBossCloseStrikeMillis;
+    // V5.1 Guardian physical melee: four grounded moves plus the separation
+    // branch. The scheduler owns its own clocks so the legacy close-combat
+    // policy above keeps working unchanged as a fallback.
+    private long nextGuardianPhysicalMillis;
+    private int guardianBasicCount;
+    private int guardianCommittedIndex;
+    private long nextGuardianFanMillis;
+    private long nextGuardianHeavyMillis;
+    private long nextGuardianSeparationMillis;
+    private int guardianBranchSpellBudget;
+    private long guardianBranchUntilMillis;
+    /** Set while a physical move's own task owns the body; suppresses other owners. */
+    private boolean guardianPhysicalMoveActive;
+    /** The committed move currently owning the body, or null between moves. */
+    private GuardianV5MeleePolicy.Move guardianActiveMove;
+    /** Frozen facing of the committed move, taken at commit and never re-aimed. */
+    private Vector guardianMoveFacing;
+    /** Wall-clock when the committed move resolves its contact. */
+    private long guardianMoveImpactAtMillis;
+    /** Wall-clock when the committed move releases the body. */
+    private long guardianMoveEndAtMillis;
+    /** True once the contact of the current committed move has been resolved. */
+    private boolean guardianMoveResolved;
+    /** Observed cast counter when the separation branch opened, to count beats. */
+    private long guardianBranchObservedCast = -1L;
+    // ------------------------------------------------------------------
+    // V5.1 Crushing / Monstrous Gravity field.
+    // ------------------------------------------------------------------
+    /** Wall-clock millis the current field started, or Long.MIN_VALUE/2 when idle. */
+    private long crushingGravityStartMillis = Long.MIN_VALUE / 2L;
+    /** Wall-clock millis the next field may start. */
+    private long crushingGravityReadyAtMillis;
+    /** Generation the field belongs to, so a stale field never survives. */
+    private long crushingGravityGeneration = Long.MIN_VALUE;
+    /** Arena bounds frozen at the moment the field started. */
+    private CrushingGravityPolicy.Bounds crushingGravityBounds;
+    /** World the frozen bounds belong to, so arrow sweeps never depend on the anchor. */
+    private World crushingGravityWorld;
+    /** Arrows the field has already bled once, so the horizontal loss is single. */
+    private final java.util.Set<UUID> crushingGravityArrows = new java.util.HashSet<>();
+    /** Players whose jump impulse this field currently scales, for restore. */
+    private final java.util.Set<UUID> crushingGravityPlayers = new java.util.HashSet<>();
     private long nextWaveTargetMillis;
     private long bossSpellPauseUntilMillis;
     /** One global repel per attempt, fired as the boss crosses 50% health. */
@@ -6220,6 +6283,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         nextWaveTargetMillis = 0L;
         bossSpellPauseUntilMillis = 0L;
         bossHalfRepelCommitted = false;
+        resetGuardianV5State();
         nextBossEdgeVolleyMillis = 0L;
         bossEdgeVolleyClusterDwell.reset();
         lastBossTeleportMillis = 0L;
@@ -39470,14 +39534,54 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 TrialAimLock lock = trialAimLocks.get(actor.getUniqueId());
                 if (lock == null) return;
                 Location center = namedTrialAim(actor, target);
+                // V5.1: the tell now traces the real lane — three consecutive
+                // cells ALONG the aim axis — instead of a wider bar across the
+                // victim, so what a player reads is what will actually spawn.
                 for (Location mark : lock.fangMarks().values()) {
-                    Vector side = new Vector(-direction.getZ(), 0, direction.getX());
-                    for (double offset : new double[]{-1.25D,0,1.25D})
-                        emitTrialParticle(actor, mark.clone().add(side.clone().multiply(offset)).add(0,.15D,0),
-                                Particle.SOUL_FIRE_FLAME, 2, .1D,.02D,.1D,0);
+                    Vector lane = horizontalDirection(actor.getLocation(), mark);
+                    for (double offset : ArchmageV5CombatPolicy.fangLineOffsets())
+                        emitTrialParticle(actor, mark.clone().add(lane.clone().multiply(offset))
+                                        .add(0, 0.15D, 0), Particle.SOUL_FIRE_FLAME, 2,
+                                .1D, .02D, .1D, 0);
                 }
                 if (playWarningSound) playTrialSound(actor, center,
                         Sound.ENTITY_EVOKER_PREPARE_ATTACK, 0.7F, 0.8F);
+            }
+            case ARCHMAGE_CIRCLE -> {
+                Location center = namedTrialAim(actor, target);
+                double radius = ArchmageV5CombatPolicy.circleRadius(2.5D);
+                List<ArchmageV5CombatPolicy.Jaw> ring = ArchmageV5CombatPolicy.circleJaws(
+                        ArchmageV5CombatPolicy.circleJaws(wave7FrozenRosterSize()),
+                        radius, ArchmageV5CombatPolicy.CIRCLE_GAP_BLOCKS_MIN,
+                        target.getLocation().getYaw());
+                for (ArchmageV5CombatPolicy.Jaw jaw : ring)
+                    emitTrialParticle(actor, center.clone().add(jaw.x(), 0.15D, jaw.z()),
+                            Particle.SOUL_FIRE_FLAME, 3, .12D, .03D, .12D, 0);
+                if (playWarningSound) playTrialSound(actor, center,
+                        Sound.ENTITY_EVOKER_PREPARE_ATTACK, 0.75F, 0.6F);
+            }
+            case ARCHMAGE_CROWN -> {
+                // The charge tell is the five arms forming: the same rotating
+                // geometry the channel will use, drawn as ground markers.
+                Location base = actor.getLocation().clone();
+                base.setY(Math.floor(base.getY()) + 0.15D);
+                double[] angles = ArchmageV5CombatPolicy.crownSpokeAnglesDegrees(
+                        0L, ArchmageV5CombatPolicy.crownRotation(10.0D), 0.0D);
+                for (double angle : angles) {
+                    List<double[]> arm = ArchmageV5CombatPolicy.crownArmPoints(
+                            angle, ArchmageV5CombatPolicy.CROWN_LENGTH_MAX, 6);
+                    for (double[] point : arm)
+                        emitTrialParticle(actor, base.clone().add(point[0], 0.0D, point[2]),
+                                Particle.SOUL_FIRE_FLAME, 1, .05D, .02D, .05D, 0);
+                }
+                if (playWarningSound) playTrialSound(actor, actor.getLocation(),
+                        Sound.BLOCK_RESPAWN_ANCHOR_CHARGE, 0.8F, 0.5F);
+            }
+            case ARCHMAGE_REPULSE -> {
+                emitTrialParticle(actor, actor.getLocation().add(0.0D, 0.8D, 0.0D),
+                        Particle.END_ROD, 22, 0.6D, 0.6D, 0.6D, 0.02D);
+                if (playWarningSound) playTrialSound(actor, actor.getLocation(),
+                        Sound.ITEM_TRIDENT_RETURN, 0.6F, 1.5F);
             }
             case ARCHMAGE_SPEAR -> {
                 renderNamedTrialAim(actor, actor.getEyeLocation(), direction, 12.0D, 0.4D,
@@ -39531,6 +39635,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             case ARCHMAGE_SPEAR -> launchNamedTrialArrow(actor, target, attack,
                     1.25F, 0.0F, true, true);
             case ARCHMAGE_STEP -> stepNamedTrialArchmage(actor, target, chamber);
+            // V5.1 additions, each with its own authoritative shape.
+            case ARCHMAGE_CIRCLE -> spawnNamedTrialFangCircle(actor, target, attack);
+            case ARCHMAGE_CROWN -> beginNamedTrialFangCrown(actor, target);
+            case ARCHMAGE_REPULSE -> resolveNamedTrialRepulse(actor, target, attack);
             case ARCHMAGE_BEAM -> {
                 resolveNamedTrialBeam(actor, target, chamber);
                 yield true;
@@ -39826,12 +39934,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Location mark = lock == null ? null : lock.fangMarks().get(victim.getUniqueId());
         if (mark == null) return FangLineOutcome.MISSED;
         Vector direction = horizontalDirection(actor.getLocation(), mark);
-        Vector side = new Vector(-direction.getZ(), 0.0D, direction.getX());
         Location base = mark.clone();
         base.setY(Math.floor(base.getY()));
-        List<UUID> lineFangs = new ArrayList<>(3);
-        for (double offset : new double[]{-1.25D, 0.0D, 1.25D}) {
-            Location location = base.clone().add(side.clone().multiply(offset));
+        // V5.1: the old cast painted three fangs ACROSS the victim on a 2.5-block
+        // perpendicular bar, which is a wide unannounced wall rather than the
+        // ratified ~3-block local lane. The lane now runs ALONG the locked aim
+        // axis through the marked cell: three consecutive ground cells whose
+        // offsets come straight from ArchmageV5CombatPolicy, so the geometry the
+        // pure tests assert is the geometry the server actually builds.
+        double[] offsets = ArchmageV5CombatPolicy.fangLineOffsets();
+        List<UUID> lineFangs = new ArrayList<>(offsets.length);
+        for (double offset : offsets) {
+            Location location = base.clone().add(direction.clone().multiply(offset));
             if (!isSafeCombatEntityLocation(location, actor)) {
                 // A blocked formation is a normal missed cast, not a lost trial
                 // actor: roll back only THIS line and keep the other victims.
@@ -39865,7 +39979,166 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             lineFangs.add(fangs.getUniqueId());
         }
         createdFangs.addAll(lineFangs);
-        return lineFangs.size() == 3 ? FangLineOutcome.PAINTED : FangLineOutcome.MISSED;
+        return lineFangs.size() == ArchmageV5CombatPolicy.FANG_LINE_TEETH
+                ? FangLineOutcome.PAINTED : FangLineOutcome.MISSED;
+    }
+
+    /**
+     * Spawns one owned, tracked Archmage fang at a validated ground cell.
+     *
+     * <p>The V5.1 casts — the short Fang Line, the gap Circle and the rotating
+     * Crown — all need the same guarantee: a fang either exists, is owned by
+     * this actor and carries this attack on its tag, or it does not exist at
+     * all. Returning the new id (or null) keeps every geometry caller free of
+     * the ownership bookkeeping.</p>
+     */
+    private UUID spawnOwnedArchmageFang(LivingEntity actor,
+            Wave7NamedTrialActorPolicy.Attack attack, Location location) {
+        if (actor == null || attack == null || location == null
+                || location.getWorld() == null || !location.getWorld().equals(actor.getWorld())
+                || !isSafeCombatEntityLocation(location, actor)) return null;
+        Entity raw = actor.getWorld().spawnEntity(location, EntityType.EVOKER_FANGS);
+        if (!(raw instanceof org.bukkit.entity.EvokerFangs fangs) || !fangs.isValid()) {
+            if (raw != null) raw.remove();
+            return null;
+        }
+        fangs.setOwner(actor);
+        if (!tagNamedTrialProjectile(fangs, actor, attack)) {
+            fangs.remove();
+            return null;
+        }
+        return fangs.getUniqueId();
+    }
+
+    /**
+     * V5.1 Circle of Fangs.
+     *
+     * <p>7..9 real jaws ringed around the marked cell with one genuinely
+     * traversable gap. The jaws, the radius and the gap are placed straight from
+     * {@link ArchmageV5CombatPolicy}, so a player standing in the empty sector
+     * can always walk out and no arrangement can close the ring. The gap faces
+     * the victim's current heading, because that is the direction the tell
+     * invites them to run.</p>
+     */
+    private boolean spawnNamedTrialFangCircle(LivingEntity actor, Player target,
+            Wave7NamedTrialActorPolicy.Attack attack) {
+        if (actor == null || target == null || !isCurrentRealitySplitTrialTarget(actor, target)
+                || !hasNamedTrialLineOfSight(actor.getEyeLocation(), namedTrialAim(actor, target)))
+            return false;
+        Location center = namedTrialAim(actor, target);
+        center.setY(Math.floor(target.getLocation().getY()));
+        double radius = ArchmageV5CombatPolicy.circleRadius(2.5D);
+        List<ArchmageV5CombatPolicy.Jaw> ring = ArchmageV5CombatPolicy.circleJaws(
+                ArchmageV5CombatPolicy.circleJaws(wave7FrozenRosterSize()),
+                radius, ArchmageV5CombatPolicy.CIRCLE_GAP_BLOCKS_MIN,
+                target.getLocation().getYaw());
+        int spawned = 0;
+        for (ArchmageV5CombatPolicy.Jaw jaw : ring) {
+            Location at = center.clone().add(jaw.x(), 0.0D, jaw.z());
+            if (spawnOwnedArchmageFang(actor, attack, at) != null) spawned++;
+        }
+        // The ring is a real cast the moment its first jaw exists; an entirely
+        // blocked formation is an ordinary missed cast and reports honestly.
+        return spawned > 0;
+    }
+
+    /**
+     * V5.1 Crown of Fangs.
+     *
+     * <p>Five curved spoke-arms rotating around a still-damageable caster. The
+     * channel is bounded three ways: the authored 12..18 s window, the hard 30 s
+     * cap in {@link ArchmageV5CombatPolicy#crownMustFinish(int)}, and the
+     * generation/event fence below, so a restart, a phase change or a death can
+     * never leave an orphaned rotating hazard behind.</p>
+     */
+    private boolean beginNamedTrialFangCrown(LivingEntity actor, Player target) {
+        if (actor == null || target == null || !isCurrentRealitySplitTrialTarget(actor, target))
+            return false;
+        UUID casterId = actor.getUniqueId();
+        // One Crown per caster: the set is the lock, so a rotation that offers
+        // the Crown twice cannot stack two rotating hazards on one body.
+        if (!activeCrownChannels.add(casterId)) return true;
+        long ownerGeneration = generation;
+        String ownerEvent = eventId;
+        String ownerRole = readString(actor, keyTrialRole);
+        int standardChannel = ArchmageV5CombatPolicy.crownChannelTicks(wave7FrozenRosterSize());
+        double degreesPerSecond = ArchmageV5CombatPolicy.crownRotation(10.0D);
+        double length = ArchmageV5CombatPolicy.CROWN_LENGTH_MAX;
+        // Three real teeth per arm keeps the rotating read without flooding the
+        // entity budget; the arms themselves are the mesh, not extra fangs.
+        int teeth = Math.min(3, ArchmageV5CombatPolicy.crownTeeth(length));
+        BukkitTask task = new BukkitRunnable() {
+            int elapsed;
+            @Override public void run() {
+                boolean fenced = taskRegistry == null || !taskRegistry.owns(ownerGeneration)
+                        || generation != ownerGeneration || !Objects.equals(eventId, ownerEvent)
+                        || !actor.isValid() || actor.isDead()
+                        || (ownerRole != null && !ownerRole.equals(readString(actor, keyTrialRole)));
+                if (fenced || ArchmageV5CombatPolicy.crownMustFinish(elapsed)) {
+                    activeCrownChannels.remove(casterId);
+                    cancel();
+                    return;
+                }
+                double[] angles = ArchmageV5CombatPolicy.crownSpokeAnglesDegrees(
+                        elapsed, degreesPerSecond, 0.0D);
+                Location base = actor.getLocation().clone();
+                base.setY(Math.floor(base.getY()));
+                for (double angle : angles) {
+                    List<double[]> arm = ArchmageV5CombatPolicy.crownArmPoints(angle, length, teeth);
+                    for (double[] point : arm) {
+                        // Never bite straight under the caster: the first two
+                        // blocks are its own footing, not a spoke.
+                        if (point[0] * point[0] + point[2] * point[2] < 4.0D) continue;
+                        Location at = base.clone().add(point[0], 0.0D, point[2]);
+                        spawnOwnedArchmageFang(actor,
+                                Wave7NamedTrialActorPolicy.Attack.ARCHMAGE_CROWN, at);
+                    }
+                }
+                elapsed += 15;
+                if (elapsed >= standardChannel) {
+                    activeCrownChannels.remove(casterId);
+                    cancel();
+                }
+            }
+        }.runTaskTimer(this, 1L, 15L);
+        registerEncounterTask(task, () -> activeCrownChannels.remove(casterId));
+        return true;
+    }
+
+    /**
+     * V5.1 Staff Repulse.
+     *
+     * <p>One warned anti-crowd push: light damage plus a real knockback to every
+     * admitted target inside the 3.5..4.5 block radius, with the vertical band
+     * respected so a player on a ledge above the caster is untouched. It is a
+     * defensive reset, never the main threat.</p>
+     */
+    private boolean resolveNamedTrialRepulse(LivingEntity actor, Player target,
+            Wave7NamedTrialActorPolicy.Attack attack) {
+        if (actor == null) return false;
+        Location center = actor.getLocation();
+        double damage = Wave7NamedTrialActorPolicy.scaledDamage(
+                ArchmageV5CombatPolicy.REPULSE_DAMAGE, wave7FrozenRosterSize());
+        int pushed = 0;
+        for (Player player : realitySplitTrialTargets(actor)) {
+            if (!isCurrentRealitySplitTrialTarget(actor, player)) continue;
+            double dx = player.getLocation().getX() - center.getX();
+            double dz = player.getLocation().getZ() - center.getZ();
+            double dy = player.getLocation().getY() - center.getY();
+            if (!ArchmageV5CombatPolicy.repulseHits(Math.hypot(dx, dz), dy)) continue;
+            Vector push = new Vector(dx, 0.0D, dz);
+            if (push.lengthSquared() < 1.0E-4D) {
+                push = center.getDirection().clone().setY(0.0D);
+            }
+            if (push.lengthSquared() < 1.0E-4D) push = new Vector(0.0D, 0.0D, 1.0D);
+            player.setVelocity(push.normalize()
+                    .multiply(ArchmageV5CombatPolicy.repulsePush() * 0.30D).setY(0.42D));
+            applyWaveAbilityDamage(actor, player, damage);
+            pushed++;
+        }
+        // The cast resolves even if the crowd already scattered: the push is
+        // what it promised, and the actor keeps its slot either way.
+        return pushed > 0 || target != null;
     }
 
     /** Reach of the Archmage fang cast, in blocks. */
@@ -39957,7 +40230,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         switch (attack) {
             case ARCHMAGE_STEP -> writeArchmageToolTick(actor, keyWave7ArchmageStepTick,
                     generation, eventTickCounter);
-            case ARCHMAGE_FANGS, ARCHMAGE_SPEAR, ARCHMAGE_BEAM ->
+            case ARCHMAGE_FANGS, ARCHMAGE_SPEAR, ARCHMAGE_BEAM, ARCHMAGE_CIRCLE,
+                    ARCHMAGE_CROWN, ARCHMAGE_REPULSE ->
                     writeArchmageToolTick(actor, keyWave7ArchmagePunishUntil, generation,
                             Wave7ArchmagePunishPolicy.punishUntilTick(eventTickCounter));
             default -> { }
@@ -40016,18 +40290,30 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
-    /** Attack pattern id reserved for the radial slam (the authored cycle uses 0-2). */
+    /**
+     * Attack pattern id reserved for the V5.1 Echo Space Explosion. The
+     * authored directional cycle still owns patterns 0-2; this id is the
+     * out-of-band radial cast and keeps its own cooldown and resolution.
+     */
     private static final int WARDEN_SLAM_PATTERN = 3;
-    /** How long the slam telegraph runs before the shockwave lands. */
-    private static final long WARDEN_SLAM_TELEGRAPH_TICKS = 30L;
-    /** Gap between two Warden ground slams, in ticks. */
-    private static final long WARDEN_SLAM_COOLDOWN_TICKS = 160L;
-    /** Radius of the slam shockwave, in blocks. */
-    private static final double WARDEN_SLAM_RADIUS = 6.0D;
-    /** Damage the slam deals before the group split. */
-    private static final double WARDEN_SLAM_DAMAGE = 7.5D;
-    /** The slam reaches through a pile but never through the floor. */
-    private static final double WARDEN_SLAM_VERTICAL_REACH = 3.0D;
+    /**
+     * Pattern id for the V5.1 5x4 Frontal Crushing Sweep. The cyclic wide
+     * strike is upgraded in place to the committed volume, so the party always
+     * reads the same tell from the same slot in the rotation.
+     */
+    private static final int WARDEN_SWEEP_PATTERN = 1;
+    /** Pattern id for the V5.1 Sculk Resonance footstep trap. */
+    private static final int WARDEN_TRACE_PATTERN = 4;
+    /** How long the echo warning runs before the detonation lands. */
+    private static final long WARDEN_SLAM_TELEGRAPH_TICKS = WardenV5CombatPolicy.ECHO_WARNING_TICKS;
+    /** Gap between two echo detonations, in ticks. */
+    private static final long WARDEN_SLAM_COOLDOWN_TICKS = WardenV5CombatPolicy.ECHO_COOLDOWN_TICKS;
+    /** Radius of the echo sphere, in blocks (wall-piercing by design). */
+    private static final double WARDEN_SLAM_RADIUS = WardenV5CombatPolicy.ECHO_RADIUS_BLOCKS;
+    /** Damage the echo deals before the group split. */
+    private static final double WARDEN_SLAM_DAMAGE = WardenV5CombatPolicy.ECHO_DAMAGE;
+    /** The echo is a true sphere, so its vertical reach is its radius. */
+    private static final double WARDEN_SLAM_VERTICAL_REACH = WardenV5CombatPolicy.ECHO_RADIUS_BLOCKS;
 
     /**
      * Warden answers a cluster or an encirclement with a radial ground slam.
@@ -40040,6 +40326,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (warden == null || state == null || state.action != 0) return false;
         boolean ready = state.lastSlamTick == Long.MIN_VALUE / 2L
                 || eventTickCounter - state.lastSlamTick >= WARDEN_SLAM_COOLDOWN_TICKS;
+        // Fairness: a party that was just stunned by the frontal sweep must have
+        // recovered and gained one reaction second before the radial echo starts
+        // its own warning.
+        boolean fairAfterSweep = state.lastSweepTick == Long.MIN_VALUE / 2L
+                || WardenV5CombatPolicy.mayFollowSweepWithEcho(
+                        (int) Math.max(0L, eventTickCounter - state.lastSweepTick));
+        ready = ready && fairAfterSweep;
         List<WardenSlamTriggerPolicy.Around> around = new ArrayList<>();
         Location origin = warden.getLocation();
         for (Player player : realitySplitTrialTargets(warden)) {
@@ -40090,7 +40383,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
-    /** The slam itself: one radial hit, damage split across everyone caught. */
+    /** The detonation itself: one wall-piercing sphere hit, damage split across everyone caught. */
     private void finishWardenSlam(LivingEntity warden, RealitySplitTrialRuntimeState state) {
         Location center = warden.getLocation();
         List<Player> caught = new ArrayList<>();
@@ -40098,23 +40391,31 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (!isCurrentRealitySplitTrialTarget(warden, player)) continue;
             if (state.hitPlayers.contains(player.getUniqueId())) continue;
             Location at = player.getLocation();
-            if (Math.abs(at.getY() - center.getY()) > WARDEN_SLAM_VERTICAL_REACH) continue;
-            if (at.distanceSquared(center) > WARDEN_SLAM_RADIUS * WARDEN_SLAM_RADIUS) continue;
+            // V5.1: the Echo Space Explosion is a true sphere, not a cylinder with
+            // a separate floor gate. It ignores cover on purpose (that is the one
+            // explicitly wall-piercing Warden cast), so there is no line-of-sight
+            // filter here either. A player just inside the 6-block sphere is hit.
+            if (!WardenV5CombatPolicy.echoHits(at.getX() - center.getX(),
+                    at.getY() - center.getY(), at.getZ() - center.getZ())) continue;
             caught.add(player);
         }
-        // A slam that catches nobody still has to be visible, or it reads as the
-        // Warden freezing in place.
+        // A detonation that catches nobody still has to be visible, or it reads
+        // as the Warden freezing in place.
         double damage = caught.isEmpty() ? WARDEN_SLAM_DAMAGE
                 : WARDEN_SLAM_DAMAGE / Math.sqrt(caught.size());
         for (Player player : caught) {
+            // Exactly one custom hit per target per cast. The custom Warden has no
+            // native Sonic Boom of its own, so this is the only damage source and
+            // there is no double native hit to suppress.
             if (!applyWaveAbilityDamage(warden, player, damage)) continue;
             state.hitPlayers.add(player.getUniqueId());
             Vector push = player.getLocation().toVector().subtract(center.toVector());
             push.setY(0.0D);
             if (push.lengthSquared() < 1.0E-4D) push = new Vector(0.0D, 0.0D, 1.0D);
-            player.setVelocity(push.normalize().multiply(0.55D).setY(0.34D));
+            player.setVelocity(push.normalize().multiply(WardenV5CombatPolicy.ECHO_KNOCKBACK)
+                    .setY(WardenV5CombatPolicy.ECHO_LIFT));
         }
-        renderWave7AbilityEffect(warden, null, "WAVE7_WARDEN_SLAM");
+        renderWave7AbilityEffect(warden, null, "WAVE7_WARDEN_ECHO_SPACE");
         for (Player viewer : eventAudience()) {
             if (!isEventParticleViewer(viewer, center)) continue;
             for (int i = 1; i <= 4; i++) {
@@ -40124,25 +40425,311 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             viewer.spawnParticle(Particle.EXPLOSION, center.clone().add(0.0D, 0.4D, 0.0D),
                     1, 0.0D, 0.0D, 0.0D, 0.0D);
+            viewer.spawnParticle(Particle.SONIC_BOOM, center.clone().add(0.0D, 1.4D, 0.0D),
+                    1, 0.0D, 0.0D, 0.0D, 0.0D);
         }
         warden.getWorld().playSound(center, Sound.ENTITY_WARDEN_SONIC_BOOM,
                 SoundCategory.HOSTILE, 1.0F, 0.75F);
-        getLogger().info("WAVE7_WARDEN_SLAM_IMPACT event=" + eventId
+        getLogger().info("WAVE7_WARDEN_ECHO_SPACE event=" + eventId
                 + " generation=" + generation + " caught=" + caught.size()
                 + " damage_each=" + String.format(java.util.Locale.ROOT, "%.2f", damage));
+    }
+
+    /**
+     * V5.1 5x4 Frontal Crushing Sweep resolution.
+     *
+     * <p>The volume is exactly five blocks across by four blocks forward of the
+     * committed heading. A hit applies the 20-tick movement stun and the
+     * 60-tick Slowness <em>only</em> when the damage is actually accepted, so
+     * an i-frame, a protection plugin or a dead target never receives the
+     * crowd-control as a consolation prize.</p>
+     */
+    private void resolveWardenFrontalSweep(LivingEntity warden,
+                                           RealitySplitTrialRuntimeState state) {
+        if (warden == null || state == null || state.direction == null) return;
+        Location origin = warden.getLocation();
+        int accepted = 0;
+        for (Player player : realitySplitTrialTargets(warden)) {
+            if (!isCurrentRealitySplitTrialTarget(warden, player)
+                    || state.hitPlayers.contains(player.getUniqueId())) continue;
+            double dx = player.getLocation().getX() - origin.getX();
+            double dz = player.getLocation().getZ() - origin.getZ();
+            double forward = dx * state.direction.getX() + dz * state.direction.getZ();
+            double lateral = Math.abs(dx * state.direction.getZ() - dz * state.direction.getX());
+            double vertical = player.getLocation().getY() - origin.getY();
+            if (!WardenV5CombatPolicy.sweepHits(forward, lateral, vertical)) continue;
+            if (!applyWaveAbilityDamage(warden, player, WardenV5CombatPolicy.SWEEP_DAMAGE)) continue;
+            state.hitPlayers.add(player.getUniqueId());
+            applyWardenSweepStunAndSlow(player);
+            accepted++;
+        }
+        renderWave7AbilityEffect(warden, state.target == null ? null
+                : Bukkit.getPlayer(state.target), "WAVE7_WARDEN_SWEEP");
+        warden.getWorld().playSound(origin, Sound.ENTITY_WARDEN_ATTACK_IMPACT,
+                SoundCategory.HOSTILE, 1.0F, 0.65F);
+        getLogger().info("WAVE7_WARDEN_SWEEP event=" + eventId + " generation=" + generation
+                + " accepted=" + accepted + " volume=" + WardenV5CombatPolicy.sweepVolume());
+    }
+
+    /**
+     * The stun is a real 20-tick heavy lock and the slow is the 60-tick tail.
+     *
+     * <p>Vanilla keeps one effect per type, so the two are sequenced instead of
+     * stacked: the heavy Slowness VI is applied immediately and the lighter
+     * Slowness II replaces it exactly when the stun expires. Both are fenced by
+     * generation/event so a restart or a phase reset cannot leave a lingering
+     * debuff on a player who is no longer in the fight.</p>
+     */
+    private void applyWardenSweepStunAndSlow(Player player) {
+        if (player == null || !player.isOnline() || player.isDead()) return;
+        player.setVelocity(new Vector());
+        player.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS,
+                WardenV5CombatPolicy.SWEEP_STUN_TICKS,
+                WardenV5CombatPolicy.SWEEP_STUN_SLOW_AMPLIFIER, false, false, true), true);
+        long ownerGeneration = generation;
+        String ownerEvent = eventId;
+        BukkitTask tail = new BukkitRunnable() {
+            @Override public void run() {
+                if (player.isOnline() && !player.isDead()
+                        && generation == ownerGeneration
+                        && Objects.equals(eventId, ownerEvent)) {
+                    player.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS,
+                            WardenV5CombatPolicy.SWEEP_SLOW_TICKS,
+                            WardenV5CombatPolicy.SWEEP_SLOW_AMPLIFIER, false, false, true), true);
+                }
+            }
+        }.runTaskLater(this, Math.max(1L, WardenV5CombatPolicy.SWEEP_STUN_TICKS));
+        registerEncounterTask(tail);
+    }
+
+    /**
+     * The committed 5x4 sweep tell: a fixed rectangular volume that does not
+     * drift with the aim, so the party can read exactly where the coming hit
+     * lands and step out of it. The closing front line is the countdown.
+     */
+    private void renderWardenSweepTelegraph(LivingEntity warden,
+                                            RealitySplitTrialRuntimeState state) {
+        if (warden == null || state == null || state.direction == null) return;
+        Vector dir = state.direction.clone().setY(0.0D);
+        if (dir.lengthSquared() < 1.0E-4D) return;
+        dir.normalize();
+        Vector side = new Vector(-dir.getZ(), 0.0D, dir.getX());
+        double half = WardenV5CombatPolicy.SWEEP_HALF_WIDTH_BLOCKS;
+        double forward = WardenV5CombatPolicy.SWEEP_FORWARD_BLOCKS;
+        Location base = warden.getLocation().clone().add(0.0D, 0.12D, 0.0D);
+        int rows = 4;
+        int cols = 5;
+        for (int r = 0; r <= rows; r++) {
+            double f = forward * r / rows;
+            for (int c = 0; c <= cols; c++) {
+                double lat = -half + (2.0D * half) * c / cols;
+                Location point = base.clone().add(dir.clone().multiply(f))
+                        .add(side.clone().multiply(lat));
+                boolean edge = r == 0 || r == rows || c == 0 || c == cols;
+                spawnEventParticle(point, edge ? Particle.SOUL_FIRE_FLAME : Particle.SCULK_SOUL,
+                        1, 0.0D, 0.0D, 0.0D, 0.0D);
+            }
+        }
+        double remaining = Math.max(0.0D, (state.phaseUntilTick - eventTickCounter)
+                / (double) Math.max(1, WardenV5CombatPolicy.SWEEP_PREP_TICKS));
+        double front = forward * (1.0D - remaining);
+        for (int c = 0; c <= 8; c++) {
+            double lat = -half + (2.0D * half) * c / 8.0D;
+            spawnEventParticle(base.clone().add(dir.clone().multiply(front))
+                    .add(side.clone().multiply(lat)), Particle.SONIC_BOOM, 1,
+                    0.0D, 0.0D, 0.0D, 0.0D);
+        }
+    }
+
+    /**
+     * Records one footfall sample per player every five event ticks while the
+     * Warden is live. Samples older than the 20-tick history window are pruned,
+     * and players who are no longer combat targets are dropped entirely.
+     */
+    private void recordWardenFootsteps() {
+        long now = eventTickCounter;
+        java.util.Set<UUID> live = new java.util.HashSet<>();
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            if (!isCombatTarget(player)) continue;
+            live.add(player.getUniqueId());
+            java.util.ArrayDeque<WardenStepSample> history =
+                    wardenStepHistory.computeIfAbsent(player.getUniqueId(),
+                            ignored -> new java.util.ArrayDeque<>());
+            Location at = player.getLocation();
+            WardenStepSample last = history.peekLast();
+            if (last != null && now - last.tick() < 5L) continue;
+            double moved = last == null ? 0.0D
+                    : Math.hypot(at.getX() - last.x(), at.getZ() - last.z());
+            history.addLast(new WardenStepSample(at.getX(), at.getY(), at.getZ(), now,
+                    player.isSneaking(), moved >= 0.25D));
+            while (!history.isEmpty()
+                    && now - history.peekFirst().tick() > WardenV5CombatPolicy.TRACE_HISTORY_TICKS) {
+                history.removeFirst();
+            }
+        }
+        wardenStepHistory.keySet().retainAll(live);
+    }
+
+    /**
+     * V5.1 Sculk Resonance.
+     *
+     * <p>The Warden reads the 3..5 most recent blocks a moving player walked and
+     * freezes them as the announced danger corridor. Sneaking inside the
+     * pre-lock window removes a player from selection entirely, and the frozen
+     * corridor is resolved against current positions, so a perpendicular
+     * sidestep after the lock is a real dodge.</p>
+     */
+    private boolean beginWardenSculkTrace(LivingEntity warden,
+                                          RealitySplitTrialRuntimeState state) {
+        if (warden == null || state == null) return false;
+        long now = eventTickCounter;
+        if (state.lastTraceTick != Long.MIN_VALUE / 2L
+                && now - state.lastTraceTick < WardenV5CombatPolicy.TRACE_COOLDOWN_TICKS) return false;
+        List<Player> candidates = new ArrayList<>();
+        Map<UUID, List<WardenV5CombatPolicy.Step>> steps = new HashMap<>();
+        for (Player player : realitySplitTrialTargets(warden)) {
+            if (!isCurrentRealitySplitTrialTarget(warden, player)) continue;
+            java.util.ArrayDeque<WardenStepSample> history = wardenStepHistory.get(player.getUniqueId());
+            if (history == null || history.isEmpty()) continue;
+            List<WardenV5CombatPolicy.Step> recent = new ArrayList<>(history.size());
+            for (WardenStepSample sample : history) {
+                int age = (int) Math.max(0L, now - sample.tick());
+                recent.add(new WardenV5CombatPolicy.Step(sample.x(), sample.y(), sample.z(),
+                        age, sample.sneaking(), sample.moving()));
+            }
+            if (!WardenV5CombatPolicy.maySelect(recent)) continue;
+            candidates.add(player);
+            steps.put(player.getUniqueId(), recent);
+        }
+        if (candidates.isEmpty()) return false;
+        // The freshest moving trail is the honest read; a player who stopped
+        // leaves a colder, less resonant print.
+        candidates.sort(Comparator.comparingInt(player -> steps.get(player.getUniqueId()).stream()
+                .filter(WardenV5CombatPolicy.Step::moving)
+                .mapToInt(WardenV5CombatPolicy.Step::ageTicks).min().orElse(Integer.MAX_VALUE)));
+        List<Player> chosen = new ArrayList<>();
+        for (Player player : candidates) {
+            boolean separated = true;
+            for (Player other : chosen) {
+                if (player.getLocation().distance(other.getLocation())
+                        < WardenV5CombatPolicy.TRACE_MIN_SEPARATION_BLOCKS) {
+                    separated = false;
+                    break;
+                }
+            }
+            if (!separated) continue;
+            chosen.add(player);
+            if (chosen.size() >= WardenV5CombatPolicy.TRACE_MAX_TRACKS) break;
+        }
+        if (chosen.isEmpty()) return false;
+        List<double[]> segments = new ArrayList<>();
+        state.traceOwners.clear();
+        for (Player player : chosen) {
+            List<double[]> points = WardenV5CombatPolicy.tracePolyline(
+                    steps.get(player.getUniqueId()), WardenV5CombatPolicy.TRACE_MAX_BLOCKS);
+            for (int i = 1; i < points.size(); i++) {
+                double[] from = points.get(i - 1);
+                double[] to = points.get(i);
+                segments.add(new double[]{from[0], from[2], to[0], to[2]});
+            }
+            state.traceOwners.add(player.getUniqueId());
+        }
+        if (segments.isEmpty()) return false;
+        state.traceSegments = List.copyOf(segments);
+        state.lastTraceTick = now;
+        state.attackCount++;
+        state.action = 1;
+        state.attackPattern = WARDEN_TRACE_PATTERN;
+        state.phaseUntilTick = now + WardenV5CombatPolicy.TRACE_WARNING_TICKS;
+        state.hitPlayers.clear();
+        state.direction = horizontalDirection(warden.getLocation(), chosen.get(0).getLocation());
+        faceRealitySplitTrialMob(warden, state.direction);
+        renderWardenSculkTraceTelegraph(warden, state);
+        warden.getWorld().playSound(warden.getLocation(), Sound.ENTITY_WARDEN_LISTENING,
+                SoundCategory.HOSTILE, 0.9F, 0.6F);
+        getLogger().info("WAVE7_WARDEN_SCULK_TRACE event=" + eventId
+                + " generation=" + generation + " tracks=" + chosen.size()
+                + " segments=" + segments.size());
+        return true;
+    }
+
+    /** The frozen footfall corridors, re-drawn each tick until the detonation. */
+    private void renderWardenSculkTraceTelegraph(LivingEntity warden,
+                                                 RealitySplitTrialRuntimeState state) {
+        if (warden == null || state == null || state.traceSegments == null
+                || warden.getWorld() == null) return;
+        double y = warden.getLocation().getY() + 0.12D;
+        for (double[] seg : state.traceSegments) {
+            double length = Math.hypot(seg[2] - seg[0], seg[3] - seg[1]);
+            int steps = Math.max(2, (int) Math.ceil(length / 0.55D));
+            for (int i = 0; i <= steps; i++) {
+                double t = i / (double) steps;
+                Location point = new Location(warden.getWorld(),
+                        seg[0] + (seg[2] - seg[0]) * t, y, seg[1] + (seg[3] - seg[1]) * t);
+                spawnEventParticle(point, i % 3 == 0 ? Particle.SCULK_SOUL : Particle.SCULK_CHARGE_POP,
+                        1, 0.0D, 0.0D, 0.0D, 0.0D);
+            }
+        }
+    }
+
+    /** Resolve the resonant detonation against the frozen corridors only. */
+    private void resolveWardenSculkTrace(LivingEntity warden,
+                                         RealitySplitTrialRuntimeState state) {
+        if (warden == null || state == null || state.traceSegments == null) return;
+        double halfWidth = 1.15D;
+        int hit = 0;
+        for (Player player : realitySplitTrialTargets(warden)) {
+            if (!isCurrentRealitySplitTrialTarget(warden, player)
+                    || state.hitPlayers.contains(player.getUniqueId())) continue;
+            boolean inside = false;
+            for (double[] seg : state.traceSegments) {
+                if (WardenV5CombatPolicy.traceHits(player.getLocation().getX(),
+                        player.getLocation().getZ(), seg[0], seg[1], seg[2], seg[3], halfWidth)) {
+                    inside = true;
+                    break;
+                }
+            }
+            if (!inside) continue;
+            if (!applyWaveAbilityDamage(warden, player, WardenV5CombatPolicy.TRACE_DAMAGE)) continue;
+            state.hitPlayers.add(player.getUniqueId());
+            player.setVelocity(player.getVelocity().setY(0.28D));
+            hit++;
+        }
+        for (double[] seg : state.traceSegments) {
+            Location end = new Location(warden.getWorld(), seg[2],
+                    warden.getLocation().getY() + 0.2D, seg[3]);
+            spawnEventParticle(end, Particle.SONIC_BOOM, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+            for (int i = 0; i < 6; i++) {
+                spawnEventParticle(end.clone().add(0.0D, i * 0.3D, 0.0D),
+                        Particle.SCULK_SOUL, 1, 0.05D, 0.05D, 0.05D, 0.0D);
+            }
+        }
+        renderWave7AbilityEffect(warden, null, "WAVE7_WARDEN_SCULK_TRACE");
+        warden.getWorld().playSound(warden.getLocation(), Sound.ENTITY_WARDEN_SONIC_BOOM,
+                SoundCategory.HOSTILE, 0.85F, 1.25F);
+        getLogger().info("WAVE7_WARDEN_SCULK_TRACE_IMPACT event=" + eventId
+                + " generation=" + generation + " hit=" + hit);
+        state.traceSegments = List.of();
+        state.traceOwners.clear();
     }
 
     private void tickRealitySplitWarden(LivingEntity warden, RealitySplitTrialRuntimeState state) {
         if (!warden.isValid() || warden.isDead() || state == null) return;
         if (advanceWardenEmergence(warden)) return;
+        recordWardenFootsteps();
         if (state.action == 1) {
-            String clip = state.attackPattern == WARDEN_SLAM_PATTERN ? "WARDEN_SLAM"
-                    : Wave7WardenCombatPolicy.profileForPattern(state.attackPattern).warning()
-                            == Wave7WardenCombatPolicy.Warning.SONIC_LUNGE ? "WARDEN_SONIC_LUNGE"
-                    : wardenStrikeAbility(Wave7WardenCombatPolicy.profileForPattern(state.attackPattern)).substring(6);
+            String clip;
+            if (state.attackPattern == WARDEN_SLAM_PATTERN) clip = "WARDEN_SLAM";
+            else if (state.attackPattern == WARDEN_TRACE_PATTERN) clip = "WARDEN_SONIC_LUNGE";
+            else if (Wave7WardenCombatPolicy.profileForPattern(state.attackPattern).warning()
+                    == Wave7WardenCombatPolicy.Warning.SONIC_LUNGE) clip = "WARDEN_SONIC_LUNGE";
+            else clip = wardenStrikeAbility(
+                    Wave7WardenCombatPolicy.profileForPattern(state.attackPattern)).substring(6);
+            long telegraph = wardenTelegraphTicks(state.attackPattern);
             sendTrialPose(warden, clip, "WINDUP", Math.max(0L, state.phaseUntilTick * 50L),
-                    (int)(state.attackPattern == WARDEN_SLAM_PATTERN ? WARDEN_SLAM_TELEGRAPH_TICKS : REALITY_SPLIT_ACTION_TELEGRAPH_TICKS) * 50,
-                    (int)Math.max(0L, ((state.attackPattern == WARDEN_SLAM_PATTERN ? WARDEN_SLAM_TELEGRAPH_TICKS : REALITY_SPLIT_ACTION_TELEGRAPH_TICKS) - (state.phaseUntilTick-eventTickCounter))*50L));
+                    (int) telegraph * 50,
+                    (int) Math.max(0L,
+                            (telegraph - (state.phaseUntilTick - eventTickCounter)) * 50L));
         } else if (state.action == 0) sendTrialFollowupPose(warden, "RECOVERY", 600);
         Wave7WardenCombatPolicy.AttackProfile attack =
                 Wave7WardenCombatPolicy.profileForPattern(state.attackPattern);
@@ -40187,6 +40774,29 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 finishTrialAttack(state, 44L);
                 return;
             }
+            // V5.1: the wide-strike slot is now the committed 5x4 frontal
+            // crushing sweep. Its tell draws the exact volume that resolves,
+            // and its resolution owns the stun/slow on accepted damage.
+            if (state.attackPattern == WARDEN_SWEEP_PATTERN) {
+                renderWardenSweepTelegraph(warden, state);
+                if (eventTickCounter < state.phaseUntilTick) return;
+                warden.setVelocity(new Vector());
+                resolveWardenFrontalSweep(warden, state);
+                state.lastSweepTick = eventTickCounter;
+                finishTrialAttack(state, 44L);
+                return;
+            }
+            // V5.1 Sculk Resonance: the frozen corridor re-draws each tick and
+            // resolves against the announced segment only, so stepping aside
+            // after the lock is a real dodge.
+            if (state.attackPattern == WARDEN_TRACE_PATTERN) {
+                renderWardenSculkTraceTelegraph(warden, state);
+                if (eventTickCounter < state.phaseUntilTick) return;
+                warden.setVelocity(new Vector());
+                resolveWardenSculkTrace(warden, state);
+                finishTrialAttack(state, 44L);
+                return;
+            }
             Particle warningParticle = attack.warning()
                     == Wave7WardenCombatPolicy.Warning.SONIC_LUNGE
                     ? Particle.SONIC_BOOM : Particle.SOUL_FIRE_FLAME;
@@ -40215,6 +40825,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // The slam is radial and needs no facing, so it is the correct reply to
         // exactly those two formations.
         if (beginWardenSlamIfWarranted(warden, state)) return;
+        // V5.1: an encirclement gets the wall-piercing echo, a moving party gets
+        // a resonance trace, and only then does the Warden commit a line swing.
+        if (beginWardenSculkTrace(warden, state)) return;
         Player target = realitySplitTrialTarget(warden, state.chamber, state.target,
                 state.attackCount);
         if (target == null) {
@@ -40242,14 +40855,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         state.attackPattern = Wave7WardenCombatPolicy.patternForOrdinal(state.attackCount++);
         attack = Wave7WardenCombatPolicy.profileForPattern(state.attackPattern);
         state.action = 1;
-        state.phaseUntilTick = eventTickCounter + REALITY_SPLIT_ACTION_TELEGRAPH_TICKS;
+        // V5.1: the warning length follows the committed move. The sweep needs
+        // its full 0.7..1.0 s preparation instead of the old 1-second line tell.
+        state.phaseUntilTick = eventTickCounter + wardenTelegraphTicks(state.attackPattern);
         state.hitPlayers.clear();
         faceRealitySplitTrialMob(warden, state.direction);
-        Particle warningParticle = attack.warning()
-                == Wave7WardenCombatPolicy.Warning.SONIC_LUNGE
-                ? Particle.SONIC_BOOM : Particle.SOUL_FIRE_FLAME;
-        renderRealitySplitTrialTelegraph(warden.getLocation(), state.direction,
-                attack.warningLength(), attack.warningWidth(), warningParticle);
+        if (state.attackPattern == WARDEN_SWEEP_PATTERN) {
+            renderWardenSweepTelegraph(warden, state);
+        } else {
+            Particle warningParticle = attack.warning()
+                    == Wave7WardenCombatPolicy.Warning.SONIC_LUNGE
+                    ? Particle.SONIC_BOOM : Particle.SOUL_FIRE_FLAME;
+            renderRealitySplitTrialTelegraph(warden.getLocation(), state.direction,
+                    attack.warningLength(), attack.warningWidth(), warningParticle);
+        }
         Sound warningSound = attack.warning()
                 == Wave7WardenCombatPolicy.Warning.SONIC_LUNGE
                 ? Sound.ENTITY_WARDEN_SONIC_CHARGE : Sound.BLOCK_SCULK_SENSOR_CLICKING;
@@ -40260,6 +40879,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static String wardenStrikeAbility(Wave7WardenCombatPolicy.AttackProfile attack) {
         return attack.warning() == Wave7WardenCombatPolicy.Warning.WIDE_STRIKE
                 ? "WAVE7_WARDEN_WIDE_STRIKE" : "WAVE7_WARDEN_NARROW_STRIKE";
+    }
+
+    /** Warning length of one Warden pattern, used for the pose packet and diagnostics. */
+    private static long wardenTelegraphTicks(int pattern) {
+        if (pattern == WARDEN_SLAM_PATTERN) return WARDEN_SLAM_TELEGRAPH_TICKS;
+        if (pattern == WARDEN_SWEEP_PATTERN) return WardenV5CombatPolicy.SWEEP_PREP_TICKS;
+        if (pattern == WARDEN_TRACE_PATTERN) return WardenV5CombatPolicy.TRACE_WARNING_TICKS;
+        return REALITY_SPLIT_ACTION_TELEGRAPH_TICKS;
     }
 
     private void tickRealitySplitReflection(LivingEntity eye, RealitySplitTrialRuntimeState state) {
@@ -47832,6 +48459,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         bossLastFocusedMillis.clear();
         bossFuryCombo.clear();
         bossLastRetaliationMillis = 0L;
+        resetGuardianV5State();
         bossFocusSinceMillis = 0L;
             previousBossSpell = null;
             bossTargetCursor = 0;
@@ -48236,39 +48864,19 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             detectBossStuck(boss, now);
         }
         if (tickBossFuryCombo(boss)) return;
-        // Use the committed animation/contact timeline for nearby melee too.
-        // This runs only between major casts, never as a second damage source.
-        if (!finalSealPinned && boss instanceof Mob mob
-                && mob.getTarget() instanceof Player target && isCombatTarget(target)
-                && me.copimine.endevent.domain.BossCloseCombatPolicy.canStrike(
-                        bossPhase, now, nextBossCloseStrikeMillis, bossSpellPauseUntilMillis,
-                        nextSpellMillis, boss.getLocation().distance(target.getLocation()),
-                        boss.hasLineOfSight(target), isPlayerUnderTentacleControl(target))) {
-            currentBossBrainAbility = BossAbilityId.fromSpell(EndRiftAiPolicy.BossSpell.MELEE_SWIPE);
-            currentBossBrainTarget = target.getUniqueId();
-            // A close-quarters swing is a single-target decision, so clear any
-            // group supports left by the previous brain decision. Without this
-            // the fallback in currentBrainTarget could steer a swipe at a
-            // teammate the earlier combo had ranked.
-            currentBossBrainSupports = java.util.List.of();
-            currentBossDecisionAtMillis = now;
-            if (castCurrentBossSpell(boss, EndRiftAiPolicy.BossSpell.MELEE_SWIPE, false)) {
-                // Contract 10.5: the cadence is the per-phase authored rhythm,
-                // not the old frozen eight seconds.
-                nextBossCloseStrikeMillis = me.copimine.endevent.domain.BossCloseCombatPolicy
-                        .nextStrikeMillis(bossPhase, now);
-                bossBrain.recordAccepted(currentBossBrainAbility, generation);
-                bossSpellCursor++;
-                return;
-            }
-            // A refused swing must not silently wait for a full cadence: back
-            // off a short bounded retry so a real opening is not missed.
-            nextBossCloseStrikeMillis = now
-                    + me.copimine.endevent.domain.BossCloseCombatPolicy.retryMillis();
-        }
+        // V5.1 Crushing / Monstrous Gravity is a rare arena-wide field that owns
+        // real motion only. It advances every tick, before melee can own the
+        // body, and never overlaps a major cast (see the guard below).
+        tickCrushingGravity(boss, now, finalSealPinned);
+        // V5.1: the Guardian is a grounded melee-first fighter. The scheduler
+        // below owns the fast hand contacts plus the Fan, Heavy and Separation
+        // committed moves and their post-separation spell branch. It falls
+        // through to the ordinary cast flow whenever melee cannot act, so it is
+        // still "melee between casts", never a second damage source.
+        if (tickGuardianPhysicalMelee(boss, now, finalSealPinned)) return;
         if (isKaguneRingCastActive()) return;
         if (now >= bossSpellPauseUntilMillis && nextSpellMillis <= now
-                && bossSpellRetryAtMillis <= now
+                && bossSpellRetryAtMillis <= now && !crushingGravityLive()
                 && !activeBossParticipants().isEmpty()) {
             boolean accepted = castBossSpell(boss, false);
             if (accepted) {
@@ -49019,6 +49627,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // requests) for up to one cadence instead of re-reading the new phase at
         // once. A null boss is tolerated: the release is a no-op then.
         releaseBossCastMobility(boss, "phase-change");
+        // V5.1: a phase change restores the Guardian melee clocks and ends any
+        // running Crushing Gravity field so no old field survives the transition.
+        resetGuardianV5State();
         if (bossPhase != BossPhase.OVERLOAD) clearArenaInferno();
         if (bossPhase == BossPhase.LAST_SEAL) clearVoidMarkZones();
     }
@@ -52019,6 +52630,741 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         player.setVelocity(knockback);
         player.playEffect(EntityEffect.HURT);
         return true;
+    }
+
+    // ==================================================================
+    // V5.1 Guardian melee-first scheduler
+    // ==================================================================
+
+    /** Short filler gap between two committed Guardian moves. */
+    private static final long GUARDIAN_INTER_MOVE_MILLIS = 400L;
+    /** Hard cap on the post-separation spell branch before melee must resume. */
+    private static final long GUARDIAN_BRANCH_MILLIS = 6_000L;
+    /** Short recovery after the separation wave before its branch opens. */
+    private static final int GUARDIAN_SEPARATION_RECOVERY_TICKS = 10;
+
+    /**
+     * V5.1 Guardian melee-first scheduler.
+     *
+     * <p>Melee is the backbone. Fast alternating hand contacts fill every gap,
+     * and the three committed moves - the 125-degree ground Fan, the warned
+     * Heavy and the ~5-block Separation - pre-empt that filler exactly when
+     * their own cooldowns allow. A Separation always opens a short branch of at
+     * most two announced spells before the boss rushes back into melee. The
+     * intact cocoon hovers and casts only, so {@code finalSealPinned} disables
+     * everything here.</p>
+     *
+     * @return true when a physical move (or its committed recovery) owns the
+     *         body this tick and no other attack may also resolve
+     */
+    private boolean tickGuardianPhysicalMelee(LivingEntity boss, long now, boolean finalSealPinned) {
+        if (!(boss instanceof Mob mob)) return false;
+        if (guardianPhysicalMoveActive) return tickGuardianCommittedMove(boss, now);
+        advanceGuardianBranch(now);
+        if (!GuardianV5MeleePolicy.meleeAllowed(bossPhase, finalSealPinned)
+                || !isBossCombatRuntimeActive(boss) || bossAbilityState != BossAbilityState.NONE
+                || bossAmbushOwnsMajorCast() || isKaguneRingCastActive()) {
+            return false;
+        }
+        if (now < nextGuardianPhysicalMillis) return false;
+        Player target = guardianMeleeTarget(mob);
+        if (target == null) return false;
+        if (commitGuardianSeparationIfReady(boss, now)) return true;
+        if (commitGuardianRotationIfReady(boss, now, target)) return true;
+        return castGuardianBasic(boss, mob, target, now);
+    }
+
+    /** The current pursuit target, only when it is a real, reachable participant. */
+    private Player guardianMeleeTarget(Mob mob) {
+        if (!(mob.getTarget() instanceof Player candidate) || !isCombatTarget(candidate)
+                || !isActiveBossParticipant(candidate) || isPlayerUnderTentacleControl(candidate)) {
+            return null;
+        }
+        return candidate;
+    }
+
+    /**
+     * The ordinary fast hand contact. This is the exact body of the legacy
+     * close-combat swing, kept as the melee filler under the V5.1 scheduler so
+     * the authored MELEE_SWIPE timeline, brain receipt and cadence are reused
+     * rather than duplicated. The strike side alternates left/right so the
+     * accent reads as a real pair of hands.
+     */
+    private boolean castGuardianBasic(LivingEntity boss, Mob mob, Player target, long now) {
+        if (!me.copimine.endevent.domain.BossCloseCombatPolicy.canStrike(
+                bossPhase, now, nextBossCloseStrikeMillis, bossSpellPauseUntilMillis,
+                nextSpellMillis, boss.getLocation().distance(target.getLocation()),
+                boss.hasLineOfSight(target), isPlayerUnderTentacleControl(target))) {
+            return false;
+        }
+        currentBossBrainAbility = BossAbilityId.fromSpell(EndRiftAiPolicy.BossSpell.MELEE_SWIPE);
+        currentBossBrainTarget = target.getUniqueId();
+        currentBossBrainSupports = java.util.List.of();
+        currentBossDecisionAtMillis = now;
+        if (castCurrentBossSpell(boss, EndRiftAiPolicy.BossSpell.MELEE_SWIPE, false)) {
+            nextBossCloseStrikeMillis = me.copimine.endevent.domain.BossCloseCombatPolicy
+                    .nextStrikeMillis(bossPhase, now);
+            bossBrain.recordAccepted(currentBossBrainAbility, generation);
+            bossSpellCursor++;
+            guardianBasicCount++;
+            guardianMoveFacing = horizontalDirection(boss.getLocation(), target.getLocation());
+            renderGuardianBasicAccent(boss, guardianBasicCount);
+            return true;
+        }
+        nextBossCloseStrikeMillis = now
+                + me.copimine.endevent.domain.BossCloseCombatPolicy.retryMillis();
+        return false;
+    }
+
+    /** Fire the Fan or Heavy when its own cooldown has elapsed, in rotation order. */
+    private boolean commitGuardianRotationIfReady(LivingEntity boss, long now, Player target) {
+        List<GuardianV5MeleePolicy.Move> rotation = GuardianV5MeleePolicy.committedRotation();
+        int size = rotation.size();
+        for (int probe = 0; probe < size; probe++) {
+            int index = (guardianCommittedIndex + probe) % size;
+            GuardianV5MeleePolicy.Move move = rotation.get(index);
+            long readyAt = move == GuardianV5MeleePolicy.Move.FAN
+                    ? nextGuardianFanMillis : nextGuardianHeavyMillis;
+            if (now >= readyAt) {
+                guardianCommittedIndex = (index + 1) % size;
+                commitGuardianCommittedMove(boss, target, move, now);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Separation fires only when it actually displaces a cluster of the party. */
+    private boolean commitGuardianSeparationIfReady(LivingEntity boss, long now) {
+        if (now < nextGuardianSeparationMillis) return false;
+        Location origin = boss.getLocation();
+        List<Player> inRange = new ArrayList<>();
+        for (Player player : activeLivingPlayers()) {
+            if (player == null || !player.getWorld().equals(origin.getWorld())) continue;
+            double horizontal = Math.hypot(player.getLocation().getX() - origin.getX(),
+                    player.getLocation().getZ() - origin.getZ());
+            if (GuardianV5MeleePolicy.separationHits(horizontal,
+                    player.getLocation().getY() - origin.getY())) {
+                inRange.add(player);
+            }
+        }
+        if (inRange.size() < 2) return false;
+        Player nearest = inRange.get(0);
+        for (Player candidate : inRange) {
+            if (candidate.getLocation().distanceSquared(origin)
+                    < nearest.getLocation().distanceSquared(origin)) {
+                nearest = candidate;
+            }
+        }
+        commitGuardianCommittedMove(boss, nearest, GuardianV5MeleePolicy.Move.SEPARATION, now);
+        return true;
+    }
+
+    /** Commit a move: freeze the facing, publish the tell and start the windup. */
+    private void commitGuardianCommittedMove(LivingEntity boss, Player target,
+                                             GuardianV5MeleePolicy.Move move, long now) {
+        guardianActiveMove = move;
+        guardianMoveResolved = false;
+        guardianPhysicalMoveActive = true;
+        guardianMoveFacing = target != null
+                ? horizontalDirection(boss.getLocation(), target.getLocation())
+                : contactFacing(boss.getLocation());
+        int windup = guardianWindupTicks(move);
+        int recovery = guardianRecoveryTicks(move);
+        guardianMoveImpactAtMillis = now + windup * 50L;
+        guardianMoveEndAtMillis = now + (windup + recovery) * 50L;
+        nextGuardianPhysicalMillis = guardianMoveEndAtMillis + GUARDIAN_INTER_MOVE_MILLIS;
+        // Each committed move owns its own cooldown so the rotation cannot
+        // re-issue the same move back-to-back.
+        switch (move) {
+            case FAN -> nextGuardianFanMillis = now
+                    + (windup + GuardianV5MeleePolicy.FAN_COOLDOWN_TICKS) * 50L;
+            case HEAVY -> nextGuardianHeavyMillis = now
+                    + (windup + GuardianV5MeleePolicy.HEAVY_COOLDOWN_TICKS) * 50L;
+            case SEPARATION -> {
+                nextGuardianSeparationMillis = now
+                        + (windup + GuardianV5MeleePolicy.SEPARATION_COOLDOWN_TICKS) * 50L;
+                // The branch owns the window right after the push.
+                nextGuardianPhysicalMillis = now + windup * 50L + GUARDIAN_BRANCH_MILLIS;
+            }
+            default -> { }
+        }
+        faceGuardianMove(boss);
+        boss.setVelocity(new Vector(0.0D, Math.min(0.0D, boss.getVelocity().getY()), 0.0D));
+        sendBossAnimationVisualUpdate(boss, guardianMoveAnimation(move));
+        renderGuardianMoveTelegraph(boss, move);
+        boss.getWorld().playSound(boss.getLocation(), guardianMoveWarningSound(move),
+                SoundCategory.HOSTILE, 0.85F, 0.7F);
+        getLogger().info("GUARDIAN_V5_MOVE event=" + eventId + " generation=" + generation
+                + " move=" + move + " windup=" + windup + " recovery=" + recovery);
+        emitDiagnostic("BOSS_ABILITY", move.name(), "INFO", activeWave,
+                "guardian-v5-move:" + move, null, boss.getUniqueId(),
+                "guardian-v5-move:" + generation + ":" + move + ":" + now,
+                Map.of("move", move.name(), "windup", windup, "recovery", recovery));
+    }
+
+    /** Advance the committed move: hold the pose, then resolve, then release. */
+    private boolean tickGuardianCommittedMove(LivingEntity boss, long now) {
+        faceGuardianMove(boss);
+        boss.setVelocity(new Vector(0.0D, Math.min(0.0D, boss.getVelocity().getY()), 0.0D));
+        renderGuardianMoveTelegraph(boss, guardianActiveMove);
+        if (!guardianMoveResolved && now >= guardianMoveImpactAtMillis) {
+            guardianMoveResolved = true;
+            resolveGuardianCommittedMove(boss, guardianActiveMove);
+        }
+        if (now >= guardianMoveEndAtMillis) {
+            guardianPhysicalMoveActive = false;
+            guardianActiveMove = null;
+            guardianMoveFacing = null;
+            guardianMoveResolved = false;
+        }
+        return true;
+    }
+
+    private void resolveGuardianCommittedMove(LivingEntity boss, GuardianV5MeleePolicy.Move move) {
+        if (boss == null || move == null || !boss.isValid() || boss.isDead()) return;
+        Location origin = boss.getLocation();
+        Vector facing = guardianMoveFacing == null ? contactFacing(origin) : guardianMoveFacing;
+        switch (move) {
+            case FAN -> resolveGuardianFan(boss, origin, facing);
+            case HEAVY -> resolveGuardianHeavy(boss, origin, facing);
+            case SEPARATION -> resolveGuardianSeparation(boss, origin, facing);
+            default -> { }
+        }
+    }
+
+    /** The 125-degree ground Fan: a wide, low cleave that catches a whole arc. */
+    private int resolveGuardianFan(LivingEntity boss, Location origin, Vector facing) {
+        int hits = 0;
+        for (Player player : activeLivingPlayers()) {
+            if (player == null || !player.getWorld().equals(origin.getWorld())) continue;
+            double dx = player.getLocation().getX() - origin.getX();
+            double dz = player.getLocation().getZ() - origin.getZ();
+            double forward = dx * facing.getX() + dz * facing.getZ();
+            double lateral = Math.abs(dx * facing.getZ() - dz * facing.getX());
+            if (Math.abs(player.getLocation().getY() - origin.getY())
+                    > GuardianV5MeleePolicy.FAN_VERTICAL_BLOCKS) continue;
+            if (!GuardianV5MeleePolicy.fanHits(forward, lateral)) continue;
+            Vector push = new Vector(dx, 0.0D, dz);
+            if (push.lengthSquared() < 1.0E-4D) push = facing.clone();
+            push.normalize().multiply(0.45D).setY(0.22D);
+            if (applyContactHit(player, boss, GuardianV5MeleePolicy.FAN_DAMAGE, push)) {
+                hits++;
+                renderBossContactImpact(boss, player, EndRiftAiPolicy.BossSpell.MELEE_SWIPE);
+            }
+        }
+        playBossImpactPresentation(boss, BossImpactGeometryPolicy.Kind.SWIPE,
+                origin, facing, GuardianV5MeleePolicy.FAN_RANGE_MAX_BLOCKS, true, true);
+        renderGuardianArcBurst(origin, facing, 3);
+        boss.getWorld().playSound(origin, Sound.ENTITY_IRON_GOLEM_ATTACK,
+                SoundCategory.HOSTILE, 1.0F, 0.6F);
+        getLogger().info("GUARDIAN_V5_FAN event=" + eventId + " generation=" + generation
+                + " hits=" + hits + " half_angle=" + GuardianV5MeleePolicy.FAN_HALF_ANGLE_DEGREES);
+        return hits;
+    }
+
+    /** The committed Heavy: a narrow overhead wedge with a real punish window. */
+    private int resolveGuardianHeavy(LivingEntity boss, Location origin, Vector facing) {
+        int hits = 0;
+        for (Player player : activeLivingPlayers()) {
+            if (player == null || !player.getWorld().equals(origin.getWorld())) continue;
+            double dx = player.getLocation().getX() - origin.getX();
+            double dz = player.getLocation().getZ() - origin.getZ();
+            double forward = dx * facing.getX() + dz * facing.getZ();
+            double lateral = Math.abs(dx * facing.getZ() - dz * facing.getX());
+            if (Math.abs(player.getLocation().getY() - origin.getY())
+                    > GuardianV5MeleePolicy.HEAVY_VERTICAL_BLOCKS) continue;
+            if (!GuardianV5MeleePolicy.heavyHits(forward, lateral)) continue;
+            Vector push = new Vector(dx, 0.0D, dz);
+            if (push.lengthSquared() < 1.0E-4D) push = facing.clone();
+            push.normalize().multiply(0.6D).setY(0.35D);
+            if (applyContactHit(player, boss, GuardianV5MeleePolicy.HEAVY_DAMAGE, push)) {
+                hits++;
+                renderBossContactImpact(boss, player, EndRiftAiPolicy.BossSpell.MELEE_SWIPE);
+            }
+        }
+        playBossImpactPresentation(boss, BossImpactGeometryPolicy.Kind.SLAM,
+                origin, facing, GuardianV5MeleePolicy.HEAVY_RANGE_BLOCKS, true, true);
+        renderGuardianHeavyBurst(origin, facing);
+        // A committed heavy that found nobody leaves a real punish window.
+        int punish = GuardianV5MeleePolicy.punishWindowTicks(hits > 0);
+        guardianMoveEndAtMillis = Math.max(guardianMoveEndAtMillis,
+                System.currentTimeMillis() + punish * 50L);
+        nextGuardianPhysicalMillis = Math.max(nextGuardianPhysicalMillis,
+                guardianMoveEndAtMillis + GUARDIAN_INTER_MOVE_MILLIS);
+        boss.getWorld().playSound(origin, Sound.ENTITY_IRON_GOLEM_ATTACK,
+                SoundCategory.HOSTILE, 1.0F, 0.45F);
+        getLogger().info("GUARDIAN_V5_HEAVY event=" + eventId + " generation=" + generation
+                + " hits=" + hits + " punish_ticks=" + punish);
+        return hits;
+    }
+
+    /** The Separation wave: a real ~5-block radial push, then the spell branch. */
+    private int resolveGuardianSeparation(LivingEntity boss, Location origin, Vector facing) {
+        int hits = 0;
+        double radius = GuardianV5MeleePolicy.separationRadius();
+        for (Player player : activeLivingPlayers()) {
+            if (player == null || !player.getWorld().equals(origin.getWorld())) continue;
+            double horizontal = Math.hypot(player.getLocation().getX() - origin.getX(),
+                    player.getLocation().getZ() - origin.getZ());
+            if (!GuardianV5MeleePolicy.separationHits(horizontal,
+                    player.getLocation().getY() - origin.getY())) continue;
+            Vector push = new Vector(player.getLocation().getX() - origin.getX(), 0.0D,
+                    player.getLocation().getZ() - origin.getZ());
+            if (push.lengthSquared() < 1.0E-4D) push = facing.clone();
+            push.normalize().multiply(GuardianV5MeleePolicy.separationPushStrength()).setY(0.34D);
+            if (applyContactHit(player, boss, GuardianV5MeleePolicy.SEPARATION_DAMAGE, push)) {
+                hits++;
+                renderBossContactImpact(boss, player, EndRiftAiPolicy.BossSpell.MELEE_SWIPE);
+            }
+        }
+        playBossImpactPresentation(boss, BossImpactGeometryPolicy.Kind.SLAM,
+                origin, facing, radius, true, true);
+        renderGuardianSeparationBurst(origin, radius);
+        boss.getWorld().playSound(origin, Sound.ENTITY_GENERIC_EXPLODE,
+                SoundCategory.HOSTILE, 0.9F, 0.8F);
+        openGuardianBranch(System.currentTimeMillis());
+        getLogger().info("GUARDIAN_V5_SEPARATION event=" + eventId + " generation=" + generation
+                + " hits=" + hits + " radius=" + String.format(java.util.Locale.ROOT, "%.2f", radius));
+        return hits;
+    }
+
+    /** Open the post-separation branch of at most two announced spells. */
+    private void openGuardianBranch(long now) {
+        List<EndRiftAiPolicy.BossSpell> pool = currentBossSpellPool();
+        boolean oneRanged = pool != null && !pool.isEmpty();
+        boolean secondLegal = pool != null && pool.size() >= 2;
+        GuardianV5MeleePolicy.Branch branch =
+                GuardianV5MeleePolicy.chooseBranch(oneRanged, secondLegal);
+        guardianBranchSpellBudget = GuardianV5MeleePolicy.maxSpellBeats(branch);
+        guardianBranchUntilMillis = now + GUARDIAN_BRANCH_MILLIS;
+        guardianBranchObservedCast = bossCastSequence;
+        getLogger().info("GUARDIAN_V5_BRANCH event=" + eventId + " generation=" + generation
+                + " branch=" + branch + " beats=" + guardianBranchSpellBudget);
+    }
+
+    /**
+     * Count a spell cast while the branch is open and resume melee the moment the
+     * budget or the hard window expires. A refused cast can never stall the fight.
+     */
+    private void advanceGuardianBranch(long now) {
+        if (guardianBranchSpellBudget <= 0) return;
+        if (bossCastSequence != guardianBranchObservedCast) {
+            guardianBranchObservedCast = bossCastSequence;
+            guardianBranchSpellBudget--;
+        }
+        if (now >= guardianBranchUntilMillis || guardianBranchSpellBudget <= 0) {
+            guardianBranchSpellBudget = 0;
+            guardianBranchUntilMillis = 0L;
+            nextGuardianPhysicalMillis = Math.min(nextGuardianPhysicalMillis,
+                    now + GUARDIAN_INTER_MOVE_MILLIS);
+        }
+    }
+
+    private static int guardianWindupTicks(GuardianV5MeleePolicy.Move move) {
+        return switch (move) {
+            case BASIC_LEFT, BASIC_RIGHT -> GuardianV5MeleePolicy.BASIC_WINDUP_TICKS;
+            case FAN -> GuardianV5MeleePolicy.FAN_WINDUP_TICKS;
+            case HEAVY -> GuardianV5MeleePolicy.HEAVY_WINDUP_TICKS;
+            case SEPARATION -> GuardianV5MeleePolicy.SEPARATION_WARNING_TICKS;
+        };
+    }
+
+    private static int guardianRecoveryTicks(GuardianV5MeleePolicy.Move move) {
+        return switch (move) {
+            case BASIC_LEFT, BASIC_RIGHT -> GuardianV5MeleePolicy.BASIC_RECOVERY_TICKS;
+            case FAN -> GuardianV5MeleePolicy.FAN_RECOVERY_TICKS;
+            case HEAVY -> GuardianV5MeleePolicy.HEAVY_RECOVERY_TICKS;
+            case SEPARATION -> GUARDIAN_SEPARATION_RECOVERY_TICKS;
+        };
+    }
+
+    private static String guardianMoveAnimation(GuardianV5MeleePolicy.Move move) {
+        return switch (move) {
+            case BASIC_LEFT, BASIC_RIGHT, FAN -> BossAnimationId.MELEE_SWIPE.wireId();
+            case HEAVY, SEPARATION -> BossAnimationId.GROUND_SLAM.wireId();
+        };
+    }
+
+    private static Sound guardianMoveWarningSound(GuardianV5MeleePolicy.Move move) {
+        return switch (move) {
+            case FAN -> Sound.BLOCK_SCULK_SENSOR_CLICKING;
+            case HEAVY -> Sound.ENTITY_IRON_GOLEM_ATTACK;
+            case SEPARATION -> Sound.ENTITY_ENDER_DRAGON_FLAP;
+            default -> Sound.BLOCK_SCULK_SENSOR_CLICKING;
+        };
+    }
+
+    private void faceGuardianMove(LivingEntity boss) {
+        if (boss == null || guardianMoveFacing == null
+                || guardianMoveFacing.lengthSquared() < 1.0E-4D) return;
+        float yaw = (float) Math.toDegrees(Math.atan2(-guardianMoveFacing.getX(),
+                guardianMoveFacing.getZ()));
+        boss.setRotation(yaw, 0.0F);
+    }
+
+    /** Authored tell for the committed move, drawn every tick of its windup. */
+    private void renderGuardianMoveTelegraph(LivingEntity boss, GuardianV5MeleePolicy.Move move) {
+        if (boss == null || move == null || boss.getWorld() == null) return;
+        Vector facing = guardianMoveFacing == null ? contactFacing(boss.getLocation()) : guardianMoveFacing;
+        double progress = 1.0D - Math.max(0.0D, Math.min(1.0D,
+                (guardianMoveImpactAtMillis - System.currentTimeMillis())
+                        / (double) Math.max(1, guardianWindupTicks(move) * 50)));
+        switch (move) {
+            case FAN -> renderGuardianFanTelegraph(boss, facing, progress);
+            case HEAVY -> renderGuardianHeavyTelegraph(boss, facing, progress);
+            case SEPARATION -> renderGuardianSeparationTelegraph(boss, progress);
+            default -> { }
+        }
+    }
+
+    private void renderGuardianFanTelegraph(LivingEntity boss, Vector facing, double progress) {
+        Location base = boss.getLocation().clone().add(0.0D, 0.1D, 0.0D);
+        double half = Math.toRadians(GuardianV5MeleePolicy.FAN_HALF_ANGLE_DEGREES);
+        double closing = GuardianV5MeleePolicy.FAN_RANGE_MAX_BLOCKS
+                - (GuardianV5MeleePolicy.FAN_RANGE_MAX_BLOCKS - GuardianV5MeleePolicy.FAN_RANGE_MIN_BLOCKS)
+                * progress;
+        for (int i = 0; i <= 26; i++) {
+            double angle = -half + 2.0D * half * i / 26.0D;
+            Vector dir = rotateFlat(facing, angle);
+            spawnEventParticle(base.clone().add(dir.clone()
+                    .multiply(GuardianV5MeleePolicy.FAN_RANGE_MAX_BLOCKS)),
+                    Particle.SOUL_FIRE_FLAME, 1, 0, 0, 0, 0);
+            spawnEventParticle(base.clone().add(dir.clone()
+                    .multiply(GuardianV5MeleePolicy.FAN_RANGE_MIN_BLOCKS)),
+                    Particle.SCULK_SOUL, 1, 0, 0, 0, 0);
+            spawnEventParticle(base.clone().add(dir.clone().multiply(closing)),
+                    Particle.END_ROD, 1, 0, 0, 0, 0);
+        }
+    }
+
+    private void renderGuardianHeavyTelegraph(LivingEntity boss, Vector facing, double progress) {
+        Location base = boss.getLocation().clone().add(0.0D, 0.15D, 0.0D);
+        double half = Math.toRadians(GuardianV5MeleePolicy.HEAVY_HALF_ANGLE_DEGREES);
+        for (int i = 0; i <= 14; i++) {
+            double angle = -half + 2.0D * half * i / 14.0D;
+            Vector dir = rotateFlat(facing, angle);
+            for (int step = 1; step <= 5; step++) {
+                spawnEventParticle(base.clone().add(dir.clone().multiply(step)),
+                        step == 5 ? Particle.SOUL_FIRE_FLAME : Particle.SCULK_SOUL,
+                        1, 0, 0, 0, 0);
+            }
+        }
+        double height = 0.4D + progress * 2.6D;
+        Location crown = boss.getLocation().clone().add(0.0D, height, 0.0D);
+        for (int i = 0; i < 12; i++) {
+            double angle = i * Math.PI / 6.0D;
+            spawnEventParticle(crown.clone().add(Math.cos(angle) * 1.1D, 0.0D,
+                    Math.sin(angle) * 1.1D), Particle.SONIC_BOOM, 1, 0, 0, 0, 0);
+        }
+    }
+
+    private void renderGuardianSeparationTelegraph(LivingEntity boss, double progress) {
+        Location base = boss.getLocation().clone().add(0.0D, 0.08D, 0.0D);
+        double radius = GuardianV5MeleePolicy.SEPARATION_RADIUS_MAX_BLOCKS * progress;
+        Vector axisA = new Vector(1.0D, 0.0D, 0.0D);
+        Vector axisB = new Vector(0.0D, 0.0D, 1.0D);
+        for (Player viewer : eventAudience()) {
+            if (!isEventParticleViewer(viewer, base)) continue;
+            spawnPatternRing(viewer, base, axisA, axisB, Math.max(0.4D, radius), 32,
+                    progress * 2.0D, Particle.SOUL);
+            spawnPatternRing(viewer, base.clone().add(0.0D, 0.35D, 0.0D), axisA, axisB,
+                    Math.max(0.3D, radius * 0.7D), 22, -progress * 1.6D, Particle.SCULK_SOUL);
+        }
+    }
+
+    private void renderGuardianBasicAccent(LivingEntity boss, int count) {
+        Vector facing = guardianMoveFacing;
+        if (facing == null) return;
+        Vector side = new Vector(-facing.getZ(), 0.0D, facing.getX());
+        double sign = count % 2 == 0 ? 1.0D : -1.0D;
+        Location base = boss.getLocation().clone().add(0.0D, 1.1D, 0.0D);
+        for (int i = 1; i <= 5; i++) {
+            spawnEventParticle(base.clone()
+                    .add(facing.clone().multiply(i * 0.5D))
+                    .add(side.clone().multiply(sign * i * 0.35D)),
+                    Particle.SWEEP_ATTACK, 1, 0, 0, 0, 0);
+        }
+    }
+
+    private void renderGuardianArcBurst(Location origin, Vector facing, int bands) {
+        double half = Math.toRadians(GuardianV5MeleePolicy.FAN_HALF_ANGLE_DEGREES);
+        for (int band = 0; band <= bands; band++) {
+            double radius = GuardianV5MeleePolicy.FAN_RANGE_MAX_BLOCKS * band / bands;
+            for (int i = 0; i <= 30; i++) {
+                double angle = -half + 2.0D * half * i / 30.0D;
+                Vector dir = rotateFlat(facing, angle);
+                spawnEventParticle(origin.clone().add(0.0D, 0.25D + band * 0.25D, 0.0D)
+                        .add(dir.clone().multiply(radius)),
+                        band == bands ? Particle.SONIC_BOOM : Particle.SOUL_FIRE_FLAME,
+                        1, 0, 0, 0, 0);
+            }
+        }
+    }
+
+    private void renderGuardianHeavyBurst(Location origin, Vector facing) {
+        Location impact = origin.clone().add(facing.clone().multiply(2.2D)).add(0.0D, 0.3D, 0.0D);
+        for (int ring = 0; ring < 3; ring++) {
+            for (int i = 0; i < 18; i++) {
+                double angle = i * Math.PI / 9.0D + ring * 0.4D;
+                double radius = 1.0D + ring * 0.7D;
+                spawnEventParticle(impact.clone().add(Math.cos(angle) * radius,
+                        ring * 0.18D, Math.sin(angle) * radius),
+                        ring == 0 ? Particle.EXPLOSION : Particle.SCULK_SOUL, 1, 0, 0, 0, 0);
+            }
+        }
+        spawnEventParticle(impact, Particle.SONIC_BOOM, 1, 0, 0, 0, 0);
+    }
+
+    private void renderGuardianSeparationBurst(Location origin, double radius) {
+        for (int ring = 1; ring <= 4; ring++) {
+            double r = radius * ring / 4.0D;
+            for (int i = 0; i < 28; i++) {
+                double angle = i * Math.PI / 14.0D + ring * 0.2D;
+                spawnEventParticle(origin.clone().add(0.0D, 0.2D + ring * 0.2D, 0.0D)
+                        .add(Math.cos(angle) * r, 0.0D, Math.sin(angle) * r),
+                        ring == 4 ? Particle.SONIC_BOOM : Particle.SOUL_FIRE_FLAME,
+                        1, 0, 0, 0, 0);
+            }
+        }
+    }
+
+    private static Vector rotateFlat(Vector flat, double radians) {
+        double cos = Math.cos(radians);
+        double sin = Math.sin(radians);
+        return new Vector(flat.getX() * cos - flat.getZ() * sin, 0.0D,
+                flat.getX() * sin + flat.getZ() * cos);
+    }
+
+    // ==================================================================
+    // V5.1 Crushing / Monstrous Gravity field
+    // ==================================================================
+
+    /** True while the field is live (the only beat that touches real physics). */
+    private boolean crushingGravityLive() {
+        return crushingGravityGeneration == generation
+                && crushingGravityStartMillis != Long.MIN_VALUE / 2L
+                && CrushingGravityPolicy.pullActive(
+                        (int) Math.max(0L,
+                                (System.currentTimeMillis() - crushingGravityStartMillis) / 50L));
+    }
+
+    /**
+     * Advance the arena-wide Crushing Gravity field: warn, then pull, then
+     * collapse. The field deals no direct damage, only real motion: airborne
+     * players are pulled down, their jump is suppressed and every arrow in the
+     * volume drops under a real gravity multiplier. The arena bounds, touched
+     * arrows and touched players are all frozen so the whole field restores on
+     * any early end (death, cocoon, phase change, leaving bounds, restart).
+     */
+    private void tickCrushingGravity(LivingEntity boss, long now, boolean finalSealPinned) {
+        boolean mine = crushingGravityGeneration == generation
+                && crushingGravityStartMillis != Long.MIN_VALUE / 2L;
+        if (mine) {
+            int elapsed = (int) Math.max(0L, (now - crushingGravityStartMillis) / 50L);
+            CrushingGravityPolicy.Beat beat = CrushingGravityPolicy.beat(elapsed);
+            if (finalSealPinned || boss == null || !boss.isValid() || boss.isDead()
+                    || !isBossCombatRuntimeActive(boss) || beat == CrushingGravityPolicy.Beat.DONE) {
+                endCrushingGravity(beat == CrushingGravityPolicy.Beat.DONE ? "complete" : "abort");
+                return;
+            }
+            renderCrushingGravity(boss, elapsed, beat);
+            if (beat == CrushingGravityPolicy.Beat.LIVE) applyCrushingGravityPull();
+            else releaseCrushingGravityPull();
+            return;
+        }
+        if (finalSealPinned || !isBossCombatRuntimeActive(boss)
+                || bossAbilityState != BossAbilityState.NONE) return;
+        if (!CrushingGravityPolicy.phaseEligible(bossPhase, false)) return;
+        if (now < crushingGravityReadyAtMillis) return;
+        List<CrushingGravityPolicy.Hazard> hazards = activeCrushingGravityHazards();
+        if (!CrushingGravityPolicy.mayCast(bossPhase, false, now,
+                crushingGravityReadyAtMillis, hazards)) return;
+        if (!CrushingGravityPolicy.escapesRemain(hazards, 1)) return;
+        // Rare but real: the cooldown is the primary limiter, this only de-correlates.
+        if (((eventTickCounter / 5L) + generation) % 8L != 0L) return;
+        startCrushingGravity(boss, now);
+    }
+
+    private void startCrushingGravity(LivingEntity boss, long now) {
+        crushingGravityGeneration = generation;
+        crushingGravityStartMillis = now;
+        crushingGravityBounds = crushingGravityArenaBounds(boss);
+        crushingGravityWorld = boss.getWorld();
+        crushingGravityArrows.clear();
+        crushingGravityPlayers.clear();
+        sendBossAnimationVisualUpdate(boss, BossAnimationId.CAST_CHARGE.wireId());
+        boss.getWorld().playSound(boss.getLocation(), Sound.ENTITY_ENDER_DRAGON_GROWL,
+                SoundCategory.HOSTILE, 1.0F, 0.55F);
+        getLogger().info("CRUSHING_GRAVITY_START event=" + eventId + " generation=" + generation
+                + " phase=" + bossPhase
+                + " warn_ticks=" + CrushingGravityPolicy.WARNING_TICKS
+                + " active_ticks=" + CrushingGravityPolicy.ACTIVE_TICKS);
+        emitDiagnostic("BOSS_ABILITY", "CRUSHING_GRAVITY", "INFO", activeWave,
+                "crushing-gravity-start", null, boss.getUniqueId(),
+                "crushing-gravity:" + generation + ":" + crushingGravityStartMillis,
+                Map.of("warnTicks", CrushingGravityPolicy.WARNING_TICKS,
+                        "activeTicks", CrushingGravityPolicy.ACTIVE_TICKS));
+    }
+
+    private void endCrushingGravity(String reason) {
+        int arrows = crushingGravityArrows.size();
+        releaseCrushingGravityPull();
+        crushingGravityPlayers.clear();
+        crushingGravityGeneration = Long.MIN_VALUE;
+        crushingGravityStartMillis = Long.MIN_VALUE / 2L;
+        crushingGravityBounds = null;
+        crushingGravityWorld = null;
+        crushingGravityReadyAtMillis = System.currentTimeMillis()
+                + (CrushingGravityPolicy.ACTIVE_TICKS + CrushingGravityPolicy.COOLDOWN_TICKS) * 50L;
+        getLogger().info("CRUSHING_GRAVITY_END event=" + eventId + " generation=" + generation
+                + " reason=" + reason + " arrows_restored=" + arrows);
+    }
+
+    private void applyCrushingGravityPull() {
+        if (crushingGravityBounds == null) return;
+        for (Player player : activeLivingPlayers()) {
+            if (player == null || !crushingGravityBounds.contains(player.getLocation().getX(),
+                    player.getLocation().getY(), player.getLocation().getZ())) continue;
+            crushingGravityPlayers.add(player.getUniqueId());
+            Vector velocity = player.getVelocity();
+            if (!player.isOnGround()) {
+                velocity.setY(CrushingGravityPolicy.nextVerticalVelocity(velocity.getY()));
+            } else if (velocity.getY() > 0.0D) {
+                // A jump the field is weighing down: the impulse is reduced, never removed.
+                velocity.setY(velocity.getY() * CrushingGravityPolicy.JUMP_IMPULSE_SCALE);
+            }
+            player.setVelocity(velocity);
+        }
+        if (crushingGravityBounds != null) {
+            World world = crushingGravityWorld;
+            if (world != null) {
+                double cx = (crushingGravityBounds.minX() + crushingGravityBounds.maxX()) / 2.0D;
+                double cy = (crushingGravityBounds.minY() + crushingGravityBounds.maxY()) / 2.0D;
+                double cz = (crushingGravityBounds.minZ() + crushingGravityBounds.maxZ()) / 2.0D;
+                double rx = Math.min(48.0D, (crushingGravityBounds.maxX() - crushingGravityBounds.minX()) / 2.0D);
+                double ry = Math.min(48.0D, (crushingGravityBounds.maxY() - crushingGravityBounds.minY()) / 2.0D);
+                double rz = Math.min(48.0D, (crushingGravityBounds.maxZ() - crushingGravityBounds.minZ()) / 2.0D);
+                for (Entity entity : world.getNearbyEntities(
+                        new Location(world, cx, cy, cz), rx, ry, rz)) {
+                    if (!(entity instanceof Arrow arrow) || !arrow.isValid() || arrow.isDead()) continue;
+                    if (!crushingGravityBounds.contains(arrow.getX(), arrow.getY(), arrow.getZ())) continue;
+                    Vector velocity = arrow.getVelocity();
+                    if (crushingGravityArrows.add(arrow.getUniqueId())) {
+                        // Existing in-flight arrows bleed horizontal speed once.
+                        double retention = 1.0D - CrushingGravityPolicy.ARROW_INFLIGHT_BLEED;
+                        velocity.setX(velocity.getX() * retention);
+                        velocity.setZ(velocity.getZ() * retention);
+                    }
+                    // Real physics: the arrow keeps behaving as an arrow, it just
+                    // falls under a heavier real downward acceleration.
+                    double extra = 0.05D * (CrushingGravityPolicy.ARROW_GRAVITY_MULTIPLIER - 1.0D);
+                    velocity.setY(velocity.getY() - extra);
+                    arrow.setVelocity(velocity);
+                }
+            }
+        }
+    }
+
+    /** Stop touching anything the field changed; real motion is left intact. */
+    private void releaseCrushingGravityPull() {
+        crushingGravityArrows.clear();
+        crushingGravityPlayers.clear();
+    }
+
+    private void renderCrushingGravity(LivingEntity boss, int elapsed,
+                                       CrushingGravityPolicy.Beat beat) {
+        if (boss == null || boss.getWorld() == null || crushingGravityBounds == null) return;
+        Location center = new Location(boss.getWorld(), crushingGravityBounds.centerX(),
+                crushingGravityBounds.minY() + 0.1D, crushingGravityBounds.centerZ());
+        double radius = crushingGravityBounds.radius();
+        double progress = CrushingGravityPolicy.progress(elapsed);
+        Vector axisA = new Vector(1.0D, 0.0D, 0.0D);
+        Vector axisB = new Vector(0.0D, 0.0D, 1.0D);
+        for (Player viewer : eventAudience()) {
+            if (!isEventParticleViewer(viewer, center)) continue;
+            switch (beat) {
+                case WARNING -> {
+                    spawnPatternRing(viewer, center, axisA, axisB,
+                            Math.max(1.0D, radius * progress), 40, progress * 3.0D, Particle.SOUL);
+                    spawnPatternRing(viewer, center.clone().add(0.0D, 0.4D, 0.0D), axisA, axisB,
+                            Math.max(0.8D, radius * (1.0D - progress)), 30,
+                            -progress * 3.0D, Particle.SCULK_SOUL);
+                }
+                case LIVE -> {
+                    for (int spoke = 0; spoke < 10; spoke++) {
+                        double angle = spoke * Math.PI / 5.0D + elapsed * 0.05D;
+                        double r = radius * (0.4D + 0.6D * ((spoke * 7 + elapsed) % 5) / 5.0D);
+                        Location top = center.clone().add(Math.cos(angle) * r,
+                                6.0D + (elapsed % 13) * 0.4D, Math.sin(angle) * r);
+                        spawnEventParticle(top, Particle.SOUL_FIRE_FLAME, 1, 0, 0, 0, 0);
+                        spawnEventParticle(top.clone().add(0.0D, -1.6D, 0.0D),
+                                Particle.SCULK_SOUL, 1, 0, 0, 0, 0);
+                    }
+                }
+                case COLLAPSE -> {
+                    spawnPatternRing(viewer, center, axisA, axisB,
+                            Math.max(0.6D, radius * (1.0D - progress)), 36,
+                            progress * 4.0D, Particle.SONIC_BOOM);
+                }
+                default -> { }
+            }
+        }
+        if (beat == CrushingGravityPolicy.Beat.WARNING && elapsed % 8 == 0) {
+            boss.getWorld().playSound(center, Sound.ENTITY_WARDEN_HEARTBEAT,
+                    SoundCategory.HOSTILE, 0.8F, 0.5F);
+        } else if (beat == CrushingGravityPolicy.Beat.LIVE && elapsed % 20 == 0) {
+            boss.getWorld().playSound(center, Sound.ENTITY_ENDER_DRAGON_FLAP,
+                    SoundCategory.HOSTILE, 0.7F, 0.6F);
+        }
+    }
+
+    /** Freeze the field footprint once: a box around the arena that restores cleanly. */
+    private CrushingGravityPolicy.Bounds crushingGravityArenaBounds(LivingEntity boss) {
+        Location anchor = coreCombatAnchorLocation();
+        Location center = anchor != null ? anchor : boss.getLocation();
+        double r = Math.max(12.0D, config == null ? 24.0D : config.bossRadius());
+        double cy = Math.max(center.getY(), boss.getLocation().getY());
+        return new CrushingGravityPolicy.Bounds(center.getX() - r, cy - 8.0D, center.getZ() - r,
+                center.getX() + r, cy + 28.0D, center.getZ() + r);
+    }
+
+    /** The live hazards that would make an unavoidable gravity field unfair. */
+    private List<CrushingGravityPolicy.Hazard> activeCrushingGravityHazards() {
+        List<CrushingGravityPolicy.Hazard> hazards = new ArrayList<>();
+        if (bossChestBeamActive) hazards.add(CrushingGravityPolicy.Hazard.CHEST_BEAM);
+        if (!arenaInfernoBlocks.isEmpty()) hazards.add(CrushingGravityPolicy.Hazard.ARENA_INFERNO);
+        if (bossFinalStrikeTask != null) hazards.add(CrushingGravityPolicy.Hazard.FINAL_STRIKE);
+        if (isKaguneRingCastActive()) hazards.add(CrushingGravityPolicy.Hazard.KAGUNE_VOID_GAP);
+        if (!activeVoidMarkCenters.isEmpty()) hazards.add(CrushingGravityPolicy.Hazard.VOID_MARK_CHAIN);
+        return hazards;
+    }
+
+    /** Reset every V5.1 Guardian/gravity clock for a fresh encounter generation. */
+    private void resetGuardianV5State() {
+        nextGuardianPhysicalMillis = 0L;
+        guardianBasicCount = 0;
+        guardianCommittedIndex = 0;
+        nextGuardianFanMillis = 0L;
+        nextGuardianHeavyMillis = 0L;
+        nextGuardianSeparationMillis = 0L;
+        guardianBranchSpellBudget = 0;
+        guardianBranchUntilMillis = 0L;
+        guardianBranchObservedCast = -1L;
+        guardianPhysicalMoveActive = false;
+        guardianActiveMove = null;
+        guardianMoveFacing = null;
+        guardianMoveResolved = false;
+        endCrushingGravityStateOnly();
+    }
+
+    private void endCrushingGravityStateOnly() {
+        releaseCrushingGravityPull();
+        crushingGravityGeneration = Long.MIN_VALUE;
+        crushingGravityStartMillis = Long.MIN_VALUE / 2L;
+        crushingGravityBounds = null;
+        crushingGravityWorld = null;
+        crushingGravityReadyAtMillis = 0L;
     }
 
     /** Read the final damage event after every listener has returned, including absorption hits. */
@@ -60227,6 +61573,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         private final Set<UUID> hitPlayers = new LinkedHashSet<>();
         /** Tick of the last ground slam, so the pile answer stays rate limited. */
         private long lastSlamTick = Long.MIN_VALUE / 2L;
+        /** Tick of the last V5.1 frontal sweep, so a stun never chains into the echo. */
+        private long lastSweepTick = Long.MIN_VALUE / 2L;
+        /** Tick of the last Sculk Resonance, so the footsteps stay a rare beat. */
+        private long lastTraceTick = Long.MIN_VALUE / 2L;
+        /** Frozen Sculk corridors for the active trace: {fromX, fromZ, toX, toZ}. */
+        private List<double[]> traceSegments = List.of();
+        /** Players whose own footfalls were frozen into the active trace. */
+        private final Set<UUID> traceOwners = new LinkedHashSet<>();
         /** Players caught by the previous group spell, so nobody is re-targeted twice. */
         private final Map<UUID, Integer> lastSpellCastByPlayer = new java.util.HashMap<>();
 

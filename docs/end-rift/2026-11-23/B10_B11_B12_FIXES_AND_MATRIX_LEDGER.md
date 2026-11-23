@@ -186,13 +186,15 @@ Evidence tiers used below (never conflated):
   `.serena/`, `CopiMineClient/bin/`) were left untouched.
 - **Production deploy:** `qwerty@90.188.117.117:2222`,
   `copimine-game.service`, `/opt/copimine-game/minecraft/server`.
-  - jar `211c0859…` → `98644244…`, config `max-active` 4 → 30.
-  - backup `/opt/copimine-backups/end-rift-2026-11-23-b10-b12-211c0859-20261123-150919`
-    (`CopiMineEndEvent.jar`, `config.yml`, both old hashes).
-  - two cold starts, both `active` and `Done`; after each:
+  - jar `98644244…` → `084cc0f5…` (B-10 low-TPS-safe watchdog); `config.yml`
+    `small-kagune.max-active: 30` preserved.
+  - backup `/opt/copimine-backups/end-rift-2026-11-23-stale-cast-lptsafe-98644244-20261123-155210`
+    (`CopiMineEndEvent.jar`, `config.yml`, old jar sha256).
+  - two cold starts, both `active` and `Done (44.2 s / 44.4 s)`; on-disk jar
+    sha256 confirmed `084cc0f5…`; after startup:
     `END_RIFT_INVARIANTS failures=0 last=none countersNonNegative=true
     entityCount=2 tasks=0 bossProxies=0 wave7Blocks=0`.
-  - diagnostics: `submitted=32 accepted=32 written=32 dropped=0 failures=0`.
+  - diagnostics: `submitted=80 accepted=80 written=80 dropped=0 failures=0`.
   - `small-kagune.max-active: 30` confirmed on disk after restart.
 
 ## 4. Honest limits

@@ -148,25 +148,55 @@ Evidence tiers used below (never conflated):
 
 ## 2. B-01…B-14 ledger
 
-| ID | Area | This session | Evidence tier | Next action |
+Item-scoped re-run 2026-11-23 (each group run with a fresh `--basetemp`;
+summary lines captured in `bite2_summary.txt`). All groups exit 0.
+
+| ID | Area | This session (item-scoped suite) | Evidence tier | Next action |
 |---|---|---|---|---|
-| B-01 | Owned wave mobs: sweep/crit/stunlock | Not re-verified this session | `AUTO` (prior suites) | Needs a real 2-player native combat pass |
-| B-02 | Wave 1 carrier charge ownership | Not re-verified this session | `AUTO` (prior suites) | Native pickup/delivery pass |
-| B-03 | Wave 2 phantoms / two-player anomalies | Not re-verified this session | `AUTO` (prior suites) | Two real clients; `NATIVE` |
-| B-04 | Wave 3 portals/elites/Giant | Not re-verified this session | `AUTO` (prior suites) | Native wave pass |
-| B-05 | Official Wave 4 entry | Not re-verified this session | `AUTO` (prior suites) | Official 3→4 transition on a live server |
-| B-06 | Wave 5 fog/safe rooms | Not re-verified this session | `AUTO` (prior suites) | Native inside/outside fog comparison |
-| B-07 | Wave 6 Ram/armor/skeleton | Not re-verified this session | `AUTO` (prior suites) | Seven-impact native pass |
-| B-08 | Wave 7 official start + minibosses | Not re-verified this session | `AUTO` (prior suites) | Official 6→7 transition on a live server |
-| B-09 | Guardian damage always breaks gameplay | Not re-verified this session | `AUTO` (prior suites) | P0: multi-attacker live damage probe |
+| B-01 | Owned wave mobs: sweep/crit/stunlock | **68 passed** — 10 files (`wave_ability_damage_admission`, `wave_skeleton_protection_runtime`, `mob_combat_runner_contract`, `event_combat_profile*`, `hive_ai_contract`, `wave_ai_roles`, `wave2_melee_attack_admission`) | `AUTO_TESTED_ONLY` | Native 2-player sweep/crit/stunlock pass |
+| B-02 | Wave 1 carrier charge ownership | **69 passed** — 11 files (`wave_one_elite_carrier`, `wave1_*`, `wave_carrier_marker_adapter`, `wave_one_cleared_pack_continues`, `wave1_interaction_harness`) | `AUTO_TESTED_ONLY` | Native pickup/delivery pass |
+| B-03 | Wave 2 phantoms / two-player anomalies | **54 passed** — 22 files (`wave_two_*`, `phantom_*`, `official_wave2_combat_probe`) | `AUTO_TESTED_ONLY` | Two real clients; `NATIVE` |
+| B-04 | Wave 3 portals/elites/Giant | **94 passed** — 12 files (`wave3_*`, `portal_*`, `rift_giant_runtime`, `wave34_and_echo_harnesses`) | `AUTO_TESTED_ONLY` | Native wave pass |
+| B-05 | Official Wave 4 entry | **54 passed** — 13 files (`wave4_*`, `end_rift_wave4_*`, `wave_four_obelisk_fallback`) | `AUTO_TESTED_ONLY` | Official 3→4 transition on a live server |
+| B-06 | Wave 5 fog/safe rooms | **134 passed** — 20 files (`wave5_*`, `fog_effect_cleanup`, `shaderpack_withdrawal_safety`, `wave_coordinator_fog_lifecycle`, `shelter_mob_exclusion`, black-fog fallback) | `AUTO_TESTED_ONLY` | Native inside/outside fog comparison |
+| B-07 | Wave 6 Ram/armor/skeleton | **349 passed, 4 warnings** — 36 files (`rift_ram_*`, `end_rift_wave_six_*`, `wave6_*`, `wave6_visual_mechanics`) | `AUTO_TESTED_ONLY` | Seven-impact native pass |
+| B-08 | Wave 7 official start + minibosses | **387 passed** — 61 files (`wave7_*`, `reality_split_trials_contract`, `miniboss_counterplay`) | `AUTO_TESTED_ONLY` | Official 6→7 transition on a live server |
+| B-09 | Guardian damage always breaks gameplay | **155 passed, 2 skipped** — 6 files (`boss_attack_damage_admission`, `guardian_death_wiring`, `boss_admin_death_cinematic`, `guardian_live_shield_adapter`, `ring_owner_acceptance`, `tentacle_combat_evidence_contract`) | `AUTO_TESTED_ONLY` | P0: multi-attacker live damage probe |
 | B-10 | Guardian AI frozen / spells missing | **Fixed this session** | `SOURCE` + `AUTO` | Live timed multiplayer cast/impact count |
 | B-11 | Phase 6 Kagune invulnerable/tiny/dead/corpses | **Fixed this session** (budget, pursuit, carrier cleanup) | `SOURCE` + `AUTO` | Native Phase 6 visual + damage pass |
 | B-12 | Boss HUD blinking/stale bar | **Fixed this session** (stale bar on unsanctioned removal) | `SOURCE` | Native HUD comparison |
 | B-13 | Client/bridge/audio/effects drift | Which tree builds the shipped jar is now resolved: the 26.3 client artifact is `CopiMineClient-0.1.4+26.3.jar` (30 367 332 B, SHA-512 `5cf53ffe632550d2b145d3f18c76b3d08aec4aeafad98ef2ccd4bb7fe4e91c11c1b33b7562521ca32fa380dc37ab4fa70c6e925f6919feb00ce5fe77430709dd`) pinned in `tools/minecraft-26.3/profile.lock.json → clientArtifact`, built from `tools/minecraft-26.3/client` with shared resources from `CopiMineClient/src/main/resources`, where `GuardianSpellRenderer`/`GuardianSpellMesh`/`LastSealSpellEffects` and the `guardian_spells` geometry are packaged. A stale `CopiMineClient-0.1.3+26.3.jar` (Oct 20) in the sibling `end-rift-26-3-integrated-final` worktree lacks them and is **not** the shipped client. | `SOURCE` (+ prior `AUTO`) | Native V4-signed client/server pair check |
-| B-14 | Historical/extra risks | Partially covered by the B-11 carrier cleanup | `SOURCE` | Item-by-item re-audit |
+| B-14 | Historical/extra risks | **32 passed** — 7 files (`task5_projectile_regressions`, `rift_ram_restart_cleanup_runtime`, `scoped_cleanup`, `recovery_contract`, `evidence_portability`, `seal_lance_volley_guard`, `java_tests_are_all_executed`); carrier cleanup covered by B-11 | `AUTO_TESTED_ONLY` | Item-by-item native re-audit |
+
+**Boss-AI evidence (objective §5, "нормальный ИИ боссу").** Dedicated group
+**52 passed** — `test_boss_ai_polish.py`, `test_boss_ambush_major_cast.py`,
+`test_end_rift_ai_phase_probe_contract.py`, `test_end_rift_guard_tactics_runtime.py`,
+`test_end_rift_boss_cast_mobility.py`, `test_boss_cast_locomotion_runtime.py`,
+`test_boss_cast_position_adapter.py`,
+`test_boss_animations_resolve_to_authored_clips.py`,
+`test_end_rift_wave_ai_roles.py`. Tier `AUTO_TESTED_ONLY`.
+
+**`SOURCE`-tier visual pipeline (objective §6/§9A–§9L).** 16 authored spell
+meshes under `CopiMineClient/src/main/resources/assets/copimineclient/geometry/guardian_spells/`;
+`GuardianSpellRenderer` / `GuardianSpellMesh` / `LastSealSpellEffects` present in
+`tools/minecraft-26.3/client`; 23 authored compositions in
+`BossSpellVisualCompositionPolicy` (16 boss spells + `chest_beam` + `phase_shift`
+and pool entries). Tier `SOURCE` — renders only after the owner's native pass.
+
+**Native visual acceptance.** Per §2/§8 of `APPROVED_WAVE_CONTRACT.md`, visual
+requirements cannot be satisfied by automated checks alone; an unavailable native
+check is `BLOCKED`, never a pass. The owner-facing procedure is
+`docs/end-rift/2026-11-23/NATIVE_F2_VISUAL_CHECKLIST.md`. Until the owner
+replays it in the V4-signed `CopiMineClient-0.1.4+26.3.jar`, every §9A–§9L
+visual item and the AAA-visual objective remain **`BLOCKED`**.
 
 ## 3. Verification evidence
 
+- **Item-scoped re-run (2026-11-23), all groups exit 0** — B-01 68 / B-02 69 /
+  B-03 54 / B-04 94 / B-05 54 / B-06 134 / B-07 349 (+4 warnings) / B-08 387 /
+  B-09 155 (+2 skipped) / B-14 32 = **1396 passed, 2 skipped**, plus the boss-AI
+  group **52 passed**. Each group ran with a fresh `--basetemp`. Summary lines:
+  `C:\Users\zavod\AppData\Local\Temp\opencode\bite2_summary.txt`.
 - **Full Python suite (final, against the deployed source):**
   `3803 passed, 11 skipped, 154 warnings, 2 subtests passed in 794.37s` — exit 0.
   (Run 3 exposed a watchdog regression — 8 failed + 101 errors — that is fixed and

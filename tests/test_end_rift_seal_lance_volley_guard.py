@@ -73,3 +73,22 @@ def test_runtime_exposes_bounded_lane_retirement():
     runtime = RUNTIME.read_text(encoding="utf-8")
     assert "public boolean done()" in runtime, "the event needs to retire finished lanes"
     assert "!active && carrier == null" in runtime
+
+
+def test_hazard_reservation_is_released_only_when_the_last_lane_retires():
+    source = EVENT.read_text(encoding="utf-8")
+    # The volley holds ONE hazard reservation for the whole cast. If the first
+    # lane to land released it, a second major cast could start while sibling
+    # lances are still telegraphing, which is the exact starvation the single
+    # major slot exists to prevent. The finished() hook must therefore gate the
+    # release on there being no active lane left.
+    start = source.index("public void finished(me.copimine.endevent.runtime.LastSealConstructRuntime.Scope owner")
+    body = source[start:source.index("public void failed(String reason)", start)]
+    assert "releaseBossHazardReservation(\"kagune-construct-\" + reason)" in body
+    assert "!hasActiveConstructLane()" in body, (
+        "finished() must release the reservation only once every lane has retired"
+    )
+    # The per-lane runtime only calls finished() from cancel() of a running
+    # lane, so a lane that fails to start can never release the volley slot.
+    runtime = RUNTIME.read_text(encoding="utf-8")
+    assert "if (running) host.finished(scope, reason);" in runtime

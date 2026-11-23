@@ -46,6 +46,7 @@ public class BossEdgeVolleyRuntimeProbe {
     final LivingEntity boss=new LivingEntity();final Player target=new Player();
     UUID bossUuid=boss.id;String eventId="event";long generation=7;
     long nextBossEdgeVolleyMillis,bossChestStrikeSequence,bossCastSequence,bossEdgeVolleySequence,bossCastDeadlineMillis,bossSpellPauseUntilMillis,bossChestBeamSequence;
+    int bossCastStaleReconcileTicks;
     boolean bossEdgeVolleyActive,bossChestStrikeActive,bossChestBeamActive,teleportAccepted=true,cornerAvailable=true;
     static final String CHEST_BEAM_VFX_PREFIX="boss-chest-beam-";
     void clearWorldVfxBeamsByPrefix(String prefix){}

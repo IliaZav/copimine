@@ -242,6 +242,33 @@ def test_cast_recovery_restores_navigation_and_gravity():
         "recovery must always restore gravity")
 
 
+def test_lost_channel_callback_cannot_freeze_the_guardian():
+    """Contract 10.2: a channel whose completion callback was lost must self-heal.
+
+    The chest-beam, edge-volley and chest-strike channels park the timeline
+    reconcile through the ``bossEdgeVolleyActive || ...`` early return while
+    ``tickCurrentBoss`` re-roots the body every tick. If a channel task dies
+    without running its own finish/abort -- an exception inside a repeating
+    renderer, or a scheduler that never ran the task -- nothing else in the loop
+    can hand the body back, so the Guardian stays rooted forever. Every
+    cast/channel stamps ``bossCastDeadlineMillis`` at start, so the reconcile
+    must run the shared release contract once that deadline is overdue.
+    """
+    source = EVENT.read_text(encoding="utf-8")
+    body = _method_body(source, "private void reconcileBossCastProjection(")
+    early_return = body.index(
+        "bossEdgeVolleyActive || bossChestStrikeActive || bossChestBeamActive")
+    # The watchdog must run before the channel early return, otherwise the very
+    # stuck flag it exists to break also parks the watchdog.
+    assert body.index("BossCastMobilityPolicy.stale(") < early_return, (
+        "the stale-channel watchdog must run before the channel early return")
+    guard = body[body.index("if (bossCastDeadlineMillis > 0L"):early_return]
+    assert "releaseBossCastMobility(" in guard, (
+        "a stale channel must run the shared release contract")
+    assert "cancelBossCastTask()" in guard, (
+        "a stale channel must invalidate its callbacks")
+
+
 def test_every_cast_release_applies_the_shared_contract():
     """Contract 10.2/10.3: phase changes and forced replacements release too.
 

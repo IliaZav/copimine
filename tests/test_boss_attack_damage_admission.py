@@ -154,6 +154,9 @@ public class BossAttackAdmissionProbe {
     long bossCastDeadlineMillis,bossSpellPauseUntilMillis,bossChestStrikeSequence,bossCastSequence,bossChestBeamSequence;
     boolean bossChestStrikeActive,bossEdgeVolleyActive,bossChestBeamActive;
     BukkitTask bossCastTask;
+    int bossCastStaleReconcileTicks;
+    void cancelBossCastTask(){}
+    void cancelBossFinalStrike(){}
     BossPhase bossPhase=BossPhase.HUNT;
     static final double BOSS_BLAST_DAMAGE=6;
     static final int BOSS_BLAST_DEBUFF_TICKS=40;

@@ -166,6 +166,8 @@ public class BossChestStrikeReleaseProbe {
     static final class FuryCombo { void clear(){} }
     final FuryCombo bossFuryCombo=new FuryCombo();
     BukkitTask bossCastTask;
+    int bossCastStaleReconcileTicks;
+    void cancelBossFinalStrike(){}
     long bossChestStrikeSequence, bossCastSequence, bossEdgeVolleySequence, bossChestBeamSequence;
     long bossCastDeadlineMillis, bossSpellPauseUntilMillis;
     boolean bossChestStrikeActive, bossEdgeVolleyActive, bossChestBeamActive;

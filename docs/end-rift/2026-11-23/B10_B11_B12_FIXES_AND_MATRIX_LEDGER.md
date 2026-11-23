@@ -49,6 +49,48 @@ Evidence tiers used below (never conflated):
   branch must not write `nextSpellMillis`; the retry gate is consulted).
 - **Status**: `SOURCE` + `AUTO`.
 
+### B-10 — a lost channel callback could freeze the Guardian forever
+
+- **Where**: `CopiMineEndEvent.reconcileBossCastProjection(LivingEntity, long)`.
+- **Reproduction (paper)**: the chest beam, edge volley and chest strike each
+  park the timeline reconcile through the
+  `bossEdgeVolleyActive || bossChestStrikeActive || bossChestBeamActive` early
+  return, while `tickCurrentBoss` re-roots the body every tick as long as
+  `bossAbilityState != NONE`. Each channel clears its own flag from inside its
+  repeating/later task. If that task ever died without running its finish/abort
+  (an exception thrown inside a repeating renderer, or a scheduler that never
+  ran the task), the flag stayed set, the early return skipped every release and
+  the Guardian stayed rooted permanently — the "AI frozen" symptom the whole
+  contract exists to prevent.
+- **Fix**: because every cast and channel already stamps `bossCastDeadlineMillis`
+  at start and its completion callback clears it, the reconcile runs a fail-safe
+  first: once that deadline is overdue by
+  `BossCastMobilityPolicy.STALE_CAST_MILLIS` (20 s, far longer than any authored
+  cast), the channel callback is treated as lost and the single release contract
+  runs (`cancelBossCastTask()` + `cancelBossFinalStrike()` + state `NONE` +
+  hazard release + `releaseBossCastMobility(..., "stale-cast-watchdog")`). This
+  gives the previously-unwired `BossCastMobilityPolicy.stale(...)` its first
+  production call site.
+- **Low-TPS safety (the first attempt regressed)**: a wall-clock-only check is
+  *not* sufficient. The edge-volley and chest-strike probes advance the wall
+  clock by 100 s to model one low-TPS frame where scheduled salvos are still
+  legitimately owed; a single overdue reconcile there must **not** release the
+  live channel, or a second major spell would overlap the in-flight one. The
+  watchdog therefore counts **consecutive overdue reconciles**
+  (`bossCastStaleReconcileTicks`) and only fires at
+  `BossCastMobilityPolicy.STALE_RECONCILE_TICKS` (400). A lost callback is
+  overdue on every per-tick reconcile so the counter keeps climbing; a lag spike
+  is a single reconcile and the counter resets. Live-channel ownership is
+  preserved under low TPS while a genuinely dead callback still self-heals.
+- **Regression tests**: `tests/test_end_rift_boss_cast_mobility.py`
+  (`test_lost_channel_callback_cannot_freeze_the_guardian`) pins that the
+  watchdog is evaluated *before* the channel early return and that it applies
+  the shared release contract and invalidates callbacks;
+  `tests/test_boss_edge_volley_runtime.py` and
+  `tests/test_boss_attack_damage_admission.py` pin that one overdue reconcile
+  does **not** release a live volley / chest strike.
+- **Status**: `SOURCE` + `AUTO`.
+
 ### B-11 — `max-active` was a dead key
 
 - **Where**: `CopiMineEndEvent.smallKaguneLivingCap()`,
@@ -120,21 +162,24 @@ Evidence tiers used below (never conflated):
 | B-10 | Guardian AI frozen / spells missing | **Fixed this session** | `SOURCE` + `AUTO` | Live timed multiplayer cast/impact count |
 | B-11 | Phase 6 Kagune invulnerable/tiny/dead/corpses | **Fixed this session** (budget, pursuit, carrier cleanup) | `SOURCE` + `AUTO` | Native Phase 6 visual + damage pass |
 | B-12 | Boss HUD blinking/stale bar | **Fixed this session** (stale bar on unsanctioned removal) | `SOURCE` | Native HUD comparison |
-| B-13 | Client/bridge/audio/effects drift | Not re-verified this session; two client trees exist (`CopiMineClient/` and `tools/minecraft-26.3/client/`) | `BLOCKED` | Confirm which tree builds the shipped jar; signed V4 pair check |
+| B-13 | Client/bridge/audio/effects drift | Which tree builds the shipped jar is now resolved: the 26.3 client artifact is `CopiMineClient-0.1.4+26.3.jar` (30 367 332 B, SHA-512 `5cf53ffe632550d2b145d3f18c76b3d08aec4aeafad98ef2ccd4bb7fe4e91c11c1b33b7562521ca32fa380dc37ab4fa70c6e925f6919feb00ce5fe77430709dd`) pinned in `tools/minecraft-26.3/profile.lock.json → clientArtifact`, built from `tools/minecraft-26.3/client` with shared resources from `CopiMineClient/src/main/resources`, where `GuardianSpellRenderer`/`GuardianSpellMesh`/`LastSealSpellEffects` and the `guardian_spells` geometry are packaged. A stale `CopiMineClient-0.1.3+26.3.jar` (Oct 20) in the sibling `end-rift-26-3-integrated-final` worktree lacks them and is **not** the shipped client. | `SOURCE` (+ prior `AUTO`) | Native V4-signed client/server pair check |
 | B-14 | Historical/extra risks | Partially covered by the B-11 carrier cleanup | `SOURCE` | Item-by-item re-audit |
 
 ## 3. Verification evidence
 
 - **Full Python suite (final, against the deployed source):**
-  `3802 passed, 11 skipped, 154 warnings, 2 subtests passed in 788.04s` — exit 0.
+  `3803 passed, 11 skipped, 154 warnings, 2 subtests passed in 794.37s` — exit 0.
+  (Run 3 exposed a watchdog regression — 8 failed + 101 errors — that is fixed and
+  re-verified here; see the B-10 low-TPS section above.)
 - **Curated End Rift gate** (`tests\RunEndRiftEventChecks.ps1 -SkipBuilds`):
   `GATE_EXIT 0`.
 - **Pin re-validation** (`tests/test_minecraft_migration_server_plugins.py` +
-  the first-party candidate test): `141 passed, 1 skipped`.
+  the first-party candidate test + the cast-mobility contract):
+  `171 passed, 3 skipped`.
 - **Built artifact:** `CopiMineEndEvent-26.3.jar`
-  sha256 `986442443194942b8c359b1004ff7d23f6b5ca4c161aaf69efe4f2913c99649b`,
-  size 2638154 B,
-  sha512 `b361ad3d32f7a02ce9da469565333dd9c2c8d7195bf758049c203ad88c9568cfa7af12eb9b42206995edc8a698e3e092e946238b916582fba67aa5cbb723cc07`.
+  sha256 `084cc0f53db7906e7fbae01852dc22a956bff3bba44ecb0fb800ec90d7547836`,
+  size 2638503 B,
+  sha512 `a5277268d8c44fd327e2a88bd5d0c8b1d4530631ee50187333d9c9890bfc04eb90b595b98abd709fc815a6c36f84aa63de1364fa124b6705de5ab277df958e01`.
 - **Git:** commit `e883da7e` on `codex/end-rift-live-playtest-repair`,
   pushed `60a63b67..e883da7e`. Unrelated dirty files (`thirdparty/*`,
   `copimine-narcotics/*.jar`, `admin-web/.../modpack_snapshot.json`,

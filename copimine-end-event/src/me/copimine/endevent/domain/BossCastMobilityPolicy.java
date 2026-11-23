@@ -36,6 +36,18 @@ public final class BossCastMobilityPolicy {
      */
     public static final long STALE_CAST_MILLIS = 20_000L;
 
+    /**
+     * How many consecutive overdue reconciles are required before a cast is
+     * declared lost. A genuinely lost callback keeps every per-tick reconcile
+     * overdue, so this counter fires within a bounded window. A transient lag
+     * spike (low TPS) advances the wall clock once but does not repeat across
+     * ticks, so it must never trip the watchdog: releasing a live channel there
+     * would let a second major spell overlap the in-flight one. At a healthy
+     * 20 ticks per second this is a further 20 s after the deadline is already
+     * {@link #STALE_CAST_MILLIS} overdue.
+     */
+    public static final int STALE_RECONCILE_TICKS = 400;
+
     private BossCastMobilityPolicy() {
     }
 

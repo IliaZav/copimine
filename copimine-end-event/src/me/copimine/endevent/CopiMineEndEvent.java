@@ -2074,6 +2074,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private long bossLastStandIntroUntilMillis;
     private long lastBossRecoilMillis;
     private long bossCastDeadlineMillis;
+    /**
+     * Consecutive per-tick reconciles that found the cast deadline overdue. A
+     * lost channel callback stays overdue on every tick, so this counter keeps
+     * climbing; a transient low-TPS wall-clock jump is a single reconcile and
+     * resets. The stale watchdog only fires at
+     * {@link BossCastMobilityPolicy#STALE_RECONCILE_TICKS}, so a lag spike can
+     * never release a live channel and overlap a second major spell.
+     */
+    private int bossCastStaleReconcileTicks;
     private boolean bossFinalStrikeUsed;
     private boolean bossDefeatCinematicStarted;
     private UUID bossDefeatCinematicBossUuid;
@@ -48462,6 +48471,42 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private void reconcileBossCastProjection(LivingEntity boss, long now) {
         if (boss == null) {
             return;
+        }
+        // Fail-safe (contract 10.2): every cast and channel stamps
+        // bossCastDeadlineMillis at its start and its own completion callback
+        // clears it. If that callback is ever lost -- an exception inside a
+        // repeating renderer, or a scheduler that never ran the task -- the
+        // active flag stays set and the early return below parks every timeline
+        // reconcile while tickCurrentBoss keeps re-rooting the body each tick.
+        // That is the "Guardian frozen forever" symptom, and nothing else in the
+        // loop can break it, so the single release contract must run once the
+        // stamped deadline is overdue by the whole stale budget. The budget is
+        // far longer than any authored cast, so a live cast is never cut short.
+        if (bossCastDeadlineMillis > 0L
+                && BossCastMobilityPolicy.stale(bossCastDeadlineMillis, now)) {
+            // A lost callback stays overdue on every per-tick reconcile, so the
+            // counter climbs until it proves the channel is dead. A one-off
+            // wall-clock jump from low TPS is a single reconcile and falls
+            // through without releasing a live channel (which would overlap a
+            // second major spell).
+            if (++bossCastStaleReconcileTicks
+                    >= BossCastMobilityPolicy.STALE_RECONCILE_TICKS) {
+                getLogger().warning("BOSS_CAST_STALE_WATCHDOG event=" + eventId
+                        + " boss=" + boss.getUniqueId() + " ability=" + bossAbilityState
+                        + " overdueMs=" + (now - bossCastDeadlineMillis)
+                        + " reconciles=" + bossCastStaleReconcileTicks);
+                cancelBossCastTask();
+                cancelBossFinalStrike();
+                bossAbilityState = BossAbilityState.NONE;
+                bossCastDeadlineMillis = 0L;
+                bossSpellPauseUntilMillis = 0L;
+                bossCastStaleReconcileTicks = 0;
+                releaseBossHazardReservation("stale-cast-watchdog");
+                releaseBossCastMobility(boss, "stale-cast-watchdog");
+                return;
+            }
+        } else {
+            bossCastStaleReconcileTicks = 0;
         }
         // Salvos use server ticks. A slow server must not admit another major
         // spell while this exact cast still owns scheduled releases.

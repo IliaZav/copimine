@@ -43,7 +43,7 @@ def test_staging_reports_a_verdict_instead_of_void():
 def test_core_refusal_cancels_and_refunds_the_cast():
     source = _event_source()
     start = source.index("if (spell == EndRiftAiPolicy.BossSpell.CHEST_BEAM")
-    aim = source.index("aimBossCastAt(boss, mark);", start)
+    aim = source.index("aimBossCastAt(boss, castMark);", start)
     body = source[start:aim]
     assert "!stageBossForChestBeam(boss)" in body, (
         "the telegraph must act on a failed Core staging"
@@ -53,6 +53,61 @@ def test_core_refusal_cancels_and_refunds_the_cast():
     # rejected shot leaves no half-committed cast behind: the refund is the last
     # statement inside the refusal block, which ends at the aim lock.
     assert refund < len(body)
+
+
+def test_lanes_and_origin_are_frozen_at_aim_lock():
+    """Specification 7.1.3 and 9H.02 shots 2-3.
+
+    The old code drew the telegraph toward the boss's melee ``mark`` and then
+    re-picked 1-3 lanes from live positions inside ``startChestBeam``. The
+    announced lane and the damaging ray could therefore be different geometry,
+    which is exactly the "fake aim line" 7.2 forbids. The fix captures one
+    snapshot at aim-lock and reuses it for the preview, the charge and the fire.
+    """
+    source = _event_source()
+    assert "private boolean lockChestBeamAims(LivingEntity boss)" in source, (
+        "the ultimate must freeze its lanes through one named aim-lock step"
+    )
+    lock_start = source.index("private boolean lockChestBeamAims(LivingEntity boss)")
+    lock_body = source[lock_start:source.index("private void startChestBeam(", lock_start)]
+    assert "bossChestBeamLockedAims = List.copyOf(aims);" in lock_body, (
+        "the aim-lock must store an immutable lane snapshot"
+    )
+    assert "bossChestBeamLockedChest = chest;" in lock_body, (
+        "the chest origin must be frozen with the lanes"
+    )
+    assert "bossChestBeamLockedGeneration = generation;" in lock_body, (
+        "the snapshot must be generation-fenced"
+    )
+
+    # The telegraph itself must call the aim-lock and preview the frozen lanes.
+    telegraph = source.index("if (spell == EndRiftAiPolicy.BossSpell.CHEST_BEAM")
+    telegraph_block = source[telegraph:source.index("aimBossCastAt(boss, castMark);", telegraph)]
+    assert "lockChestBeamAims(boss)" in telegraph_block, (
+        "the cast must freeze its lanes before the telegraph begins"
+    )
+    assert "renderChestBeamLaneRails(chestOrigin, bossChestBeamLockedAims" in source, (
+        "the readable preview must rail the frozen lanes, not a separate aim"
+    )
+
+
+def test_fire_reuses_the_snapshot_and_never_retargets():
+    """9H.03: do not re-aim a visibly locked beam at fire time."""
+    source = _event_source()
+    start = source.index("private void startChestBeam(")
+    body = source[start:source.index("private void renderChestBeamStage(", start)]
+    assert "bossChestBeamLockedGeneration == callbackGeneration" in body, (
+        "fire must gate on the frozen snapshot for this generation"
+    )
+    assert "new ArrayList<>(bossChestBeamLockedAims)" in body, (
+        "fire must copy the frozen lanes verbatim"
+    )
+    # Any re-pick is only a defensive fallback for a legacy path with no lock.
+    pick = body.index("ChestBeamPolicy.selectLaneIndices(")
+    guard = body.index("if (aims.isEmpty())", 0)
+    assert guard < pick, (
+        "target re-selection must sit behind the locked-snapshot fallback"
+    )
 
 
 def test_already_at_core_and_successful_teleport_both_succeed():

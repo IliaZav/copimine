@@ -34,7 +34,7 @@ public class BossTelegraphRuntimeProbe {
         Vector multiply(double k){x*=k;y*=k;z*=k;return this;}Vector add(Vector o){x+=o.x;y+=o.y;z+=o.z;return this;}
         Vector subtract(Vector o){x-=o.x;y-=o.y;z-=o.z;return this;}void setY(double v){y=v;}double getX(){return x;}double getZ(){return z;}}
     static class Color {int rgb;Color(int r,int g,int b){rgb=(r<<16)|(g<<8)|b;}static Color fromRGB(int v){return new Color((v>>16)&0xFF,(v>>8)&0xFF,v&0xFF);}}
-    static class Location {double x,y,z;final World world=new World();World getWorld(){return world;}Location(){}Location(double x,double y,double z){this.x=x;this.y=y;this.z=z;}
+    static class Location {double x,y,z;final World world=new World();World getWorld(){return world;}Location(){}Location(double x,double y,double z){this.x=x;this.y=y;this.z=z;}Location(World w,double x,double y,double z){this.x=x;this.y=y;this.z=z;}
         public Location clone(){return new Location(x,y,z);}float getYaw(){return 0;}
         Location add(double dx,double dy,double dz){x+=dx;y+=dy;z+=dz;return this;}
         Location add(Vector v){x+=v.x;y+=v.y;z+=v.z;return this;}
@@ -96,6 +96,13 @@ public class BossTelegraphRuntimeProbe {
     // bounded relocation is stubbed as a successful Core claim while the real
     // telegraph body runs; the refusal path is covered by the static guard.
     boolean stageBossForChestBeam(LivingEntity b){return true;}
+    // Specification 7.1.3 / 9H.02: the aim-lock snapshot and the preview rails
+    // are stubbed here. This probe measures the release marker of the non-beam
+    // spells; the real snapshot geometry is covered by the static guard.
+    java.util.List<ChestBeamPolicy.Aim> bossChestBeamLockedAims=new java.util.ArrayList<>();
+    Location bossChestBeamLockedChest;long bossChestBeamLockedGeneration=-1L;
+    boolean lockChestBeamAims(LivingEntity b){return true;}
+    void renderChestBeamLaneRails(Location chest,java.util.List<ChestBeamPolicy.Aim> aims,int hue,int tick){}
     void playBossSpellModel(LivingEntity b,String id,Location at,int ticks,boolean follow){}
     void aimBossCastAt(LivingEntity b,Location l){}
     String bossTelegraphAnimation(EndRiftAiPolicy.BossSpell s){return s.id();}

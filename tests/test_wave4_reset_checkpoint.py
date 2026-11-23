@@ -21,6 +21,7 @@ public class ResetCheckpointProbe {
  int activeWave;long phaseDeadlineMillis;String recoveryReason="failed",bossRewardStatus;
  Object bossRewardRecipientUuid;
  long bossChestBeamSequence;boolean bossChestBeamActive;long bossChestBeamCooldownUntilTick;
+ List<Object> bossChestBeamLockedAims;Object bossChestBeamLockedChest;long bossChestBeamLockedGeneration;
  static final String CHEST_BEAM_VFX_PREFIX="boss-chest-beam-";
  static final String BOSS_REWARDS_PENDING="PENDING";
  Object wave3RestoredPortalCheckpoint=new Object(),wave4RestoredObeliskCheckpoint=new Object();

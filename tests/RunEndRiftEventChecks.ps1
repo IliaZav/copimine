@@ -490,6 +490,7 @@ $pureTests = @(
   'BossAnimationPosePolicyTest',
   'BossPhaseTransitionCinematicPolicyTest',
   'BossCastAvailabilityPolicyTest',
+  'ChestBeamAdmissionPolicyTest',
   'CreativeTestAdmissionPolicyTest',
   'BossAiSimulationTest',
   'BossCastTimelineTest',

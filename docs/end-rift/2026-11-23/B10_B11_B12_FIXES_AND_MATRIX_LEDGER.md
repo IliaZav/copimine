@@ -389,3 +389,50 @@ Evidence tiers: `SOURCE` / `AUTO` / `NATIVE_BLOCKED`, as in section 1.
   2/5/10/11/20 real players, and the exact phase pressure curve, is a measured
   `NATIVE_BLOCKED` question (no GUI client, no running Paper in this
   environment).
+
+### N23-P1-04 — beam attempted/accepted ledger and torso-accurate cover
+
+- **Where**: new pure policy
+  `copimine-end-event/src/me/copimine/endevent/domain/ChestBeamAdmissionPolicy.java`,
+  the locked-lane damage loop and the new resolve ledger line in
+  `CopiMineEndEvent.startChestBeam`.
+- **Defect 1 (honesty)**: the loop did
+  `alreadyHit.add(player.getUniqueId());` **before**
+  `applyContactHit(...)` returned, so a protection-cancelled, absorption-drained
+  or line-of-sight-refused hit still marked that player as hit. The closing
+  receipt then reported a "hit" that never landed.
+- **Defect 2 (cover geometry)**: `ChestBeamPolicy.beamHits(...)` intersects the
+  damage capsule at the **torso** (`getHeight() * 0.5`), but solid cover was
+  sampled with `hasProjectileBlockLineOfSight(chest, player.getEyeLocation())`.
+  A wall or slab that shields the torso but leaves the head visible therefore
+  produced a hit **through cover** — untelegraphed harm, which the spec forbids.
+- **Fix**: cover is now sampled at the same body point the damage is resolved
+  against (`ChestBeamAdmissionPolicy.DAMAGEABLE_SAMPLE == TORSO`), and the
+  per-tick verdict goes through `decide(inLane, covered, alreadyAttempted)`.
+  The set is renamed `attempted` and is still populated *before* the damage call
+  (so a refused event cannot re-roll every tick), but `hits[0]` and
+  `renderBossContactImpact` fire **only** on an accepted
+  `applyContactHit`. Because the lane test no longer short-circuits on
+  "already hit", an out-of-lane or covered player is skipped by explicit
+  decision rather than by a pre-emptive set insertion.
+- **New ledger**: `BOSS_CHEST_BEAM_RESOLVE attempted=<n> accepted=<n>
+  lanes=<n> generation=<g>`. `attempted > accepted` is the honest signature of a
+  refused hit; a protected player can no longer appear as a successful one.
+- **Fail-closed by construction**: out-of-lane dominates attempted, attempted
+  dominates covered, and only `ATTEMPT` is admitted, so a covered body is never
+  hit through terrain and an attempted body is never re-rolled. The pure policy
+  is the single source of truth for the order.
+- **Regression test**: `tests/ChestBeamAdmissionPolicyTest.java` (damageable
+  sample is the torso; cover follows the damageable body; a head-height slab does
+  *not* cover the torso while the rejected eye rule would have admitted it;
+  in-lane clear body admitted; out-of-lane never an attempt; attempted never
+  retried; covered never admitted; precedence; only ATTEMPT admitted), registered
+  in `RunEndRiftEventChecks.ps1` `$pureTests`.
+- **Preserved contracts**: fire still gates on the generation-frozen snapshot,
+  still copies the frozen lanes verbatim, still never re-selects targets and still
+  cancels safely without a lock —
+  `tests/test_end_rift_chest_beam_core_stage_guard.py` and
+  `tests/test_chest_beam_family.py` pass unchanged.
+- **Status**: `SOURCE` + `AUTO`. Whether torso-sampled cover reads fairly from all
+  angles, and the real protected-hit rate, is `NATIVE_BLOCKED` here (no GUI
+  client, no running Paper, no signed V4 client).

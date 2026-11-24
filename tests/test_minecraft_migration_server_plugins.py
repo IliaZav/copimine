@@ -1390,57 +1390,58 @@ def test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar():
     # over this pin. The replaced candidates stay at the front of replaceSha256,
     # newest first, which is the documented prepend convention, so an
     # already-staged older candidate is still accepted.
-    assert candidate['size']==2716674
-    assert candidate['sha256']=='2e15baff8d7ab38b34cc2814d5974f266af05d2f867b30312649dad9bc7fe913'
-    assert candidate['sha512']=='b23997fe3296d1b7f1451f60905702688021ef67b9ac35fe1980f38fd71184701eb18666c9bd59172093d7894bace6817d9e7b558935576a26aacde809d926ca'
-    assert candidate['replaceSha256'][0]=='3aabcaa26022c15c0a04b6fed71f33755cc78aab13bf5d3957eaa5a0b7272213'
-    assert candidate['replaceSha256'][1]=='c564991da4b707ef0036566be3eca516654a0ef30e841096a3c058bf52b0bbe5'
-    assert candidate['replaceSha256'][2]=='d4f49c79f6178a1a8449ada3f7e54bf684c971f8b7d3e73f8bd1e493612b11a9'
-    assert candidate['replaceSha256'][3]=='826bf7045064a5cd66d913ba8b6b1fa1cce0a99c0a49d02e7b6c55ba6b55680f'
-    assert candidate['replaceSha256'][4]=='3fd473a789909a2ff66251fa41ed0276fc461259c10f30b331e406aeb9ffcd73'
-    assert candidate['replaceSha256'][5]=='5029686aa24a3c55e64baf4366047764fcf42128fb598490268dc73533f1d308'
-    assert candidate['replaceSha256'][6]=='18d44a7e543c7999eba4d9bd33ccda665c4dd1eb99b21755e3bf88cb31ff3603'
-    assert candidate['replaceSha256'][7]=='084cc0f53db7906e7fbae01852dc22a956bff3bba44ecb0fb800ec90d7547836'
-    assert candidate['replaceSha256'][8]=='211c0859c51b3e5495efbcad75bbb489fe469c15640d8499a0dbd1fa07a4d868'
-    assert candidate['replaceSha256'][9]=='11e6864de38069a9e383ae24950c4b4672d7adf18794c0448b9fb65b5c20ce7a'
-    assert candidate['replaceSha256'][10]=='44d069e12bde73141635d80c9903a976288aa93bfc6c8aad9365be1a2317a9b2'
-    assert candidate['replaceSha256'][11]=='42fa624350083259d9ec9a1ca37a7938b7f6ee92e5ad38a6755d4d3ecd362d72'
-    assert candidate['replaceSha256'][12]=='38fc65823408adc7e28f13e949dde9681ea0258a7207e567ecd488ca58094f8c'
-    assert candidate['replaceSha256'][13]=='94d7b52b96c5b7f4fd9789b74e283372205229436c97960ce8ebf93f2230c667'
-    assert candidate['replaceSha256'][14]=='34a045f4cab5da8310a2e589f2bc6952b331623518f9e288463952861facdccd'
-    assert candidate['replaceSha256'][15]=='b7251e5c723e870938ed4d65f17a96a1f506de9f5318bf6244ac7301bda26c6d'
-    assert candidate['replaceSha256'][16]=='9609e83f98650de0dc9a5964dce0f036441eb90906d13babac8094dd2f76494c'
-    assert candidate['replaceSha256'][17]=='27d239b3cc95bc4cadb2e9f6e109f581e7226456a8e0061fc678fbfe4b3d9a8e'
-    assert candidate['replaceSha256'][18]=='1504e2480312f56b8edf8c40553cdfb9f4be86bc83350f8628b0f241fb31fea1'
-    assert candidate['replaceSha256'][19]=='1cd2e099916f9cabf04a97bafbd5e77a4f57caa710baea809118d9a678f8c511'
-    assert candidate['replaceSha256'][20]=='c2572528270e22e204cff420d078b8e1a075b5bead0f414dc22f6ff932240ffc'
-    assert candidate['replaceSha256'][21]=='74223c7de41b6d1066d874787b336f7245ce3aa3b062c33cf76ef8fa2c6155d6'
-    assert candidate['replaceSha256'][22]=='95da1854a4684bfd6090453aa50abb272b4842e2247ef76e8f17a0a84a311c7c'
-    assert candidate['replaceSha256'][23]=='3f6014640ec743fd8e32f159c7a7a3b7deac269352ddaa0000a50bed8b5c0ba5'
-    assert candidate['replaceSha256'][24]=='0aa1a51c4c0819938ce10f786cb350bd446aced1ad2e083f5984ee73b632f029'
-    assert candidate['replaceSha256'][25]=='ea91e7f106ca9a222c4a23535d87f0f069520374d6c113d8b3486233d4bb5f97'
-    assert candidate['replaceSha256'][26]=='ffb41acb78f612a8132f91d63c7eae68e58e6c76261f633e4851244d760eb66a'
-    assert candidate['replaceSha256'][27]=='00d0d912ed176fe975578e17167f13618bb8fe900b8b1ee3785e347d601881ad'
-    assert candidate['replaceSha256'][28]=='872c0c6bb673b91d4001cb1162e84e51f53dbf04a69b81a60702d39f9d2bd250'
-    assert candidate['replaceSha256'][29]=='e563409798d6c97d81ad0e6da14a78794246b2cbf826dd1cfc69f6797991569c'
-    assert candidate['replaceSha256'][30]=='25d3f0431c971147b67f46b2801138a7d66c1a94431775922212ab04f255b77b'
-    assert candidate['replaceSha256'][31]=='3418aedb2f9da6eab5d9ab008e10ec83a8b3bd3d7ba660ebb67b87300deeb880'
-    assert candidate['replaceSha256'][32]=='8ceac981a86f8e4752f5f6139b15419cc1bfb751fda0af1b9163ca79044ebd4a'
-    assert candidate['replaceSha256'][33]=='c327507a72f9690703d6771fd0248df0864ebce6593f28648bba74f31aeb9a28'
-    assert candidate['replaceSha256'][34]=='1ee4d756560ee80dea287f31497ec4e6a2bfd40b8a0e333da0b4188561f61fc7'
-    assert candidate['replaceSha256'][35]=='c4b5645535af84c450f9278269b84a1256bec8a90b825cef2aea3899899488f8'
-    assert candidate['replaceSha256'][36]=='7a4871be8cfd10bcf004657548bea2c497f7198bee8d9f9310418a905ad3bd46'
-    assert candidate['replaceSha256'][37]=='82340f3c733b3c578837801daaa2baca965609a5394527a0fa38a2f920ab1544'
-    assert candidate['replaceSha256'][38]=='8959a0e53ea5aa92b2dfd64643e8b8912548ba5e0408f9dc60594eceaa9db980'
-    assert candidate['replaceSha256'][39]=='8f44ff13d4c7946906cb090a045720dd618461a050c7592dcceb79d0a7f201c3'
-    assert candidate['replaceSha256'][40]=='8688d87e0b80fbb82bd8bc6757e8c49d73e10c9da563e5f6f2d62c44368cb312'
-    assert candidate['replaceSha256'][41]=='5b86431f9e3fd531a6e9198021188411d74091335ffea35561f6e1334d56b118'
-    assert candidate['replaceSha256'][42]=='6e23c34d704c2a104b5ac56cc13d519bb306c63b26a21c10eacf3e933b86aa10'
-    assert candidate['replaceSha256'][43]=='1d1006bb7b69f61e3e6e9be69dcdc37649383785327df1f089b159105025ea0a'
-    assert candidate['replaceSha256'][44]=='e4ba96d991fb5084573e3a999c25edd49fdf20b0a9505a8c2d32482f722ea93b'
-    assert candidate['replaceSha256'][45]=='987f31a77bc33764eab5bb5d9d3750d38ac1ba98a8207c4d55f970cfcf7770dc'
-    assert candidate['replaceSha256'][46]=='6188d78c04df1c1064cbb7ca5fd824796a9275c791c2d04f582123e38b9da0ab'
-    assert candidate['replaceSha256'][47]=='637a08f3372cfe103e78fcf5ed18a2910e54627ef74931f236751a98767142ac'
+    assert candidate['size']==2719913
+    assert candidate['sha256']=='7df774078834b1d19e023b4d98fee9a4e5b5a77b89fed5da97cabea98e966f15'
+    assert candidate['sha512']=='ea0bdeed67e6d5a4cb354d02203c46653f59e4d93b665f25e0ddcd703e5b14d5fcde8ed5b21e1975a1661c9aba642a121266bc7bdf2ec8eb3166e510da3ce4a4'
+    assert candidate['replaceSha256'][0]=='2e15baff8d7ab38b34cc2814d5974f266af05d2f867b30312649dad9bc7fe913'
+    assert candidate['replaceSha256'][1]=='3aabcaa26022c15c0a04b6fed71f33755cc78aab13bf5d3957eaa5a0b7272213'
+    assert candidate['replaceSha256'][2]=='c564991da4b707ef0036566be3eca516654a0ef30e841096a3c058bf52b0bbe5'
+    assert candidate['replaceSha256'][3]=='d4f49c79f6178a1a8449ada3f7e54bf684c971f8b7d3e73f8bd1e493612b11a9'
+    assert candidate['replaceSha256'][4]=='826bf7045064a5cd66d913ba8b6b1fa1cce0a99c0a49d02e7b6c55ba6b55680f'
+    assert candidate['replaceSha256'][5]=='3fd473a789909a2ff66251fa41ed0276fc461259c10f30b331e406aeb9ffcd73'
+    assert candidate['replaceSha256'][6]=='5029686aa24a3c55e64baf4366047764fcf42128fb598490268dc73533f1d308'
+    assert candidate['replaceSha256'][7]=='18d44a7e543c7999eba4d9bd33ccda665c4dd1eb99b21755e3bf88cb31ff3603'
+    assert candidate['replaceSha256'][8]=='084cc0f53db7906e7fbae01852dc22a956bff3bba44ecb0fb800ec90d7547836'
+    assert candidate['replaceSha256'][9]=='211c0859c51b3e5495efbcad75bbb489fe469c15640d8499a0dbd1fa07a4d868'
+    assert candidate['replaceSha256'][10]=='11e6864de38069a9e383ae24950c4b4672d7adf18794c0448b9fb65b5c20ce7a'
+    assert candidate['replaceSha256'][11]=='44d069e12bde73141635d80c9903a976288aa93bfc6c8aad9365be1a2317a9b2'
+    assert candidate['replaceSha256'][12]=='42fa624350083259d9ec9a1ca37a7938b7f6ee92e5ad38a6755d4d3ecd362d72'
+    assert candidate['replaceSha256'][13]=='38fc65823408adc7e28f13e949dde9681ea0258a7207e567ecd488ca58094f8c'
+    assert candidate['replaceSha256'][14]=='94d7b52b96c5b7f4fd9789b74e283372205229436c97960ce8ebf93f2230c667'
+    assert candidate['replaceSha256'][15]=='34a045f4cab5da8310a2e589f2bc6952b331623518f9e288463952861facdccd'
+    assert candidate['replaceSha256'][16]=='b7251e5c723e870938ed4d65f17a96a1f506de9f5318bf6244ac7301bda26c6d'
+    assert candidate['replaceSha256'][17]=='9609e83f98650de0dc9a5964dce0f036441eb90906d13babac8094dd2f76494c'
+    assert candidate['replaceSha256'][18]=='27d239b3cc95bc4cadb2e9f6e109f581e7226456a8e0061fc678fbfe4b3d9a8e'
+    assert candidate['replaceSha256'][19]=='1504e2480312f56b8edf8c40553cdfb9f4be86bc83350f8628b0f241fb31fea1'
+    assert candidate['replaceSha256'][20]=='1cd2e099916f9cabf04a97bafbd5e77a4f57caa710baea809118d9a678f8c511'
+    assert candidate['replaceSha256'][21]=='c2572528270e22e204cff420d078b8e1a075b5bead0f414dc22f6ff932240ffc'
+    assert candidate['replaceSha256'][22]=='74223c7de41b6d1066d874787b336f7245ce3aa3b062c33cf76ef8fa2c6155d6'
+    assert candidate['replaceSha256'][23]=='95da1854a4684bfd6090453aa50abb272b4842e2247ef76e8f17a0a84a311c7c'
+    assert candidate['replaceSha256'][24]=='3f6014640ec743fd8e32f159c7a7a3b7deac269352ddaa0000a50bed8b5c0ba5'
+    assert candidate['replaceSha256'][25]=='0aa1a51c4c0819938ce10f786cb350bd446aced1ad2e083f5984ee73b632f029'
+    assert candidate['replaceSha256'][26]=='ea91e7f106ca9a222c4a23535d87f0f069520374d6c113d8b3486233d4bb5f97'
+    assert candidate['replaceSha256'][27]=='ffb41acb78f612a8132f91d63c7eae68e58e6c76261f633e4851244d760eb66a'
+    assert candidate['replaceSha256'][28]=='00d0d912ed176fe975578e17167f13618bb8fe900b8b1ee3785e347d601881ad'
+    assert candidate['replaceSha256'][29]=='872c0c6bb673b91d4001cb1162e84e51f53dbf04a69b81a60702d39f9d2bd250'
+    assert candidate['replaceSha256'][30]=='e563409798d6c97d81ad0e6da14a78794246b2cbf826dd1cfc69f6797991569c'
+    assert candidate['replaceSha256'][31]=='25d3f0431c971147b67f46b2801138a7d66c1a94431775922212ab04f255b77b'
+    assert candidate['replaceSha256'][32]=='3418aedb2f9da6eab5d9ab008e10ec83a8b3bd3d7ba660ebb67b87300deeb880'
+    assert candidate['replaceSha256'][33]=='8ceac981a86f8e4752f5f6139b15419cc1bfb751fda0af1b9163ca79044ebd4a'
+    assert candidate['replaceSha256'][34]=='c327507a72f9690703d6771fd0248df0864ebce6593f28648bba74f31aeb9a28'
+    assert candidate['replaceSha256'][35]=='1ee4d756560ee80dea287f31497ec4e6a2bfd40b8a0e333da0b4188561f61fc7'
+    assert candidate['replaceSha256'][36]=='c4b5645535af84c450f9278269b84a1256bec8a90b825cef2aea3899899488f8'
+    assert candidate['replaceSha256'][37]=='7a4871be8cfd10bcf004657548bea2c497f7198bee8d9f9310418a905ad3bd46'
+    assert candidate['replaceSha256'][38]=='82340f3c733b3c578837801daaa2baca965609a5394527a0fa38a2f920ab1544'
+    assert candidate['replaceSha256'][39]=='8959a0e53ea5aa92b2dfd64643e8b8912548ba5e0408f9dc60594eceaa9db980'
+    assert candidate['replaceSha256'][40]=='8f44ff13d4c7946906cb090a045720dd618461a050c7592dcceb79d0a7f201c3'
+    assert candidate['replaceSha256'][41]=='8688d87e0b80fbb82bd8bc6757e8c49d73e10c9da563e5f6f2d62c44368cb312'
+    assert candidate['replaceSha256'][42]=='5b86431f9e3fd531a6e9198021188411d74091335ffea35561f6e1334d56b118'
+    assert candidate['replaceSha256'][43]=='6e23c34d704c2a104b5ac56cc13d519bb306c63b26a21c10eacf3e933b86aa10'
+    assert candidate['replaceSha256'][44]=='1d1006bb7b69f61e3e6e9be69dcdc37649383785327df1f089b159105025ea0a'
+    assert candidate['replaceSha256'][45]=='e4ba96d991fb5084573e3a999c25edd49fdf20b0a9505a8c2d32482f722ea93b'
+    assert candidate['replaceSha256'][46]=='987f31a77bc33764eab5bb5d9d3750d38ac1ba98a8207c4d55f970cfcf7770dc'
+    assert candidate['replaceSha256'][47]=='6188d78c04df1c1064cbb7ca5fd824796a9275c791c2d04f582123e38b9da0ab'
+    assert candidate['replaceSha256'][48]=='637a08f3372cfe103e78fcf5ed18a2910e54627ef74931f236751a98767142ac'
     assert candidate['apiVersion']=='26.3'
     assert candidate['buildArtifact']=='build/minecraft-26.3/plugins/jars/CopiMineEndEvent-26.3.jar'
     assert candidate['nativeVerified'] is lock['nativeVerified']
@@ -1495,6 +1496,7 @@ def test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar():
         '839ebae4196c5bbbe6d6171dea1a484e6fb021dc77a869996543a71858f4d3d4',
     ]
     assert candidate['replaceSha256']==[
+        '2e15baff8d7ab38b34cc2814d5974f266af05d2f867b30312649dad9bc7fe913',
         '3aabcaa26022c15c0a04b6fed71f33755cc78aab13bf5d3957eaa5a0b7272213',
         'c564991da4b707ef0036566be3eca516654a0ef30e841096a3c058bf52b0bbe5',
         'd4f49c79f6178a1a8449ada3f7e54bf684c971f8b7d3e73f8bd1e493612b11a9',
@@ -3272,8 +3274,8 @@ def test_26_3_plugin_lock_pins_current_luckperms_and_reproducible_first_party_ca
     expected_candidates={
         'CopiMineArtifacts':('a5e0420d503850cb604445c52705f5af71fdc65770a78b943c5d2bc252fabcc5',
                              'a054cfeef3dc37dc364ef33d550063b6aa105f2394501bd982295af2fc791bba82cce15623c3ff7b09c4c3250683fb1caf7cdb72312e3c91bf50dd0c2fc39600',366356),
-        'CopiMineEndEvent':('2e15baff8d7ab38b34cc2814d5974f266af05d2f867b30312649dad9bc7fe913',
-                            'b23997fe3296d1b7f1451f60905702688021ef67b9ac35fe1980f38fd71184701eb18666c9bd59172093d7894bace6817d9e7b558935576a26aacde809d926ca',2716674),
+        'CopiMineEndEvent':('7df774078834b1d19e023b4d98fee9a4e5b5a77b89fed5da97cabea98e966f15',
+                            'ea0bdeed67e6d5a4cb354d02203c46653f59e4d93b665f25e0ddcd703e5b14d5fcde8ed5b21e1975a1661c9aba642a121266bc7bdf2ec8eb3166e510da3ce4a4',2719913),
         'CopiMineNarcotics':('ec2ef8d50c780d2faf52469bd52d20724d8be9c5f8c23a76c5c9d459782e35a6',
                              '3328ef927d8d2b3c703c194038f8c4ff3541653cd574bff0aec8ee65f516d3e2ef9f135f16a05e940aefbcfe31a2a63e4edc6f621ba0c781b3554068a3a614b2',379018),
     }

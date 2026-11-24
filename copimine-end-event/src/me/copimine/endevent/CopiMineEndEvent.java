@@ -83,6 +83,7 @@ import me.copimine.endevent.domain.BossImpactGeometryPolicy;
 import me.copimine.endevent.domain.BossSpellGeometryPolicy;
 import me.copimine.endevent.domain.BoundedDiagnosticCounterPolicy;
 import me.copimine.endevent.domain.ChestBeamPolicy;
+import me.copimine.endevent.domain.ChestBeamAdmissionPolicy;
 import me.copimine.endevent.domain.BossCommandPolicy;
 import me.copimine.endevent.domain.BossAmbushPolicy;
 import me.copimine.endevent.domain.BossCastTimeline;
@@ -53909,7 +53910,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         getLogger().info("BOSS_CHEST_BEAM_FIRE event=" + eventId + " boss=" + bossId
                 + " lanes=" + aims.size() + " targets=" + participants.size()
                 + " phase=" + bossPhase + " generation=" + callbackGeneration);
-        final Set<UUID> alreadyHit = new HashSet<>();
+        // N23-P1-04: "attempted" remembers every body the beam resolved against
+        // (so a refused damage event cannot re-roll the player every tick), while
+        // "hits" counts only accepted damage. A protection-cancelled event is an
+        // attempt, never a hit.
+        final Set<UUID> attempted = new HashSet<>();
         final int[] hits = {0};
         final int[] elapsed = {0};
         final BukkitTask[] holder = new BukkitTask[1];
@@ -53950,8 +53955,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             } else if (ChestBeamPolicy.damagesAt(tick)) {
                 renderChestBeamStage(chest, aims, tick, true);
                 for (Player player : activeLivingPlayers()) {
-                    if (player == null || !world.equals(player.getWorld())
-                            || alreadyHit.contains(player.getUniqueId())) {
+                    if (player == null || !world.equals(player.getWorld())) {
                         continue;
                     }
                     Location torso = player.getLocation().clone()
@@ -53964,15 +53968,27 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                             break;
                         }
                     }
-                    if (lane == null) {
+                    // N23-P1-04: the damage capsule is intersected at the torso,
+                    // so the solid-cover rule is sampled at the SAME damageable
+                    // body point, not the eye. A wall that shields the body while
+                    // the head peeks over cover must stop the beam; the eye ray is
+                    // only passed to document the ruled-out sample. A solid block
+                    // between the core and the body is real cover: the beam never
+                    // hits through a wall.
+                    boolean torsoBlocked = !hasProjectileBlockLineOfSight(chest, torso);
+                    boolean eyeBlocked = !hasProjectileBlockLineOfSight(chest,
+                            player.getEyeLocation());
+                    boolean coverBlocked = ChestBeamAdmissionPolicy.covered(
+                            ChestBeamAdmissionPolicy.DAMAGEABLE_SAMPLE, torsoBlocked, eyeBlocked);
+                    ChestBeamAdmissionPolicy.Decision decision = ChestBeamAdmissionPolicy.decide(
+                            lane != null, coverBlocked, attempted.contains(player.getUniqueId()));
+                    if (!ChestBeamAdmissionPolicy.admitted(decision)) {
                         continue;
                     }
-                    // A solid block between the core and the player is real
-                    // cover: the beam never hits through a wall.
-                    if (!hasProjectileBlockLineOfSight(chest, player.getEyeLocation())) {
-                        continue;
-                    }
-                    alreadyHit.add(player.getUniqueId());
+                    // Remember the attempt before resolving damage so a refused
+                    // event cannot re-roll this player every tick, but count the
+                    // hit only when the damage is actually accepted.
+                    attempted.add(player.getUniqueId());
                     Vector push = new Vector(lane.dx(), 0.0D, lane.dz());
                     if (push.lengthSquared() < 0.01D) push = new Vector(0.0D, 0.0D, 1.0D);
                     push.normalize().multiply(ChestBeamPolicy.KNOCKBACK);
@@ -53988,6 +54004,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             elapsed[0]++;
             if (elapsed[0] >= ChestBeamPolicy.TOTAL_TICKS) {
                 if (holder[0] != null) holder[0].cancel();
+                // N23-P1-04: the honest ledger. A refused (protected/cancelled)
+                // damage event shows up as an attempt without a matching hit, so a
+                // failed resolution can never be read as a successful one.
+                getLogger().info("BOSS_CHEST_BEAM_RESOLVE event=" + eventId
+                        + " attempted=" + attempted.size() + " accepted=" + hits[0]
+                        + " lanes=" + aims.size() + " generation=" + callbackGeneration);
                 finishChestBeam(boss, bossId, aims, hits[0], castSequence, callbackEvent,
                         callbackGeneration);
             }

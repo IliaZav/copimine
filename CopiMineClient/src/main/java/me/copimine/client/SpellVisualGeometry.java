@@ -16,6 +16,12 @@ import java.util.List;
  * spoke / the cast direction, {@code +z} is lateral and {@code +y} is up. The
  * renderer maps that frame onto the server anchors, so no authored point is a
  * world coordinate and no stale packet can leave geometry after cleanup.</p>
+ *
+ * <p>Every family is continuously animated from the cast clock: arms ripple,
+ * teeth open and close, sigils counter-rotate, motes spiral, shells breathe and
+ * pressure rings expand. The animation is derived only from {@code elapsedMillis}
+ * and the server-authored seed, so the same instant always rebuilds the exact
+ * same mesh and no client state can drift away from the cue lifetime.</p>
  */
 public final class SpellVisualGeometry {
 
@@ -220,13 +226,13 @@ public final class SpellVisualGeometry {
         List<Stroke> strokes = switch (spell) {
             case CROWN -> crown(elapsed, seed, reach, tier);
             case CIRCLE -> circle(elapsed, seed, reach, tier);
-            case FANG_LINE -> fangLine(reach, tier);
-            case WARDEN_SWEEP -> wardenSweep(tier);
+            case FANG_LINE -> fangLine(elapsed, reach, tier);
+            case WARDEN_SWEEP -> wardenSweep(elapsed, tier);
             case ECHO_SPHERE -> echoSphere(elapsed, reach, tier);
-            case SCULK_TRACE -> sculkTrace(seed, reach, tier);
+            case SCULK_TRACE -> sculkTrace(elapsed, seed, reach, tier);
             case GRAVITY -> gravity(elapsed, reach, tier);
-            case GUARDIAN_FAN -> guardianFan(reach, tier);
-            case GUARDIAN_HEAVY -> guardianHeavy(tier);
+            case GUARDIAN_FAN -> guardianFan(elapsed, reach, tier);
+            case GUARDIAN_HEAVY -> guardianHeavy(elapsed, tier);
             case SEPARATION -> separation(elapsed, tier);
         };
         return bounded(strokes, maxReach(spell));
@@ -262,17 +268,21 @@ public final class SpellVisualGeometry {
         return jaws;
     }
 
+    // ------------------------------------------------------------------
+    // CROWN: five rippling arms, breathing fangs, a counter-rotating inner
+    // crown, orbiting shard ghosts and a rising spiral of embers.
+    // ------------------------------------------------------------------
     private static List<Stroke> crown(long elapsedMillis, long seed, double requested,
                                       Quality quality) {
-        double length = Double.isFinite(requested) && requested > 0
-                ? Math.max(CROWN_LENGTH_MIN, Math.min(CROWN_LENGTH_MAX, requested))
-                : CROWN_LENGTH_MAX;
-        double rotation = (elapsedMillis / 1000.0D) * CROWN_ROTATION_DEG_PER_SECOND
-                + splitUnit(seed, 0L) * 12.0D;
+        double length = clamp(requested > 0.0D ? requested : CROWN_LENGTH_MAX,
+                CROWN_LENGTH_MIN, CROWN_LENGTH_MAX);
+        double rotation = spinDegrees(elapsedMillis, CROWN_ROTATION_DEG_PER_SECOND,
+                splitUnit(seed, 0L) * 12.0D);
+        double rotateRadians = Math.toRadians(rotation);
+        double breathe = 0.5D + 0.5D * Math.sin(rotateRadians * 1.4D);
         int samples = quality.samples();
-        int teethPerArm = Math.max(1, (int) Math.floor(length / CROWN_TEETH_SPACING_BLOCKS));
-        teethPerArm = Math.min(4, teethPerArm);
-        List<Stroke> strokes = new ArrayList<>(CROWN_SPOKES * (1 + teethPerArm) + 2);
+        int teethPerArm = Math.min(4, Math.max(1, (int) Math.floor(length / CROWN_TEETH_SPACING_BLOCKS)));
+        List<Stroke> strokes = new ArrayList<>(72);
         for (int spoke = 0; spoke < CROWN_SPOKES; spoke++) {
             double angle = rotation + spoke * (360.0D / CROWN_SPOKES);
             List<Point> arm = new ArrayList<>(samples + 1);
@@ -282,19 +292,31 @@ public final class SpellVisualGeometry {
                 double curved = angle + CROWN_CURVE_DEGREES * (t * t - t * 0.5D);
                 double radians = Math.toRadians(curved);
                 double distance = length * t;
-                double lift = Math.sin(Math.PI * t) * 0.55D + t * 0.25D;
+                // The vertical ripple is zero at both ends, so the authored arm
+                // length and the verified rotation delta never drift.
+                double lift = Math.sin(Math.PI * t) * 0.55D + t * 0.25D
+                        + Math.sin(Math.PI * t) * 0.16D
+                        * Math.sin(2.0D * Math.PI * 1.15D * t - rotateRadians * 3.0D);
                 arm.add(new Point(Math.cos(radians) * distance, lift, Math.sin(radians) * distance));
                 double taper = 0.115D - 0.075D * t;
+                taper *= 1.0D + 0.12D * Math.sin(Math.PI * t) * Math.sin(rotateRadians * 2.2D);
                 widths.add((float) Math.max(0.03D, taper));
             }
-            strokes.add(new Stroke(Style.ARM, arm, widths, 1.0F, 0.86F));
+            strokes.add(new Stroke(Style.ARM, arm, widths, 1.0F, 0.88F));
             for (int tooth = 1; tooth <= teethPerArm; tooth++) {
                 double t = Math.min(0.94D, 0.35D + tooth * (0.55D / Math.max(1, teethPerArm)));
-                strokes.add(armTooth(angle, length, t));
+                double open = 1.0D + 0.10D * Math.sin(rotateRadians * 2.5D + tooth * 0.7D);
+                strokes.add(armTooth(angle, length, t, open));
             }
         }
-        strokes.add(ring(1.6D, 18, 0.075D, Style.RING, 0.55F, 0.5F));
-        strokes.add(ring(2.1D, 18, 0.04D, Style.RING, 0.4F, 0.35F));
+        strokes.add(ring(1.6D, 18, 0.075D, Style.RING, 0.55F, 0.50F));
+        strokes.add(ring(2.1D, 18, 0.040D, Style.RING, 0.40F, 0.35F));
+        // Counter-rotating inner halos turn the cast into a living sigil: one
+        // band spins against the arms, one rides above the base.
+        strokes.add(rotatedRing(length * 0.42D, 0.90D, 20, 0.028D, Style.RING,
+                0.55F, 0.45F, -rotation * 1.6D));
+        strokes.add(rotatedRing(length * 0.30D, 1.55D, 16, 0.022D, Style.RING,
+                0.45F, 0.38F, rotation * 2.2D));
         // Vertically rising crest blades ride the arm tips, so the rotation is
         // legible from the side as well as from above.
         for (int spoke = 0; spoke < CROWN_SPOKES; spoke++) {
@@ -302,15 +324,38 @@ public final class SpellVisualGeometry {
             double tipRadians = Math.toRadians(angle + CROWN_CURVE_DEGREES * 0.5D);
             double tipX = Math.cos(tipRadians) * length;
             double tipZ = Math.sin(tipRadians) * length;
+            double height = 1.15D + 0.55D * breathe;
             strokes.add(new Stroke(Style.FIELD,
-                    List.of(new Point(tipX, 0.35D, tipZ), new Point(tipX, 1.55D, tipZ)),
-                    List.of(0.07F, 0.012F), 1.0F, 0.9F));
+                    List.of(new Point(tipX, 0.35D, tipZ), new Point(tipX, height, tipZ)),
+                    List.of(0.07F, 0.012F), 1.0F, 0.90F));
         }
-        burst(strokes, length * 0.24D, 8, elapsedMillis, 900.0D, 1.0F, 0.8F);
+        // One ghost chevron per arm, orbiting faster than the arms themselves.
+        for (int spoke = 0; spoke < CROWN_SPOKES; spoke++) {
+            double angle = rotation * 1.35D + spoke * (360.0D / CROWN_SPOKES);
+            strokes.add(orbitChevron(angle, length * 0.78D, 1.0D + 0.5D * breathe,
+                    0.42D, 0.90F, 0.78F));
+        }
+        int motes = quality == Quality.REDUCED ? 4 : quality == Quality.BALANCED ? 6 : 8;
+        for (int mote = 0; mote < motes; mote++) {
+            double phase = frac(elapsedMillis / 1800.0D + mote / (double) motes);
+            double angle = Math.toRadians(rotation * 0.8D + mote * 137.5D);
+            double radius = length * (0.30D + 0.50D * phase);
+            double y = 0.25D + 2.2D * phase;
+            strokes.add(new Stroke(Style.FIELD,
+                    List.of(new Point(Math.cos(angle) * radius, y, Math.sin(angle) * radius),
+                            new Point(Math.cos(angle) * radius, y + 0.26D,
+                                    Math.sin(angle) * radius)),
+                    List.of(0.020F, 0.004F), 0.85F, 0.75F));
+        }
+        strokes.add(rotatedRing(1.15D, 0.14D, 3, 0.035D, Style.LANE, 0.70F, 0.60F,
+                rotation * 2.6D));
+        strokes.add(rotatedRing(1.15D, 0.14D, 3, 0.035D, Style.LANE, 0.70F, 0.60F,
+                rotation * 2.6D + 180.0D));
+        burst(strokes, length * 0.24D, 8, elapsedMillis, 900.0D, 1.0F, 0.80F);
         return strokes;
     }
 
-    private static Stroke armTooth(double angleDegrees, double length, double t) {
+    private static Stroke armTooth(double angleDegrees, double length, double t, double open) {
         double curved = angleDegrees + CROWN_CURVE_DEGREES * (t * t - t * 0.5D);
         double radians = Math.toRadians(curved);
         double distance = length * t;
@@ -321,32 +366,38 @@ public final class SpellVisualGeometry {
         double tangentZ = Math.sin(radians + Math.PI / 2.0D);
         double inwardX = -Math.cos(radians);
         double inwardZ = -Math.sin(radians);
+        double tangent = 0.30D * open;
+        double inward = 0.52D * open;
         List<Point> points = List.of(
-                new Point(cx + tangentX * 0.30D, lift - 0.02D, cz + tangentZ * 0.30D),
-                new Point(cx + inwardX * 0.52D, lift + 0.10D, cz + inwardZ * 0.52D),
-                new Point(cx - tangentX * 0.30D, lift - 0.02D, cz - tangentZ * 0.30D));
-        return new Stroke(Style.JAW, points, List.of(0.05F, 0.09F, 0.05F), 1.0F, 0.9F);
+                new Point(cx + tangentX * tangent, lift - 0.02D, cz + tangentZ * tangent),
+                new Point(cx + inwardX * inward, lift + 0.10D, cz + inwardZ * inward),
+                new Point(cx - tangentX * tangent, lift - 0.02D, cz - tangentZ * tangent));
+        return new Stroke(Style.JAW, points, List.of(0.05F, 0.09F, 0.05F), 1.0F, 0.90F);
     }
 
-    private static List<Stroke> circle(long elapsedMillis, long seed, double requested, Quality quality) {
-        double radius = Double.isFinite(requested) && requested > 0
-                ? Math.max(1.8D, Math.min(4.0D, requested))
-                : CIRCLE_RADIUS;
+    // ------------------------------------------------------------------
+    // CIRCLE: breathing jaw ring, expanding pressure pulses, orbiting wisps,
+    // a counter-rotating rune dial and vertical blades at the jaw roots.
+    // ------------------------------------------------------------------
+    private static List<Stroke> circle(long elapsedMillis, long seed, double requested,
+                                       Quality quality) {
+        double radius = clamp(requested > 0.0D ? requested : CIRCLE_RADIUS, 1.8D, 4.0D);
         int jaws = quality == Quality.REDUCED ? CIRCLE_JAWS_MIN : CIRCLE_JAWS_MAX;
         double gap = requiredGapDegrees(radius, CIRCLE_GAP_BLOCKS_MIN) + 4.0D;
-        double spin = (elapsedMillis / 1000.0D) * 6.0D + splitUnit(seed, 1L) * 360.0D;
-        List<Stroke> strokes = new ArrayList<>(jaws + 12);
+        double spin = spinDegrees(elapsedMillis, 6.0D, splitUnit(seed, 1L) * 360.0D);
+        double open = 1.0D + 0.035D * Math.sin(Math.toRadians(spin * 2.4D));
+        List<Stroke> strokes = new ArrayList<>(56);
         for (Point[] jaw : circleJaws(radius, jaws, gap)) {
-            strokes.add(new Stroke(Style.JAW, List.of(jaw[0], jaw[1], jaw[2]),
+            strokes.add(new Stroke(Style.JAW,
+                    List.of(scaleRadial(jaw[0], open), scaleRadial(jaw[1], open),
+                            scaleRadial(jaw[2], open)),
                     List.of(0.05F, 0.09F, 0.05F), 1.0F, 0.92F));
         }
         // The visible gap arc is drawn thinner so the escape sector reads clearly.
         strokes.add(gapArc(radius, gap, 0.035D));
         strokes.add(ring(radius * 0.55D, 16, 0.03D, Style.RING, 0.45F, 0.35F));
-        // A slow counter-spinning inner sigil turns the ritual circle into an
-        // active seal instead of a static decal, and radial ley-spokes tie the
-        // sigil to the jaw ring so the cast never reads as a flat floor sticker.
-        strokes.add(rotatedRing(radius * 0.72D, 0.09D, 20, 0.028D, Style.RING, 0.5F, 0.42F, -spin));
+        strokes.add(rotatedRing(radius * 0.72D, 0.09D, 20, 0.028D, Style.RING,
+                0.50F, 0.42F, -spin));
         int spokes = quality == Quality.REDUCED ? 4 : 8;
         for (int spoke = 0; spoke < spokes; spoke++) {
             double angle = Math.toRadians(spin + spoke * (360.0D / spokes));
@@ -355,39 +406,106 @@ public final class SpellVisualGeometry {
             strokes.add(new Stroke(Style.FIELD,
                     List.of(new Point(cos * radius * 0.55D, 0.08D, sin * radius * 0.55D),
                             new Point(cos * radius * 0.96D, 0.08D, sin * radius * 0.96D)),
-                    List.of(0.03F, 0.012F), 0.7F, 0.55F));
+                    List.of(0.03F, 0.012F), 0.70F, 0.55F));
+        }
+        // Three outrushing pressure rings, phase-shifted so one is always moving.
+        for (int pulse = 0; pulse < 3; pulse++) {
+            double phase = frac(elapsedMillis / 1400.0D + pulse / 3.0D);
+            double pulseRadius = radius * (0.32D + 0.64D * phase);
+            double halfWidth = 0.020D * (1.0D - phase) + 0.006D;
+            strokes.add(ringAt(pulseRadius, 0.07D, 22, halfWidth, Style.RING,
+                    0.90F, (float) (0.55D * (1.0D - phase))));
+        }
+        // Counter-spinning wisps hug the inner ring like a rune crown.
+        int wisps = quality == Quality.REDUCED ? 4 : 8;
+        for (int wisp = 0; wisp < wisps; wisp++) {
+            double angle = -spin * 1.4D + wisp * (360.0D / wisps);
+            double radiusWisp = radius * (0.80D
+                    + 0.10D * Math.sin(Math.toRadians(spin * 3.0D + wisp * 45.0D)));
+            strokes.add(orbitChevron(angle, radiusWisp, 0.50D, 0.22D, 0.85F, 0.70F));
+        }
+        // Radial rune ticks rotate with the dial but never cross the jaw ring.
+        int ticks = quality == Quality.REDUCED ? 6 : 12;
+        for (int tick = 0; tick < ticks; tick++) {
+            double angle = Math.toRadians(spin * 1.1D + tick * (360.0D / ticks));
+            double cos = Math.cos(angle);
+            double sin = Math.sin(angle);
+            strokes.add(new Stroke(Style.LANE,
+                    List.of(new Point(cos * radius * 0.42D, 0.10D, sin * radius * 0.42D),
+                            new Point(cos * radius * 0.54D, 0.10D, sin * radius * 0.54D)),
+                    List.of(0.022F, 0.010F), 0.65F, 0.50F));
+        }
+        // Four short walls rise from the dial so the seal reads in 3D.
+        for (int blade = 0; blade < 4; blade++) {
+            double angle = Math.toRadians(spin * 0.7D + 90.0D + blade * 90.0D);
+            double cos = Math.cos(angle);
+            double sin = Math.sin(angle);
+            double base = radius * 0.88D;
+            double height = 1.25D + 0.45D * Math.sin(Math.toRadians(spin * 2.0D + blade * 70.0D));
+            strokes.add(new Stroke(Style.FIELD,
+                    List.of(new Point(cos * base, 0.08D, sin * base),
+                            new Point(cos * base, height, sin * base)),
+                    List.of(0.030F, 0.006F), 0.85F, 0.70F));
         }
         return strokes;
     }
 
-    private static List<Stroke> fangLine(double requested, Quality quality) {
-        double path = Double.isFinite(requested) && requested > 0
-                ? Math.max(1.5D, Math.min(4.5D, requested))
-                : FANG_LINE_PATH_BLOCKS;
-        List<Stroke> strokes = new ArrayList<>(FANG_LINE_TEETH + 1);
+    // ------------------------------------------------------------------
+    // FANG LINE: a travelling channel, three breathing fangs, side rakes
+    // and a forward-moving pulse.
+    // ------------------------------------------------------------------
+    private static List<Stroke> fangLine(long elapsedMillis, double requested, Quality quality) {
+        double path = clamp(requested > 0.0D ? requested : FANG_LINE_PATH_BLOCKS, 1.5D, 4.5D);
+        List<Stroke> strokes = new ArrayList<>(16);
         int samples = Math.max(3, quality.samples());
         List<Point> lane = new ArrayList<>(samples + 1);
         List<Float> widths = new ArrayList<>(samples + 1);
+        double flow = frac(elapsedMillis / 620.0D);
         for (int index = 0; index <= samples; index++) {
-            double x = 0.4D + path * index / (double) samples;
+            double t = index / (double) samples;
+            double x = 0.4D + path * t;
             lane.add(new Point(x, 0.05D, 0.0D));
-            widths.add(0.035F);
+            double swell = 0.030D + 0.020D * Math.abs(Math.sin(Math.PI * (t - flow)));
+            widths.add((float) swell);
         }
-        strokes.add(new Stroke(Style.LANE, lane, widths, 0.6F, 0.5F));
+        strokes.add(new Stroke(Style.LANE, lane, widths, 0.60F, 0.50F));
         for (int tooth = 0; tooth < FANG_LINE_TEETH; tooth++) {
             double x = 0.7D + tooth * (path / FANG_LINE_TEETH);
-            List<Point> jaw = List.of(new Point(x - 0.22D, 0.06D, -0.36D),
+            double open = 1.0D + 0.10D * Math.sin(Math.toRadians(elapsedMillis * 0.30D + tooth * 60.0D));
+            List<Point> jaw = List.of(new Point(x - 0.22D, 0.06D, -0.36D * open),
                     new Point(x + 0.30D, 0.10D, 0.0D),
-                    new Point(x - 0.22D, 0.06D, 0.36D));
+                    new Point(x - 0.22D, 0.06D, 0.36D * open));
             strokes.add(new Stroke(Style.JAW, jaw, List.of(0.05F, 0.085F, 0.05F), 1.0F, 0.92F));
+        }
+        double endX = 0.4D + path;
+        for (int side = -1; side <= 1; side += 2) {
+            strokes.add(new Stroke(Style.LANE,
+                    List.of(new Point(0.45D, 0.05D, side * 0.40D),
+                            new Point(endX, 0.05D, side * 0.55D)),
+                    List.of(0.020F, 0.008F), 0.55F, 0.42F));
+        }
+        // Two chevrons race down the lane; they are decoration only and stop
+        // exactly at the authored end of the path.
+        for (int pulse = 0; pulse < 2; pulse++) {
+            double t = frac(elapsedMillis / 780.0D + pulse * 0.5D);
+            double x = 0.4D + path * t;
+            strokes.add(new Stroke(Style.FIELD,
+                    List.of(new Point(x - 0.14D, 0.07D, -0.24D),
+                            new Point(x, 0.11D, 0.0D),
+                            new Point(x - 0.14D, 0.07D, 0.24D)),
+                    List.of(0.020F, 0.045F, 0.020F), 0.90F, 0.75F));
         }
         return strokes;
     }
 
-    private static List<Stroke> wardenSweep(Quality quality) {
+    // ------------------------------------------------------------------
+    // WARDEN SWEEP: the committed 5x4 box plus vertical edge curtains,
+    // rolling chevrons and forward-tumbling dust.
+    // ------------------------------------------------------------------
+    private static List<Stroke> wardenSweep(long elapsedMillis, Quality quality) {
         double forward = WARDEN_SWEEP_FORWARD;
         double halfWidth = WARDEN_SWEEP_WIDTH / 2.0D;
-        List<Stroke> strokes = new ArrayList<>(5);
+        List<Stroke> strokes = new ArrayList<>(16);
         strokes.add(new Stroke(Style.WEDGE,
                 List.of(new Point(0.6D, 0.06D, -halfWidth), new Point(forward, 0.06D, -halfWidth),
                         new Point(forward, 0.10D, halfWidth), new Point(0.6D, 0.06D, halfWidth),
@@ -404,37 +522,66 @@ public final class SpellVisualGeometry {
             widths.add(0.06F);
         }
         strokes.add(new Stroke(Style.WEDGE, crush, widths, 1.0F, 0.95F));
-        for (int chevron = 0; chevron < 3; chevron++) {
-            double x = 1.4D + chevron * 0.9D;
-            List<Point> line = List.of(new Point(x, 0.07D, -halfWidth * 0.7D),
-                    new Point(x + 0.35D, 0.07D, 0.0D),
-                    new Point(x, 0.07D, halfWidth * 0.7D));
-            strokes.add(new Stroke(Style.LANE, line, List.of(0.03F, 0.045F, 0.03F), 0.7F, 0.45F));
+        // Vertical curtains mark the exact lateral limits without widening them.
+        for (int side = -1; side <= 1; side += 2) {
+            double curtain = 1.9D + 0.5D * Math.sin(Math.toRadians(elapsedMillis * 0.18D + side * 40.0D));
+            strokes.add(new Stroke(Style.FIELD,
+                    List.of(new Point(forward, 0.10D, side * halfWidth),
+                            new Point(forward, curtain, side * halfWidth)),
+                    List.of(0.050F, 0.010F), 0.90F, 0.75F));
+        }
+        for (int chevron = 0; chevron < 4; chevron++) {
+            double x = 1.3D + chevron * 0.8D;
+            double wave = Math.sin(Math.toRadians(elapsedMillis * 0.22D + chevron * 55.0D));
+            // The tip stops at the authored 4.0-block contact edge: a decorative
+            // chevron may never draw past the committed sweep volume.
+            List<Point> line = List.of(new Point(x, 0.07D, -halfWidth * 0.72D),
+                    new Point(Math.min(forward, x + 0.30D), 0.07D + 0.02D * wave, 0.0D),
+                    new Point(x, 0.07D, halfWidth * 0.72D));
+            strokes.add(new Stroke(Style.LANE, line, List.of(0.03F, 0.045F, 0.03F), 0.70F, 0.45F));
+        }
+        strokes.add(new Stroke(Style.LANE,
+                List.of(new Point(0.6D, 0.07D, 0.0D), new Point(forward, 0.11D, 0.0D)),
+                List.of(0.02F, 0.01F), 0.65F, 0.50F));
+        int dust = quality == Quality.REDUCED ? 3 : 5;
+        for (int mote = 0; mote < dust; mote++) {
+            double t = frac(elapsedMillis / 900.0D + mote / (double) dust);
+            double x = 0.6D + (forward - 0.8D) * t;
+            double z = halfWidth * 0.82D * Math.sin(Math.PI * (mote / (double) dust));
+            double y = 0.10D + 0.55D * Math.sin(Math.PI * t);
+            strokes.add(new Stroke(Style.FIELD,
+                    List.of(new Point(x, y, z), new Point(Math.min(forward, x + 0.20D), y + 0.05D, z)),
+                    List.of(0.018F, 0.005F), 0.80F, 0.65F));
         }
         return strokes;
     }
 
+    // ------------------------------------------------------------------
+    // ECHO SPHERE: seven breathing latitude shells, six meridians, an inner
+    // lattice, orbiting motes and a vertical axis.
+    // ------------------------------------------------------------------
     private static List<Stroke> echoSphere(long elapsedMillis, double requested, Quality quality) {
-        double radius = Double.isFinite(requested) && requested > 0
-                ? Math.max(3.0D, Math.min(ECHO_SPHERE_RADIUS, requested))
-                : ECHO_SPHERE_RADIUS;
+        double radius = clamp(requested > 0.0D ? requested : ECHO_SPHERE_RADIUS,
+                3.0D, ECHO_SPHERE_RADIUS);
         double progress = Math.min(1.0D, (elapsedMillis % 2400L) / 2400.0D);
         double compression = 1.0D - 0.30D * progress;
         double effective = radius * compression;
         double centreY = radius * 0.55D;
-        List<Stroke> strokes = new ArrayList<>(9);
-        double[] offsets = {-4.8D, -2.4D, 0.0D, 2.4D, 4.8D};
-        int rings = quality == Quality.REDUCED ? 2 : offsets.length;
+        List<Stroke> strokes = new ArrayList<>(34);
+        double[] offsets = {-4.8D, -3.2D, -1.6D, 0.0D, 1.6D, 3.2D, 4.8D};
+        int rings = quality == Quality.REDUCED ? 3 : 7;
         for (int ring = 0; ring < rings; ring++) {
-            double y = Math.max(0.05D, centreY + offsets[ring] * compression);
+            int slot = rings == 3 ? (ring == 0 ? 1 : ring == 1 ? 3 : 5) : ring;
+            double y = Math.max(0.05D, centreY + offsets[slot] * compression);
             double dy = y - centreY;
             double horizontal = Math.sqrt(Math.max(0.25D, effective * effective - dy * dy));
-            strokes.add(ringAt(horizontal, y, 16, 0.045D, Style.SHELL, 0.9F, 0.75F));
+            strokes.add(ringAt(horizontal, y, 20, 0.045D, Style.SHELL, 0.90F, 0.75F));
         }
-        int meridians = quality == Quality.REDUCED ? 2 : 4;
+        int meridians = quality == Quality.REDUCED ? 2 : 6;
         int samples = Math.max(6, quality.samples());
+        double meridianSpin = Math.toRadians(elapsedMillis * 0.06D);
         for (int meridian = 0; meridian < meridians; meridian++) {
-            double angle = Math.PI * meridian / meridians;
+            double angle = Math.PI * meridian / meridians + meridianSpin;
             List<Point> arc = new ArrayList<>(samples + 1);
             List<Float> widths = new ArrayList<>(samples + 1);
             for (int index = 0; index <= samples; index++) {
@@ -443,48 +590,105 @@ public final class SpellVisualGeometry {
                 double y = Math.max(0.05D, centreY + Math.sin(phi) * effective);
                 double r = Math.cos(phi) * effective;
                 arc.add(new Point(Math.cos(angle) * r, y, Math.sin(angle) * r));
-                widths.add(0.04F);
+                widths.add(0.040F);
             }
             strokes.add(new Stroke(Style.SHELL, arc, widths, 0.85F, 0.65F));
+        }
+        // Inner tetrahedral lattice (decoration, strictly inside the shell).
+        double inner = effective * 0.52D;
+        for (int axis = 0; axis < 3; axis++) {
+            double angle = meridianSpin * 1.5D + axis * (Math.PI / 3.0D);
+            double cos = Math.cos(angle);
+            double sin = Math.sin(angle);
+            strokes.add(new Stroke(Style.LANE,
+                    List.of(new Point(-cos * inner, centreY - inner * 0.65D, -sin * inner),
+                            new Point(cos * inner, centreY + inner * 0.65D, sin * inner)),
+                    List.of(0.02F, 0.02F), 0.55F, 0.40F));
+        }
+        int motes = quality == Quality.REDUCED ? 3 : 6;
+        for (int mote = 0; mote < motes; mote++) {
+            double angle = meridianSpin * 2.0D + mote * (Math.PI * 2.0D / motes);
+            double lift = Math.sin(elapsedMillis * 0.0016D + mote * 1.7D) * 0.55D;
+            double r = effective * 0.92D;
+            strokes.add(orbitChevron(Math.toDegrees(angle), r,
+                    centreY + lift * effective * 0.5D, 0.30D, 0.95F, 0.80F));
+        }
+        strokes.add(new Stroke(Style.FIELD,
+                List.of(new Point(0.0D, Math.max(0.10D, centreY - effective), 0.0D),
+                        new Point(0.0D, centreY + effective, 0.0D)),
+                List.of(0.030F, 0.010F), 0.80F, 0.55F));
+        for (int pulse = 0; pulse < 2; pulse++) {
+            double phase = frac(elapsedMillis / 1200.0D + pulse * 0.5D);
+            strokes.add(ringAt(effective * (0.20D + 0.45D * phase), centreY + 0.02D, 16,
+                    0.018D, Style.RING, 0.70F, (float) (0.45D * (1.0D - phase))));
         }
         return strokes;
     }
 
-    private static List<Stroke> sculkTrace(long seed, double requested, Quality quality) {
-        double path = Double.isFinite(requested) && requested > 0
-                ? Math.max(1.5D, Math.min(5.0D, requested))
-                : 4.0D;
+    // ------------------------------------------------------------------
+    // SCULK TRACE: a seeded crawling vein with branching filaments and a
+    // locked jaw marker at the end.
+    // ------------------------------------------------------------------
+    private static List<Stroke> sculkTrace(long elapsedMillis, long seed, double requested,
+                                           Quality quality) {
+        double path = clamp(requested > 0.0D ? requested : 4.0D, 1.5D, 5.0D);
         int samples = Math.max(5, quality.samples() / 2 + 3);
         List<Point> trace = new ArrayList<>(samples + 1);
         List<Float> widths = new ArrayList<>(samples + 1);
+        double crawl = elapsedMillis * 0.0009D;
         for (int index = 0; index <= samples; index++) {
             double t = index / (double) samples;
             double jitter = (splitUnit(seed, index) - 0.5D) * 0.55D * Math.sin(Math.PI * t);
-            trace.add(new Point(0.4D + path * t, 0.06D, jitter));
+            double lift = 0.06D + 0.05D * Math.sin(2.0D * Math.PI * (t - crawl));
+            trace.add(new Point(0.4D + path * t, lift, jitter));
             widths.add(0.035F + 0.045F * (float) Math.sin(Math.PI * t));
         }
-        List<Stroke> strokes = new ArrayList<>(4);
-        strokes.add(new Stroke(Style.TRACE, trace, widths, 0.9F, 0.8F));
+        List<Stroke> strokes = new ArrayList<>(14);
+        strokes.add(new Stroke(Style.TRACE, trace, widths, 0.90F, 0.80F));
         double endX = 0.4D + path;
         strokes.add(new Stroke(Style.JAW, List.of(new Point(endX, 0.06D, -0.45D),
                 new Point(endX + 0.25D, 0.10D, 0.0D), new Point(endX, 0.06D, 0.45D)),
                 List.of(0.04F, 0.09F, 0.04F), 1.0F, 0.95F));
-        strokes.add(new Stroke(Style.LANE, List.of(new Point(endX, 0.06D, -0.6D),
-                new Point(endX, 0.06D, 0.6D)), List.of(0.03F, 0.03F), 0.6F, 0.5F));
+        strokes.add(new Stroke(Style.LANE, List.of(new Point(endX, 0.06D, -0.60D),
+                new Point(endX, 0.06D, 0.60D)), List.of(0.03F, 0.03F), 0.60F, 0.50F));
+        // Seeded side filaments branch off the main crawl; they stop short of
+        // the authored tip so the locked marker stays legible.
+        int branches = quality == Quality.REDUCED ? 2 : 4;
+        for (int branch = 0; branch < branches; branch++) {
+            double t = 0.25D + branch * (0.55D / branches);
+            double x = 0.4D + path * t;
+            double z = (splitUnit(seed, 20L + branch) - 0.5D) * 0.7D;
+            double reach = 0.35D + 0.30D * splitUnit(seed, 40L + branch);
+            strokes.add(new Stroke(Style.LANE,
+                    List.of(new Point(x, 0.06D, z),
+                            new Point(x + reach, 0.08D, z + reach * 0.6D)),
+                    List.of(0.020F, 0.005F), 0.70F, 0.55F));
+        }
+        for (int mote = 0; mote < 3; mote++) {
+            double t = frac(crawl * 2.0D + mote / 3.0D);
+            double x = 0.4D + path * t;
+            double z = (splitUnit(seed, 60L + mote) - 0.5D) * 0.4D;
+            strokes.add(new Stroke(Style.FIELD,
+                    List.of(new Point(x, 0.10D, z), new Point(x, 0.34D, z)),
+                    List.of(0.014F, 0.004F), 0.80F, 0.65F));
+        }
         return strokes;
     }
 
+    // ------------------------------------------------------------------
+    // GRAVITY: nine descending vortex columns, a depressed atmosphere,
+    // floating debris and a top and bottom capture ring.
+    // ------------------------------------------------------------------
     private static List<Stroke> gravity(long elapsedMillis, double requested, Quality quality) {
-        double radius = Double.isFinite(requested) && requested > 0
-                ? Math.max(4.0D, Math.min(maxReach(Spell.GRAVITY), requested))
-                : 8.0D;
-        double height = Math.max(10.0D, Math.min(18.0D, radius * 0.6D));
+        double radius = clamp(requested > 0.0D ? requested : 8.0D, 4.0D, maxReach(Spell.GRAVITY));
+        double height = clamp(radius * 0.6D, 10.0D, 18.0D);
         double progress = Math.min(1.0D, (elapsedMillis % 6000L) / 6000.0D);
         int columns = quality == Quality.REDUCED ? 3 : quality == Quality.BALANCED ? 5 : 9;
-        List<Stroke> strokes = new ArrayList<>(columns + 4);
+        List<Stroke> strokes = new ArrayList<>(columns + 16);
         int samples = Math.max(5, quality.samples() / 2 + 3);
         for (int column = 0; column < columns; column++) {
-            double angle = Math.PI * 2.0D * column / columns + 0.4D;
+            double baseAngle = Math.PI * 2.0D * column / columns + 0.4D
+                    + progress * 0.55D + column * 0.18D;
             double ring = radius * (column % 2 == 0 ? 0.55D : 0.85D);
             List<Point> line = new ArrayList<>(samples + 1);
             List<Float> widths = new ArrayList<>(samples + 1);
@@ -492,47 +696,72 @@ public final class SpellVisualGeometry {
                 double t = index / (double) samples;
                 double y = height * (1.0D - t);
                 double curl = ring * (1.0D - 0.45D * t) * (1.0D - 0.25D * progress);
-                line.add(new Point(Math.cos(angle) * curl, y, Math.sin(angle) * curl));
+                double twist = baseAngle + t * 1.5D;
+                line.add(new Point(Math.cos(twist) * curl, y, Math.sin(twist) * curl));
                 widths.add(0.035F + 0.03F * (float) t);
             }
-            strokes.add(new Stroke(Style.FIELD, line, widths, 0.75F, 0.6F));
+            strokes.add(new Stroke(Style.FIELD, line, widths, 0.75F, 0.60F));
         }
         int ringPoints = radius > 12.0D ? 32 : 20;
-        strokes.add(ringAt(radius, 0.08D, ringPoints, 0.05D, Style.RING, 0.9F, 0.7F));
-        strokes.add(ringAt(radius, height, ringPoints, 0.05D, Style.RING, 0.7F, 0.5F));
-        strokes.add(ringAt(radius * 0.5D, 0.09D, 14, 0.03D, Style.RING, 0.5F, 0.4F));
-        strokes.add(ringAt(radius * 0.25D, 0.10D, 10, 0.03D, Style.RING, 0.4F, 0.35F));
+        strokes.add(ringAt(radius, 0.08D, ringPoints, 0.05D, Style.RING, 0.90F, 0.70F));
+        strokes.add(ringAt(radius, height, ringPoints, 0.05D, Style.RING, 0.70F, 0.50F));
+        strokes.add(ringAt(radius * 0.5D, 0.09D, 14, 0.03D, Style.RING, 0.50F, 0.40F));
+        strokes.add(ringAt(radius * 0.25D, 0.10D, 10, 0.03D, Style.RING, 0.40F, 0.35F));
+        // Inner helix tightens as the field matures.
+        int helixSamples = Math.max(6, samples);
+        List<Point> helix = new ArrayList<>(helixSamples + 1);
+        List<Float> helixWidths = new ArrayList<>(helixSamples + 1);
+        double helixRadius = radius * 0.32D * (1.0D - 0.30D * progress);
+        for (int index = 0; index <= helixSamples; index++) {
+            double t = index / (double) helixSamples;
+            double angle = Math.PI * 2.0D * 1.8D * t + progress * Math.PI * 2.0D;
+            helix.add(new Point(Math.cos(angle) * helixRadius, height * (1.0D - t), Math.sin(angle) * helixRadius));
+            helixWidths.add(0.020F);
+        }
+        strokes.add(new Stroke(Style.FIELD, helix, helixWidths, 0.70F, 0.55F));
+        int debris = quality == Quality.REDUCED ? 4 : 8;
+        for (int mote = 0; mote < debris; mote++) {
+            double angle = Math.PI * 2.0D * mote / debris + progress * 3.0D;
+            double r = radius * 0.90D * (1.0D - 0.30D * progress)
+                    * (0.55D + 0.40D * splitUnit(mote, 1L));
+            double y = 0.4D + (height - 1.0D) * splitUnit(mote, 2L);
+            double size = 0.10D + 0.10D * splitUnit(mote, 3L);
+            strokes.add(orbitChevron(Math.toDegrees(angle), r, y, size, 0.80F, 0.65F));
+        }
         return strokes;
     }
 
-    private static List<Stroke> guardianFan(double requested, Quality quality) {
-        double radius = Double.isFinite(requested) && requested > 0
-                ? Math.max(3.5D, Math.min(5.5D, requested))
-                : GUARDIAN_FAN_RADIUS;
+    // ------------------------------------------------------------------
+    // GUARDIAN FAN: the committed cone, layered inner bands, edge walls,
+    // an outward ripple wave and scattered sparks.
+    // ------------------------------------------------------------------
+    private static List<Stroke> guardianFan(long elapsedMillis, double requested, Quality quality) {
+        double radius = clamp(requested > 0.0D ? requested : GUARDIAN_FAN_RADIUS, 3.5D, 5.5D);
         int samples = Math.max(6, quality.samples());
+        double ripple = Math.toRadians(elapsedMillis * 0.22D);
         List<Point> arc = new ArrayList<>(samples + 1);
         List<Float> widths = new ArrayList<>(samples + 1);
         for (int index = 0; index <= samples; index++) {
             double t = index / (double) samples;
             double angle = Math.toRadians(-GUARDIAN_FAN_HALF_ANGLE + 2.0D * GUARDIAN_FAN_HALF_ANGLE * t);
-            arc.add(new Point(Math.cos(angle) * radius, 0.08D + Math.sin(Math.PI * t) * 0.35D,
-                    Math.sin(angle) * radius));
+            double lift = 0.08D + Math.sin(Math.PI * t) * 0.35D
+                    + 0.10D * Math.sin(Math.PI * t) * Math.sin(ripple + t * Math.PI);
+            arc.add(new Point(Math.cos(angle) * radius, lift, Math.sin(angle) * radius));
             widths.add(0.05F + 0.03F * (float) Math.sin(Math.PI * t));
         }
-        List<Stroke> strokes = new ArrayList<>(4);
+        List<Stroke> strokes = new ArrayList<>(24);
         strokes.add(new Stroke(Style.WEDGE, arc, widths, 1.0F, 0.92F));
         double edge = Math.toRadians(GUARDIAN_FAN_HALF_ANGLE);
-        strokes.add(new Stroke(Style.WEDGE, List.of(new Point(0.7D, 0.06D, 0.0D),
-                new Point(Math.cos(edge) * radius, 0.08D, Math.sin(edge) * radius)),
-                List.of(0.05F, 0.04F), 0.8F, 0.6F));
-        strokes.add(new Stroke(Style.WEDGE, List.of(new Point(0.7D, 0.06D, 0.0D),
-                new Point(Math.cos(edge) * radius, 0.08D, -Math.sin(edge) * radius)),
-                List.of(0.05F, 0.04F), 0.8F, 0.6F));
-        strokes.add(ringAt(radius * 0.5D, 0.07D, 10, 0.03D, Style.LANE, 0.5F, 0.4F));
+        for (int side = -1; side <= 1; side += 2) {
+            strokes.add(new Stroke(Style.WEDGE, List.of(new Point(0.7D, 0.06D, 0.0D),
+                    new Point(Math.cos(edge) * radius, 0.08D, side * Math.sin(edge) * radius)),
+                    List.of(0.05F, 0.04F), 0.80F, 0.60F));
+        }
+        strokes.add(ringAt(radius * 0.5D, 0.07D, 10, 0.03D, Style.LANE, 0.50F, 0.40F));
         // Nested inner bands give the cone depth without ever reaching past the
         // committed fan radius, so the visible wedge still stops at 4.8 blocks.
-        for (int band = 1; band <= 3; band++) {
-            double shrink = 1.0D - band * 0.15D;
+        for (int band = 1; band <= 4; band++) {
+            double shrink = 1.0D - band * 0.13D;
             List<Point> inner = new ArrayList<>(samples + 1);
             List<Float> innerWidths = new ArrayList<>(samples + 1);
             for (int index = 0; index <= samples; index++) {
@@ -540,14 +769,49 @@ public final class SpellVisualGeometry {
                 double angle = Math.toRadians(-GUARDIAN_FAN_HALF_ANGLE + 2.0D * GUARDIAN_FAN_HALF_ANGLE * t);
                 inner.add(new Point(Math.cos(angle) * radius * shrink, 0.07D,
                         Math.sin(angle) * radius * shrink));
-                innerWidths.add(0.02F);
+                innerWidths.add(0.020F);
             }
-            strokes.add(new Stroke(Style.WEDGE, inner, innerWidths, 0.6F, 0.35F));
+            strokes.add(new Stroke(Style.WEDGE, inner, innerWidths, 0.60F, 0.35F));
+        }
+        // Vertical edge walls trace the two outer rays upward.
+        for (int side = -1; side <= 1; side += 2) {
+            double wall = 1.7D + 0.5D * Math.sin(ripple * 1.3D + side * 0.7D);
+            strokes.add(new Stroke(Style.FIELD,
+                    List.of(new Point(Math.cos(edge) * radius, 0.08D, side * Math.sin(edge) * radius),
+                            new Point(Math.cos(edge) * radius, wall, side * Math.sin(edge) * radius)),
+                    List.of(0.04F, 0.008F), 0.85F, 0.65F));
+        }
+        // Ripple wave travels outward inside the cone; it never exceeds it.
+        for (int wave = 0; wave < 3; wave++) {
+            double phase = frac(elapsedMillis / 1200.0D + wave / 3.0D);
+            double shrink = 0.20D + 0.78D * phase;
+            List<Point> rippleArc = new ArrayList<>(samples + 1);
+            List<Float> rippleWidths = new ArrayList<>(samples + 1);
+            for (int index = 0; index <= samples; index++) {
+                double t = index / (double) samples;
+                double angle = Math.toRadians(-GUARDIAN_FAN_HALF_ANGLE + 2.0D * GUARDIAN_FAN_HALF_ANGLE * t);
+                rippleArc.add(new Point(Math.cos(angle) * radius * shrink, 0.09D,
+                        Math.sin(angle) * radius * shrink));
+                rippleWidths.add(0.014F);
+            }
+            strokes.add(new Stroke(Style.FIELD, rippleArc, rippleWidths, 0.80F,
+                    (float) (0.50D * (1.0D - phase))));
+        }
+        int sparks = quality == Quality.REDUCED ? 3 : 6;
+        for (int spark = 0; spark < sparks; spark++) {
+            double t = (spark + 0.5D) / sparks;
+            double angle = Math.toRadians(-GUARDIAN_FAN_HALF_ANGLE + 2.0D * GUARDIAN_FAN_HALF_ANGLE * t);
+            double r = radius * (0.55D + 0.30D * splitUnit(spark, 7L));
+            strokes.add(orbitChevron(Math.toDegrees(angle), r, 0.14D, 0.18D, 0.90F, 0.70F));
         }
         return strokes;
     }
 
-    private static List<Stroke> guardianHeavy(Quality quality) {
+    // ------------------------------------------------------------------
+    // GUARDIAN HEAVY: the short wedge, a raised striker arm and impact
+    // rings that race outward along the ground.
+    // ------------------------------------------------------------------
+    private static List<Stroke> guardianHeavy(long elapsedMillis, Quality quality) {
         double forward = GUARDIAN_HEAVY_FORWARD;
         double half = GUARDIAN_HEAVY_HALF_WIDTH;
         int samples = Math.max(4, quality.samples() / 2 + 2);
@@ -563,38 +827,68 @@ public final class SpellVisualGeometry {
         }
         wedge.add(new Point(0.5D, 0.06D, 0.0D));
         widths.add(0.05F);
-        List<Stroke> strokes = new ArrayList<>(3);
+        List<Stroke> strokes = new ArrayList<>(10);
         strokes.add(new Stroke(Style.WEDGE, wedge, widths, 1.0F, 0.94F));
+        double lift = 0.9D + 0.35D * Math.sin(Math.toRadians(elapsedMillis * 0.25D));
         strokes.add(new Stroke(Style.ARM, List.of(new Point(0.2D, 1.4D, -half * 0.4D),
-                new Point(forward * 0.72D, 0.9D, half * 0.35D),
+                new Point(forward * 0.72D, lift, half * 0.35D),
                 new Point(forward, 0.25D, half * 0.2D)),
-                List.of(0.10F, 0.08F, 0.05F), 1.0F, 0.9F));
+                List.of(0.10F, 0.08F, 0.05F), 1.0F, 0.90F));
+        for (int side = -1; side <= 1; side += 2) {
+            strokes.add(new Stroke(Style.LANE,
+                    List.of(new Point(0.6D, 0.07D, side * 0.10D),
+                            new Point(forward * 0.92D, 0.09D, side * half * 0.55D)),
+                    List.of(0.018F, 0.006F), 0.65F, 0.48F));
+        }
+        for (int ring = 0; ring < 3; ring++) {
+            double phase = frac(elapsedMillis / 780.0D + ring / 3.0D);
+            double r = forward * (0.25D + 0.62D * phase);
+            strokes.add(ringAt(r, 0.08D, 18, 0.02D, Style.FIELD, 0.85F,
+                    (float) (0.45D * (1.0D - phase))));
+        }
         return strokes;
     }
 
+    // ------------------------------------------------------------------
+    // SEPARATION: a planted pressure ring that expands, with secondary
+    // rings, radial ticks and sparks riding the wave.
+    // ------------------------------------------------------------------
     private static List<Stroke> separation(long elapsedMillis, Quality quality) {
         double radius = SEPARATION_RADIUS;
         double progress = Math.min(1.0D, (elapsedMillis % 1600L) / 1600.0D);
         double expanding = radius * (0.55D + 0.45D * progress);
-        List<Stroke> strokes = new ArrayList<>(2 + 12);
+        List<Stroke> strokes = new ArrayList<>(26);
         strokes.add(ringAt(expanding, 0.08D, 18, 0.05D, Style.RING, 1.0F, 0.85F));
-        strokes.add(ringAt(radius * 0.4D, 0.09D, 10, 0.03D, Style.RING, 0.6F, 0.45F));
+        strokes.add(ringAt(radius * 0.4D, 0.09D, 10, 0.03D, Style.RING, 0.60F, 0.45F));
+        strokes.add(ringAt(expanding * 0.55D, 0.07D, 14, 0.02D, Style.RING, 0.55F, 0.35F));
+        strokes.add(ringAt(expanding * 0.25D, 0.07D, 10, 0.02D, Style.RING, 0.45F, 0.28F));
         int ticks = quality == Quality.REDUCED ? 8 : 12;
         for (int tick = 0; tick < ticks; tick++) {
-            double angle = Math.PI * 2.0D * tick / ticks;
+            double angle = Math.PI * 2.0D * tick / ticks + progress * 0.6D;
             double cos = Math.cos(angle);
             double sin = Math.sin(angle);
             strokes.add(new Stroke(Style.FIELD, List.of(
                     new Point(cos * expanding, 0.07D, sin * expanding),
                     new Point(cos * (expanding + 0.75D), 0.07D, sin * (expanding + 0.75D))),
-                    List.of(0.035F, 0.02F), 0.8F, 0.7F));
+                    List.of(0.035F, 0.020F), 0.80F, 0.70F));
+        }
+        int sparks = quality == Quality.REDUCED ? 4 : 8;
+        for (int spark = 0; spark < sparks; spark++) {
+            double angle = Math.PI * 2.0D * spark / sparks + Math.PI / sparks;
+            double cos = Math.cos(angle);
+            double sin = Math.sin(angle);
+            double inner = expanding * 0.92D;
+            strokes.add(new Stroke(Style.FIELD,
+                    List.of(new Point(cos * inner, 0.10D, sin * inner),
+                            new Point(cos * (inner + 0.28D), 0.10D, sin * (inner + 0.28D))),
+                    List.of(0.018F, 0.004F), 0.90F, 0.75F));
         }
         return strokes;
     }
 
     private static Stroke rotatedRing(double radius, double y, int points, double halfWidth,
                                       Style style, float brightness, float alpha, double rotationDegrees) {
-        int count = Math.max(6, Math.min(MAX_POINTS_PER_STROKE - 1, points));
+        int count = Math.max(3, Math.min(MAX_POINTS_PER_STROKE - 1, points));
         List<Point> ring = new ArrayList<>(count + 1);
         List<Float> widths = new ArrayList<>(count + 1);
         double offset = Math.toRadians(rotationDegrees);
@@ -604,6 +898,26 @@ public final class SpellVisualGeometry {
             widths.add((float) halfWidth);
         }
         return new Stroke(style, ring, widths, brightness, alpha);
+    }
+
+    /**
+     * A short angled chevron orbiting the cast origin. It is decoration: the
+     * caller keeps {@code radius + size} inside the spell's authored bound, so
+     * a mote can never pretend to be a hit volume.
+     */
+    private static Stroke orbitChevron(double angleDegrees, double radius, double y, double size,
+                                       float brightness, float alpha) {
+        double angle = Math.toRadians(angleDegrees);
+        double cos = Math.cos(angle);
+        double sin = Math.sin(angle);
+        double tangentX = -sin;
+        double tangentZ = cos;
+        List<Point> points = List.of(
+                new Point(cos * radius + tangentX * size, y - 0.05D, sin * radius + tangentZ * size),
+                new Point(cos * radius, y + 0.04D, sin * radius),
+                new Point(cos * radius - tangentX * size, y - 0.05D, sin * radius - tangentZ * size));
+        return new Stroke(Style.LANE, points, List.of(0.030F, 0.050F, 0.030F),
+                brightness, alpha);
     }
 
     /**
@@ -661,7 +975,23 @@ public final class SpellVisualGeometry {
             arc.add(new Point(Math.cos(angle) * radius, 0.05D, Math.sin(angle) * radius));
             widths.add((float) halfWidth);
         }
-        return new Stroke(Style.LANE, arc, widths, 0.6F, 0.55F);
+        return new Stroke(Style.LANE, arc, widths, 0.60F, 0.55F);
+    }
+
+    private static Point scaleRadial(Point point, double factor) {
+        return new Point(point.x() * factor, point.y(), point.z() * factor);
+    }
+
+    private static double spinDegrees(long elapsedMillis, double degreesPerSecond, double phaseDegrees) {
+        return (elapsedMillis / 1000.0D) * degreesPerSecond + phaseDegrees;
+    }
+
+    private static double frac(double value) {
+        return value - Math.floor(value);
+    }
+
+    private static double clamp(double value, double minimum, double maximum) {
+        return Math.max(minimum, Math.min(maximum, value));
     }
 
     /** Hard-bound the mesh so no cue can request an unbounded submission. */

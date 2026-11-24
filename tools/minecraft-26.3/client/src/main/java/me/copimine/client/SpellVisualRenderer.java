@@ -17,6 +17,10 @@ import java.util.List;
  * whole rotating arm / jaw / shell geometry locally and never mutates state.
  * The server remains the only owner of hitboxes, damage, targets and cleanup;
  * this renderer only disappears when the cue disappears.</p>
+ *
+ * <p>Each ribbon samples the authored arc texture across its width (bright core,
+ * dark feathered edges) and runs a travelling brightness wave along its length,
+ * so the mesh reads as flowing energy instead of a static decal.</p>
  */
 public final class SpellVisualRenderer {
 
@@ -94,21 +98,37 @@ public final class SpellVisualRenderer {
         }
         int base = beam.color() & 0xFFFFFF;
         PoseStack.Pose pose = matrices.last();
+        // One global phase makes the wave travel along every stroke in unison;
+        // the style offset keeps neighbouring families from pulsing as clones.
+        double flowPhase = Math.toRadians(elapsed * 0.42D);
         for (SpellVisualGeometry.Stroke stroke : strokes) {
             int tint = shade(base, stroke.brightness());
             int alpha = Math.max(0, Math.min(255, Math.round(255.0F * stroke.alpha() * fade)));
             if (alpha == 0) {
                 continue;
             }
-            int argb = (alpha << 24) | tint;
+            double stylePhase = flowPhase - stroke.style().ordinal() * 0.9D;
             List<SpellVisualGeometry.Point> points = stroke.points();
             for (int index = 0; index < points.size() - 1; index++) {
                 Vec3 from = world(beam.start(), dirX, dirZ, rightX, rightZ, points.get(index));
                 Vec3 to = world(beam.start(), dirX, dirZ, rightX, rightZ, points.get(index + 1));
+                float pulseFrom = pulse(index, stylePhase);
+                float pulseTo = pulse(index + 1, stylePhase);
+                int argbFrom = (scaleAlpha(alpha, pulseFrom) << 24) | tint;
+                int argbTo = (scaleAlpha(alpha, pulseTo) << 24) | tint;
                 emit(buffer, pose, from, to, stroke.halfWidths().get(index),
-                        stroke.halfWidths().get(index + 1), argb);
+                        stroke.halfWidths().get(index + 1), argbFrom, argbTo);
             }
         }
+    }
+
+    private static float pulse(int vertexIndex, double phase) {
+        return (float) (0.80D + 0.20D * Math.sin(vertexIndex * 0.85D - phase));
+    }
+
+    private static int scaleAlpha(int alpha, float pulse) {
+        int scaled = Math.round(alpha * Math.max(0.0F, Math.min(1.0F, pulse)));
+        return Math.max(0, Math.min(255, scaled));
     }
 
     private static Vec3 world(Vec3 origin, double dirX, double dirZ,
@@ -121,7 +141,7 @@ public final class SpellVisualRenderer {
 
     /** One tapered, double-sided emissive ribbon segment. */
     private static void emit(VertexConsumer buffer, PoseStack.Pose pose, Vec3 from, Vec3 to,
-                             float halfWidthFrom, float halfWidthTo, int argb) {
+                             float halfWidthFrom, float halfWidthTo, int argbFrom, int argbTo) {
         Vec3 delta = to.subtract(from);
         if (delta.lengthSqr() < 1.0E-8D) {
             return;
@@ -142,16 +162,21 @@ public final class SpellVisualRenderer {
         Vec3 aRight = from.add(side.scale(wa));
         Vec3 bRight = to.add(side.scale(wb));
         Vec3 bLeft = to.subtract(side.scale(wb));
-        quad(buffer, pose, aLeft, aRight, bRight, bLeft, normal, argb);
-        quad(buffer, pose, bLeft, bRight, aRight, aLeft, normal.scale(-1.0D), argb);
+        quad(buffer, pose, aLeft, aRight, bRight, bLeft, normal, argbFrom, argbTo);
+        quad(buffer, pose, bLeft, bRight, aRight, aLeft, normal.scale(-1.0D), argbTo, argbFrom);
     }
 
+    /**
+     * Emit a double-sided quad whose {@code u} runs along the stroke length and
+     * {@code v} spans the ribbon width. The authored texture is a bright core
+     * band with feathered edges, so this mapping draws a clean glowing ribbon.
+     */
     private static void quad(VertexConsumer buffer, PoseStack.Pose pose, Vec3 a, Vec3 b,
-                             Vec3 c, Vec3 d, Vec3 normal, int argb) {
-        vertex(buffer, pose, a, 0.0F, 1.0F, normal, argb);
-        vertex(buffer, pose, b, 1.0F, 1.0F, normal, argb);
-        vertex(buffer, pose, c, 1.0F, 0.0F, normal, argb);
-        vertex(buffer, pose, d, 0.0F, 0.0F, normal, argb);
+                             Vec3 c, Vec3 d, Vec3 normal, int argbStart, int argbEnd) {
+        vertex(buffer, pose, a, 0.02F, 0.02F, normal, argbStart);
+        vertex(buffer, pose, b, 0.02F, 0.98F, normal, argbStart);
+        vertex(buffer, pose, c, 0.98F, 0.98F, normal, argbEnd);
+        vertex(buffer, pose, d, 0.98F, 0.02F, normal, argbEnd);
     }
 
     private static void vertex(VertexConsumer buffer, PoseStack.Pose pose, Vec3 point,

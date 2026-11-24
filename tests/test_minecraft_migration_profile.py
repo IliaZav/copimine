@@ -269,10 +269,17 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # animated radial burst, a counter-spinning Circle sigil with ley-spokes, the
     # five-ring Echo shell and layered Guardian fan bands); repinned from a clean
     # `gradle test jar` on the pinned JDK, reproduced byte-for-byte twice.
-    assert artifact['size'] == 30_418_805
+    # 24-November final animation pass: every family is now rebuilt from the cast
+    # clock with continuous secondary motion (rippling Crown arms, breathing
+    # fangs, phase-shifted pressure rings, orbiting chevrons, a crawling sculk
+    # vein, a tightening gravity helix, a travelling guardian ripple and an
+    # expanding separation wave), and the renderer samples the authored arc
+    # texture across the ribbon width with a travelling brightness wave. The pin
+    # is again from two clean `gradle test jar` runs that agreed byte for byte.
+    assert artifact['size'] == 30_422_528
     assert artifact['sha512'] == (
-        'd2282e7045ddc152fd02f7ab70173e6cc1d173bb77e5a5a7bd86be56b3560ec0'
-        '9ff2f4e82c385b3ab69c2f23f675f750bd687128ad99fed753d0d05d8a422977'
+        '3873f770bd137729fecc392bdf16d6ac092172a3328563371e874c45f6f09a0c'
+        '151de4196c998de2fe6d29425cb31a2200a6105d94d2d70fc1fe35303841d1c3'
     )
 
 

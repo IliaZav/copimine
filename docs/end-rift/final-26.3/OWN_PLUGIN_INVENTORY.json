@@ -114,13 +114,14 @@
       "database": "No direct JDBC; dungeon definitions, gates, rooms and audit trail live in flat-file journals owned by the plugin data directory.",
       "tests": [
         "tests/test_dungeon_command.py",
+        "tests/test_dungeon_controllers.py",
         "tests/test_dungeon_domain.py",
         "tests/test_dungeon_store.py",
         "tests/dungeon_probe.py"
       ],
       "installedJar": "local-runtime/end-rift-server-26.3/plugins/CopiMineDungeon.jar",
-      "candidateSha256": "998f3c2e34c29d64ccdd3b7606c3ac7a8ad008a5f00fb95964acc2c0d36a9012",
-      "sha256": "998f3c2e34c29d64ccdd3b7606c3ac7a8ad008a5f00fb95964acc2c0d36a9012",
+      "candidateSha256": "2c1a65ecad515902ed5e094e9f28156bbc04b9ab0a7d04b4b1e06ef49d656d8e",
+      "sha256": "2c1a65ecad515902ed5e094e9f28156bbc04b9ab0a7d04b4b1e06ef49d656d8e",
       "sourceBuild": "PASS",
       "unitContract": "PASS",
       "realServerEnable": "BLOCKED",

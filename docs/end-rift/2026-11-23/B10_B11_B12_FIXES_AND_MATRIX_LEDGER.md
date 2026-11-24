@@ -717,3 +717,36 @@ a Kagune cast indistinguishable from a rift bolt, a rock geyser or an ambush.
   three bodies read apart in-game from four angles - and the spec's screenshot
   distinction - is `NATIVE_BLOCKED` here: no GUI client, no running Paper, no
   signed V4 client. No damage, targeting, guard-slot or summon semantics changed.
+
+### V6 OV4.10 - the room and gate controllers get bounded pure cores
+
+The V4 decomposition (V6 master §OV4.10) names `DungeonRoomController` and
+`PhysicalGateController`. Only their data model and state machines existed: with
+no mask bound, no cross-gate overlap test and no per-room live cap, the door
+geometry and the wave population were not provable without a running server.
+
+- **`PhysicalGatePolicy`** (`copimine-dungeon/.../domain`) owns the deterministic,
+  Bukkit-free part of the gate contract: the exact inclusive door mask
+  (fail-closed above 4096 blocks), the cross-gate overlap test plus the conflict
+  listing (same world, no self-conflict), the per-style animation id
+  (`gate.<token>`), the public/secret classification, and the ordered source
+  snapshot the controller restores verbatim. An occupied doorway is reported so
+  closure defers to `BLOCKED_BY_ENTITY` instead of entombing a player.
+- **`RoomWaveSchedulePolicy`** plans a room's waves as a pure function of the
+  room and the eligible roster: fixed / per-player / adaptive scaling, a hard
+  live cap (128; an unset field means "use the ceiling", never "unbounded"),
+  clamped per-wave counts flagged `truncated`, and cumulative wave start ticks.
+  A replayed or simultaneous activation computes exactly the same plan instead
+  of standing up a second controller generation.
+- **Tests**: `tests/test_dungeon_controllers.py` compiles and runs the shipped
+  domain classes off Bukkit: exact/bounded masks, overlap pairs, six templates
+  with six animation ids and exactly one secret, occupied-doorway deferral, and
+  the bounded/deterministic wave plan (including the live-cap clamp helpers).
+- **Re-pin**: the source change rebuilds `CopiMineDungeon-26.3.jar`, so the
+  migration lock candidate, `OWN_PLUGIN_INVENTORY.json/.md` and the local 26.3
+  runtime receipt move together; the displaced `998f3c2e…` is prepended to
+  `candidate.replaceSha256` (newest first) per the documented convention.
+- **Status**: `SOURCE` + `AUTO`. Whether the six doors look distinct in-game
+  (G01-G09), the six templates' real open/close timing and the live wave
+  population are `NATIVE_BLOCKED` here: no GUI client, no running Paper, no
+  signed V4 client. End Rift's own seven-wave owner is untouched.

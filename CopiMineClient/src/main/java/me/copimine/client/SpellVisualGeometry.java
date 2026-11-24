@@ -36,7 +36,9 @@ public final class SpellVisualGeometry {
         GRAVITY("gravity"),
         GUARDIAN_FAN("fan"),
         GUARDIAN_HEAVY("heavy"),
-        SEPARATION("separation");
+        SEPARATION("separation"),
+        // N23-P1-05: the signature chest beam's own full-length cross-section.
+        BEAM("beam");
 
         private final String token;
 
@@ -135,6 +137,17 @@ public final class SpellVisualGeometry {
     public static final double GUARDIAN_HEAVY_HALF_WIDTH = 2.4D;
     public static final double SEPARATION_RADIUS = 4.8D;
 
+    // N23-P1-05: the chest beam is the signature ultimate. The server damages a
+    // real capsule of radius ChestBeamPolicy.BEAM_RADIUS either side of the
+    // locked lane, up to ChestBeamPolicy.BEAM_RANGE long. The authored visual
+    // must read as a substantial shaft that HUGS that exact capsule from the
+    // inside, so the outside of the drawn silhouette never promises more than
+    // the hit volume and never reads as a hairline narrower than the damage.
+    public static final double BEAM_RADIUS = 1.7D;
+    public static final double BEAM_VISUAL_RADIUS = 1.62D;
+    public static final double BEAM_MIN_LENGTH = 2.0D;
+    public static final double BEAM_MAX_LENGTH = 26.0D;
+
     /** Prefix of the compact authored-cast cue carried by the beam transport. */
     public static final String CUE_PREFIX = "v51-";
 
@@ -198,9 +211,12 @@ public final class SpellVisualGeometry {
     public static final int MAX_SEGMENTS = 1024;
     public static final double MAX_REACH_BLOCKS = 10.5D;
 
-    /** Per-spell footprint bound; only the arena-wide gravity field exceeds the local reach. */
+    /** Per-spell footprint bound: the arena gravity field and the 26-block beam exceed the local reach. */
     public static double maxReach(Spell spell) {
-        return spell == Spell.GRAVITY ? 48.0D : MAX_REACH_BLOCKS;
+        if (spell == Spell.GRAVITY) {
+            return 48.0D;
+        }
+        return spell == Spell.BEAM ? BEAM_MAX_LENGTH + 1.0D : MAX_REACH_BLOCKS;
     }
 
     private SpellVisualGeometry() {
@@ -234,6 +250,7 @@ public final class SpellVisualGeometry {
             case GUARDIAN_FAN -> guardianFan(elapsed, reach, tier);
             case GUARDIAN_HEAVY -> guardianHeavy(elapsed, tier);
             case SEPARATION -> separation(elapsed, tier);
+            case BEAM -> beam(elapsed, seed, reach, tier);
         };
         return bounded(strokes, maxReach(spell));
     }
@@ -884,6 +901,151 @@ public final class SpellVisualGeometry {
                     List.of(0.018F, 0.004F), 0.90F, 0.75F));
         }
         return strokes;
+    }
+
+    // ------------------------------------------------------------------
+    // BEAM (N23-P1-05): the signature chest beam's own full-length,
+    // layered cross-section. A stack of horizontal chord ribbons fills a
+    // circular tube; the core is bright, the outer wake is translucent and
+    // hugs the real damage capsule from inside. Two counter-rotating inner
+    // helices, cross-section hoops, a flared muzzle plate with concentric
+    // opening rings, seeded forged side branches and an expanding tip
+    // detonation give it depth from every camera angle.
+    // ------------------------------------------------------------------
+    private static List<Stroke> beam(long elapsedMillis, long seed, double requested,
+                                     Quality quality) {
+        double length = clamp(requested > 0.0D ? requested : BEAM_MAX_LENGTH,
+                BEAM_MIN_LENGTH, BEAM_MAX_LENGTH);
+        int samples = Math.max(6, quality.samples());
+        double spin = spinDegrees(elapsedMillis, 9.0D, splitUnit(seed, 3L) * 360.0D);
+        List<Stroke> strokes = new ArrayList<>(48);
+
+        // Energized broad core and translucent outer wake, both built from the
+        // same chord stack so the visible shaft is a genuine cross-section.
+        strokes.addAll(chordSheets(length, samples, 0.52D, 4, Style.ARM, 1.0F, 0.94F));
+        strokes.addAll(chordSheets(length, samples, BEAM_VISUAL_RADIUS * 0.62D, 6,
+                Style.SHELL, 0.70F, 0.42F));
+        strokes.addAll(chordSheets(length, samples, BEAM_VISUAL_RADIUS, 9,
+                Style.SHELL, 0.58F, 0.30F));
+
+        // Two counter-rotating inner helices read the flow of energy along the
+        // shaft; they stay strictly inside the core.
+        int helixSamples = Math.max(8, samples * 2);
+        int helixTurns = Math.max(1, (int) Math.round(length / 6.0D));
+        for (int direction = -1; direction <= 1; direction += 2) {
+            List<Point> helix = new ArrayList<>(helixSamples + 1);
+            List<Float> helixWidths = new ArrayList<>(helixSamples + 1);
+            for (int index = 0; index <= helixSamples; index++) {
+                double t = index / (double) helixSamples;
+                double angle = Math.toRadians(spin * direction)
+                        + direction * Math.PI * 2.0D * helixTurns * t;
+                double r = 0.95D * (0.55D + 0.45D * t);
+                helix.add(new Point(length * t, Math.cos(angle) * r, Math.sin(angle) * r));
+                helixWidths.add(0.030F);
+            }
+            strokes.add(new Stroke(Style.FIELD, helix, helixWidths, 0.95F, 0.74F));
+        }
+
+        // Cross-section hoops make the tube legible as a cylinder from the side.
+        int hoops = quality == Quality.REDUCED ? 2 : 4;
+        for (int hoop = 0; hoop < hoops; hoop++) {
+            double station = hoops == 2 ? (hoop == 0 ? 0.32D : 0.72D)
+                    : 0.10D + 0.78D * hoop / (hoops - 1.0D);
+            strokes.add(axisRing(length * station, BEAM_VISUAL_RADIUS * 0.94D, 18, 0.030D,
+                    Style.RING, 0.78F, 0.50F, spin * 0.5D + hoop * 30.0D));
+        }
+
+        // Flared muzzle plate: a short cone plus concentric opening rings at the
+        // core, so the shaft is visibly fired from an opened socket.
+        int collarSamples = Math.max(4, samples / 2);
+        int collarSheets = quality == Quality.REDUCED ? 3 : 5;
+        for (int sheet = 0; sheet < collarSheets; sheet++) {
+            double y = collarSheets == 1 ? 0.0D
+                    : -0.9D + 1.8D * sheet / (collarSheets - 1.0D);
+            double shell = Math.sqrt(Math.max(0.02D, 1.0D - (y * y) / (1.30D * 1.30D)));
+            List<Point> collar = new ArrayList<>(collarSamples + 1);
+            List<Float> collarWidths = new ArrayList<>(collarSamples + 1);
+            for (int index = 0; index <= collarSamples; index++) {
+                double t = index / (double) collarSamples;
+                collar.add(new Point(0.05D + 0.80D * t, y, 0.0D));
+                collarWidths.add((float) ((0.35D + 0.85D * t) * shell));
+            }
+            strokes.add(new Stroke(Style.WEDGE, collar, collarWidths, 1.0F, 0.85F));
+        }
+        for (double plate : new double[]{0.38D, 0.82D, 1.26D, 1.56D}) {
+            strokes.add(axisRing(0.06D, plate, 16, 0.032D, Style.RING, 1.0F, 0.72F, spin * 0.2D));
+        }
+
+        // Seeded forged side branches crack off the shell, always inside it.
+        int branches = quality == Quality.REDUCED ? 3 : 6;
+        for (int branch = 0; branch < branches; branch++) {
+            double t = 0.34D + 0.52D * (branch / (double) Math.max(1, branches - 1));
+            double angle = Math.toRadians(spin * 0.6D + branch * (360.0D / branches));
+            double startX = length * t;
+            double inner = BEAM_VISUAL_RADIUS * 0.34D;
+            double outer = BEAM_VISUAL_RADIUS * 0.94D;
+            strokes.add(new Stroke(Style.JAW, List.of(
+                    new Point(startX, Math.cos(angle) * inner, Math.sin(angle) * inner),
+                    new Point(startX + length * 0.05D, Math.cos(angle) * outer,
+                            Math.sin(angle) * outer),
+                    new Point(startX + length * 0.10D, Math.cos(angle) * outer * 0.82D,
+                            Math.sin(angle) * outer * 0.82D)),
+                    List.of(0.050F, 0.034F, 0.012F), 1.0F, 0.90F));
+        }
+
+        // Expanding tip detonation plus a bright contact lip at the real end.
+        for (int ring = 0; ring < 3; ring++) {
+            double phase = frac(elapsedMillis / 640.0D + ring / 3.0D);
+            strokes.add(axisRing(length, BEAM_VISUAL_RADIUS * (0.30D + 0.66D * phase), 16, 0.028D,
+                    Style.RING, 0.95F, (float) (0.55D * (1.0D - phase)), spin + ring * 40.0D));
+        }
+        strokes.add(axisRing(length, BEAM_VISUAL_RADIUS, 22, 0.048D, Style.RING, 1.0F, 0.85F, 0.0D));
+        return strokes;
+    }
+
+    /**
+     * Build a tube cross-section as a stack of horizontal chord ribbons. A
+     * ribbon along local {@code x} spans local {@code z}; the half-width of a
+     * sheet at height {@code y} is the circle chord at that height, so the
+     * stacked ribbons fill a genuine circular shaft and the widest sheet sits
+     * exactly at the requested radius.
+     */
+    private static List<Stroke> chordSheets(double length, int samples, double radius,
+                                            int sheets, Style style, float brightness,
+                                            float alpha) {
+        int count = Math.max(1, sheets);
+        List<Stroke> result = new ArrayList<>(count);
+        for (int sheet = 0; sheet < count; sheet++) {
+            double y = count == 1 ? 0.0D : -radius + 2.0D * radius * sheet / (count - 1.0D);
+            double chord = Math.max(0.04D, Math.sqrt(Math.max(0.0D, radius * radius - y * y)));
+            List<Point> line = new ArrayList<>(samples + 1);
+            List<Float> widths = new ArrayList<>(samples + 1);
+            for (int index = 0; index <= samples; index++) {
+                double t = index / (double) samples;
+                line.add(new Point(length * t, y, 0.0D));
+                widths.add((float) chord);
+            }
+            result.add(new Stroke(style, line, widths, brightness, alpha));
+        }
+        return result;
+    }
+
+    /**
+     * A ring in the plane perpendicular to a beam's local {@code x} axis: the
+     * cross-section marker at one station along the shaft.
+     */
+    private static Stroke axisRing(double x, double radius, int points, double halfWidth,
+                                   Style style, float brightness, float alpha, double phaseDegrees) {
+        int count = Math.max(6, Math.min(MAX_POINTS_PER_STROKE - 1, points));
+        List<Point> ring = new ArrayList<>(count + 1);
+        List<Float> widths = new ArrayList<>(count + 1);
+        double offset = Math.toRadians(phaseDegrees);
+        for (int index = 0; index <= count; index++) {
+            double angle = offset + Math.PI * 2.0D * index / count;
+            ring.add(new Point(x, Math.cos(angle) * radius, Math.sin(angle) * radius));
+            widths.add((float) halfWidth);
+        }
+        return new Stroke(style, ring, widths, brightness, alpha);
     }
 
     private static Stroke rotatedRing(double radius, double y, int points, double halfWidth,

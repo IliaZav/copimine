@@ -273,13 +273,22 @@ PROBE = textwrap.dedent(
                             null, null, 0, 1.0F, 1000, 5000),
                     new EndEventWorldVfxManager.BeamSnapshot(
                             instance("v51-gravity-77"), "minecraft:the_end",
+                            null, null, 0, 1.0F, 1000, 5000),
+                    new EndEventWorldVfxManager.BeamSnapshot(
+                            instance("v51-beam-9"), "minecraft:the_end",
                             null, null, 0, 1.0F, 1000, 5000));
+            check("a v51-beam cue parses to the authored beam mesh",
+                    SpellVisualGeometry.spellCue(instance("v51-beam-9"))
+                            == SpellVisualGeometry.Spell.BEAM);
             List<RitualSpellPresentationPolicy.WorldPass> spellPasses = new ArrayList<>();
             RitualSpellPresentationPolicy.drawWorldPasses(authored, "minecraft:the_end", 2000,
                     pass -> { spellPasses.add(pass); return snapshot -> { }; });
             check("two authored casts share one spell layer",
                     spellPasses.size() == 1
                             && spellPasses.get(0).kind() == RitualSpellPresentationPolicy.PassKind.SPELL);
+            check("no authored cast is ever a fallback ribbon",
+                    spellPasses.stream().noneMatch(
+                            p -> p.kind() == RitualSpellPresentationPolicy.PassKind.RIBBON));
             check("an authored cast is never a glyph",
                     spellPasses.stream().noneMatch(
                             p -> p.kind() == RitualSpellPresentationPolicy.PassKind.GLYPH));

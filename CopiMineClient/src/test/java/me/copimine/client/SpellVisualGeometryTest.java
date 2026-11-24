@@ -270,12 +270,57 @@ class SpellVisualGeometryTest {
     }
 
     @Test
+    void beamIsAFullLengthLayeredShaftInsideTheDamageCapsule() {
+        // N23-P1-05: the signature chest beam must read as a substantial,
+        // full-length, layered 3D shaft that hugs the real 1.7-block damage
+        // capsule from the inside, not a hairline next to the hit volume.
+        List<SpellVisualGeometry.Stroke> strokes = SpellVisualGeometry.build(
+                SpellVisualGeometry.Spell.BEAM, 0L, SEED,
+                SpellVisualGeometry.BEAM_MAX_LENGTH, SpellVisualGeometry.Quality.FULL);
+        double maxX = strokes.stream().flatMap(stroke -> stroke.points().stream())
+                .mapToDouble(SpellVisualGeometry.Point::x).max().orElse(0);
+        assertEquals(SpellVisualGeometry.BEAM_MAX_LENGTH, maxX, 1.0E-6D,
+                "the shaft spans the whole authored beam length");
+        // Every layer is present: the core (ARM), the translucent wake (SHELL),
+        // the helices (FIELD), the hoops / muzzle / tip rings (RING), the seeded
+        // branches (JAW) and the flared muzzle plate (WEDGE).
+        assertTrue(count(strokes, SpellVisualGeometry.Style.ARM) >= 4, "broad energized core");
+        assertTrue(count(strokes, SpellVisualGeometry.Style.SHELL) >= 9, "translucent outer wake");
+        assertTrue(count(strokes, SpellVisualGeometry.Style.FIELD) >= 2, "counter-rotating helices");
+        assertTrue(count(strokes, SpellVisualGeometry.Style.RING) >= 6, "hoops, plate and tip rings");
+        assertTrue(count(strokes, SpellVisualGeometry.Style.JAW) >= 3, "forged side branches");
+        assertTrue(count(strokes, SpellVisualGeometry.Style.WEDGE) >= 3, "flared muzzle plate");
+        // No authored point may sit outside the real capsule radius around the
+        // axis, so the visible silhouette never promises more than the damage.
+        for (SpellVisualGeometry.Stroke stroke : strokes) {
+            for (SpellVisualGeometry.Point point : stroke.points()) {
+                double radial = Math.hypot(point.y(), point.z());
+                assertTrue(radial <= SpellVisualGeometry.BEAM_RADIUS + 1.0E-6D,
+                        "a beam point escaped the damage capsule, radial " + radial);
+            }
+        }
+        // A long beam really is longer than a short one: the length is authored,
+        // not fixed.
+        double shortX = SpellVisualGeometry.build(SpellVisualGeometry.Spell.BEAM, 0L, SEED, 6.0D,
+                        SpellVisualGeometry.Quality.FULL).stream()
+                .flatMap(stroke -> stroke.points().stream())
+                .mapToDouble(SpellVisualGeometry.Point::x).max().orElse(0);
+        assertTrue(maxX > shortX + 15.0D, "the authored length drives the shaft extent");
+        // The mesh is animated: a later instant rebuilds a different mesh.
+        assertTrue(!strokes.equals(SpellVisualGeometry.build(SpellVisualGeometry.Spell.BEAM,
+                1700L, SEED, SpellVisualGeometry.BEAM_MAX_LENGTH,
+                SpellVisualGeometry.Quality.FULL)), "the beam must animate over its clock");
+    }
+
+    @Test
     void cueParserAcceptsOnlyTheExactAuthoredForm() {
         assertEquals(SpellVisualGeometry.Spell.CROWN,
                 SpellVisualGeometry.spellCue("3f2a:17:world:v51-crown-4242"));
         assertEquals(4242L, SpellVisualGeometry.cueSeed("3f2a:17:world:v51-crown-4242"));
         assertEquals(SpellVisualGeometry.Spell.WARDEN_SWEEP,
                 SpellVisualGeometry.spellCue("e:1:world:v51-sweep-0"));
+        assertEquals(SpellVisualGeometry.Spell.BEAM,
+                SpellVisualGeometry.spellCue("e:1:world:v51-beam-9"));
         assertNull(SpellVisualGeometry.spellCue("e:1:world:v51-crown"));
         assertNull(SpellVisualGeometry.spellCue("e:1:world:v51-crown-12a"));
         assertNull(SpellVisualGeometry.spellCue("e:1:world:v51-unknown-1"));

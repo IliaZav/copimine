@@ -74,22 +74,41 @@ public final class SpellVisualRenderer {
         }
         long elapsed = now - beam.startedAtMillis();
         long remaining = beam.expiresAtMillis() - now;
-        double dx = beam.end().x - beam.start().x;
-        double dz = beam.end().z - beam.start().z;
-        double horizontal = Math.hypot(dx, dz);
+        double vx = beam.end().x - beam.start().x;
+        double vy = beam.end().y - beam.start().y;
+        double vz = beam.end().z - beam.start().z;
+        double length = Math.sqrt(vx * vx + vy * vy + vz * vz);
         double dirX;
+        double dirY;
         double dirZ;
-        if (!Double.isFinite(horizontal) || horizontal < 0.05D) {
+        if (!Double.isFinite(length) || length < 0.05D) {
             dirX = 0.0D;
+            dirY = 0.0D;
             dirZ = 1.0D;
-            horizontal = 0.0D;
+            length = 0.0D;
         } else {
-            dirX = dx / horizontal;
-            dirZ = dz / horizontal;
+            dirX = vx / length;
+            dirY = vy / length;
+            dirZ = vz / length;
         }
+        // A full orthonormal frame: forward along the cast, right = forward x up,
+        // up' = right x forward. For a horizontal cast this is exactly the old
+        // frame (right lateral, up' world-up); for a diagonal or near-vertical
+        // beam it keeps the cross-section perpendicular to the real axis.
         double rightX = -dirZ;
         double rightZ = dirX;
-        double reach = Math.max(1.0D, Math.min(SpellVisualGeometry.MAX_REACH_BLOCKS, horizontal));
+        double rightLen = Math.hypot(rightX, rightZ);
+        if (!Double.isFinite(rightLen) || rightLen < 1.0E-6D) {
+            rightX = 1.0D;
+            rightZ = 0.0D;
+            rightLen = 1.0D;
+        }
+        rightX /= rightLen;
+        rightZ /= rightLen;
+        double upX = -rightZ * dirY;
+        double upY = rightZ * dirX - rightX * dirZ;
+        double upZ = rightX * dirY;
+        double reach = Math.max(1.0D, Math.min(SpellVisualGeometry.maxReach(spell), length));
         List<SpellVisualGeometry.Stroke> strokes = SpellVisualGeometry.build(
                 spell, elapsed, seedOf(beam.instanceId()), reach, quality);
         float fade = (float) (Math.min(1.0D, elapsed / 160.0D) * Math.min(1.0D, remaining / 260.0D));
@@ -110,8 +129,10 @@ public final class SpellVisualRenderer {
             double stylePhase = flowPhase - stroke.style().ordinal() * 0.9D;
             List<SpellVisualGeometry.Point> points = stroke.points();
             for (int index = 0; index < points.size() - 1; index++) {
-                Vec3 from = world(beam.start(), dirX, dirZ, rightX, rightZ, points.get(index));
-                Vec3 to = world(beam.start(), dirX, dirZ, rightX, rightZ, points.get(index + 1));
+                Vec3 from = world(beam.start(), dirX, dirY, dirZ, rightX, rightZ,
+                        upX, upY, upZ, points.get(index));
+                Vec3 to = world(beam.start(), dirX, dirY, dirZ, rightX, rightZ,
+                        upX, upY, upZ, points.get(index + 1));
                 float pulseFrom = pulse(index, stylePhase);
                 float pulseTo = pulse(index + 1, stylePhase);
                 int argbFrom = (scaleAlpha(alpha, pulseFrom) << 24) | tint;
@@ -131,12 +152,14 @@ public final class SpellVisualRenderer {
         return Math.max(0, Math.min(255, scaled));
     }
 
-    private static Vec3 world(Vec3 origin, double dirX, double dirZ,
-                              double rightX, double rightZ, SpellVisualGeometry.Point point) {
+    private static Vec3 world(Vec3 origin, double dirX, double dirY, double dirZ,
+                              double rightX, double rightZ,
+                              double upX, double upY, double upZ,
+                              SpellVisualGeometry.Point point) {
         return new Vec3(
-                origin.x + dirX * point.x() + rightX * point.z(),
-                origin.y + point.y(),
-                origin.z + dirZ * point.x() + rightZ * point.z());
+                origin.x + dirX * point.x() + rightX * point.z() + upX * point.y(),
+                origin.y + dirY * point.x() + upY * point.y(),
+                origin.z + dirZ * point.x() + rightZ * point.z() + upZ * point.y());
     }
 
     /** One tapered, double-sided emissive ribbon segment. */
@@ -156,8 +179,11 @@ public final class SpellVisualRenderer {
         }
         side = side.normalize();
         Vec3 normal = side.cross(direction).normalize();
-        float wa = Math.max(0.01F, Math.min(0.30F, halfWidthFrom));
-        float wb = Math.max(0.01F, Math.min(0.30F, halfWidthTo));
+        // The authored chest-beam cross-section legitimately reaches the real
+        // damage capsule radius; every other family stays well under 0.2. The
+        // ceiling matches BEAM_RADIUS so a coarse mesh can never overshoot it.
+        float wa = Math.max(0.01F, Math.min(1.72F, halfWidthFrom));
+        float wb = Math.max(0.01F, Math.min(1.72F, halfWidthTo));
         Vec3 aLeft = from.subtract(side.scale(wa));
         Vec3 aRight = from.add(side.scale(wa));
         Vec3 bRight = to.add(side.scale(wb));

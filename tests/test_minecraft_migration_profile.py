@@ -276,10 +276,15 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # expanding separation wave), and the renderer samples the authored arc
     # texture across the ribbon width with a travelling brightness wave. The pin
     # is again from two clean `gradle test jar` runs that agreed byte for byte.
-    assert artifact['size'] == 30_422_528
+    # 24-November (N23-P1-05): the chest beam gained its own full-length,
+    # layered 3D cross-section (BEAM family in the authored geometry) and the
+    # renderer switched to a full 3D orthonormal frame with a per-spell reach,
+    # so diagonal and near-vertical beams render instead of collapsing to a
+    # hairline. Repinned from two clean `gradle test jar` runs that agreed.
+    assert artifact['size'] == 30_424_217
     assert artifact['sha512'] == (
-        '3873f770bd137729fecc392bdf16d6ac092172a3328563371e874c45f6f09a0c'
-        '151de4196c998de2fe6d29425cb31a2200a6105d94d2d70fc1fe35303841d1c3'
+        '432375e77597603d5c8833a65075fce47b58a3661ac1bcc4f5163fd12025b436'
+        'ae48d6c21005c3871a208f664b90a9078981e43c05b349a2529c49dde67e7599'
     )
 
 

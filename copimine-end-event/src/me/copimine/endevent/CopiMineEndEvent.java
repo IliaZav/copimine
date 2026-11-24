@@ -1961,6 +1961,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private List<ChestBeamPolicy.Aim> bossChestBeamLockedAims = List.of();
     private Location bossChestBeamLockedChest;
     private long bossChestBeamLockedGeneration = -1L;
+    /** N23-P1-05: stable per-cast seed for the authored full-length beam mesh cue. */
+    private long bossChestBeamCueSeed = 0L;
     private long bossCastSequence;
     private float bossCastLockedYaw;
     private long bossEdgeVolleySequence;
@@ -54000,6 +54002,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         long castSequence = ++bossChestBeamSequence;
         String callbackEvent = eventId;
         UUID bossId = boss.getUniqueId();
+        // N23-P1-05: one stable seed per cast so the authored beam mesh's
+        // animation clock never restarts on a refresh frame.
+        bossChestBeamCueSeed = Math.floorMod(castSequence * 7_919L + callbackGeneration,
+                1_000_000_000L);
         bossChestBeamActive = true;
         bossAbilityState = BossAbilityState.EXECUTING;
         bossChestBeamCooldownUntilTick = eventTickCounter + ChestBeamPolicy.COOLDOWN_TICKS;
@@ -54167,6 +54173,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             Location tip = new Location(chest.getWorld(), aim.tipX(), aim.tipY(), aim.tipZ());
             String key = CHEST_BEAM_VFX_PREFIX + lane;
+            // N23-P1-05: the authoritative full-length, layered cross-section is
+            // rebuilt client-side from one compact v51-beam-<seed> cue per lane,
+            // so the shipped silhouette hugs the real 1.7-block capsule without
+            // streaming per-vertex geometry. The rails below still mark the exact
+            // capsule boundary and the thin world beams keep a known fallback.
+            broadcastSpellVisualCue("beam", bossChestBeamCueSeed + lane, chest, tip, hue);
             // The wire protocol caps one beam at 0.45 blocks, but the real
             // swept capsule is BEAM_RADIUS = 1.7 either side. Draw a bounded
             // cross-section instead of a hairline: a hot core, a vertical pair
@@ -54320,6 +54332,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         bossChestBeamLockedChest = null;
         bossChestBeamLockedGeneration = -1L;
         clearWorldVfxBeamsByPrefix(CHEST_BEAM_VFX_PREFIX);
+        clearChestBeamCueLanes();
         getLogger().info("BOSS_CHEST_BEAM_IMPACT event=" + eventId + " boss=" + bossId
                 + " lanes=" + (aims == null ? 0 : aims.size()) + " hits=" + hits
                 + " generation=" + callbackGeneration);
@@ -54347,6 +54360,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         bossChestBeamLockedGeneration = -1L;
         bossChestBeamActive = false;
         clearWorldVfxBeamsByPrefix(CHEST_BEAM_VFX_PREFIX);
+        clearChestBeamCueLanes();
         bossAbilityState = BossAbilityState.RECOVERY;
         bossCastDeadlineMillis = System.currentTimeMillis() + 20L * 50L;
         bossSpellPauseUntilMillis = bossCastDeadlineMillis;
@@ -54363,6 +54377,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         bossChestBeamLockedChest = null;
         bossChestBeamLockedGeneration = -1L;
         clearWorldVfxBeamsByPrefix(CHEST_BEAM_VFX_PREFIX);
+        clearChestBeamCueLanes();
         bossAbilityState = BossAbilityState.RECOVERY;
         bossCastDeadlineMillis = System.currentTimeMillis() + 20L * 50L;
         bossSpellPauseUntilMillis = bossCastDeadlineMillis;
@@ -66647,6 +66662,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         clearWorldVfxBeam("v51-" + token + "-" + Math.floorMod(seed, 1_000_000_000L));
+    }
+
+    /**
+     * N23-P1-05: drop the authored chest-beam mesh cues for the lanes of the
+     * cast that is ending. The seed is stable for the whole cast and there are
+     * at most three lanes, so this is a bounded, idempotent cleanup that cannot
+     * leave a ghost beam behind a finish, abort or lock-lost cancel.
+     */
+    private void clearChestBeamCueLanes() {
+        for (int lane = 0; lane < 3; lane++) {
+            clearSpellVisualCue("beam", bossChestBeamCueSeed + lane);
+        }
     }
 
     private static long cueSeedFor(UUID id) {

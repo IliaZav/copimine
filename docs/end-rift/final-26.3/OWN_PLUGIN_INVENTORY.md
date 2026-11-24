@@ -10,7 +10,7 @@ This table covers all **nine installed first-party plugins** in the isolated loc
 | CopiMineArtifacts | 1.1.0-shops-blocks-prices | CopiMineEconomyCore | 2 / 8 | `a5e0420d503850cb604445c52705f5af71fdc65770a78b943c5d2bc252fabcc5` | observed enabled |
 | CopiMineEconomyCore | 1.0.0 | none | 0 / 0 | `d4051688d7a56e1c59b8b31023783d054724be6fac3554611ed6bf65d8568e89` | observed enabled |
 | CopiMineElectionCore | 9.2.0-postgres-v4-balance-credit | CopiMineEconomyCore | 2 / 5 | `ce4749dc346134680366fdccd044cfb0d61cb8fcbf7c8ee1a90e69917a4a4182` | observed enabled |
-| CopiMineDungeon | 1.0.0 | none | 1 / 2 | `2c1a65ecad515902ed5e094e9f28156bbc04b9ab0a7d04b4b1e06ef49d656d8e` | NATIVE_BLOCKED |
+| CopiMineDungeon | 1.0.0 | none | 1 / 2 | `33858dfa1a8dfeec699cfc7d3d8517f8cf4c7d0318a1bd32179644145dfeb5a2` | NATIVE_BLOCKED |
 | CopiMineEndEvent | 0.1.0 | CopiMineWorldCore, CopiMineArtifacts | 1 / 2 | `b88c758fa0d8eabfe6d63e30f4d28d8c27d213748e776ce19f4ba2958482b8d6` | observed enabled |
 | CopiMineNarcotics | 2.1.0-client-bridge | none | 2 / 8 | `bea72432491f7afa0a0cbd23b608654b56899b8e463720f98dbfef0f39f2ef0d` | observed enabled |
 | CopiMineWorldCore | 1.0.0 | none | 1 / 1 | `e6a2703e8091053f2d7e4fb53fb9b278a8d1ad62956250c64da334c780a742bc` | observed enabled |

@@ -120,8 +120,8 @@
         "tests/dungeon_probe.py"
       ],
       "installedJar": "local-runtime/end-rift-server-26.3/plugins/CopiMineDungeon.jar",
-      "candidateSha256": "2c1a65ecad515902ed5e094e9f28156bbc04b9ab0a7d04b4b1e06ef49d656d8e",
-      "sha256": "2c1a65ecad515902ed5e094e9f28156bbc04b9ab0a7d04b4b1e06ef49d656d8e",
+      "candidateSha256": "33858dfa1a8dfeec699cfc7d3d8517f8cf4c7d0318a1bd32179644145dfeb5a2",
+      "sha256": "33858dfa1a8dfeec699cfc7d3d8517f8cf4c7d0318a1bd32179644145dfeb5a2",
       "sourceBuild": "PASS",
       "unitContract": "PASS",
       "realServerEnable": "BLOCKED",

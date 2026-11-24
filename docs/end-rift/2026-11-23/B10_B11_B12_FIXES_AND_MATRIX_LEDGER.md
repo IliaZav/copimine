@@ -718,12 +718,14 @@ a Kagune cast indistinguishable from a rift bolt, a rock geyser or an ambush.
   distinction - is `NATIVE_BLOCKED` here: no GUI client, no running Paper, no
   signed V4 client. No damage, targeting, guard-slot or summon semantics changed.
 
-### V6 OV4.10 - the room and gate controllers get bounded pure cores
+### V6 OV4.10 - the room, gate, reward and mob cores get bounded pure policies
 
-The V4 decomposition (V6 master §OV4.10) names `DungeonRoomController` and
-`PhysicalGateController`. Only their data model and state machines existed: with
-no mask bound, no cross-gate overlap test and no per-room live cap, the door
-geometry and the wave population were not provable without a running server.
+The V4 decomposition (V6 master §OV4.10) names `DungeonRoomController`,
+`PhysicalGateController`, `DungeonMobTemplateRegistry` and `DungeonRewardLedger`.
+Only their data model and state machines existed: nothing bounded the doorway
+block mask, proved two gates cannot share a doorway, clamped a wave to the room's
+live cap, fenced a reward receipt by generation, or tabulated a mob's bounded
+capabilities.
 
 - **`PhysicalGatePolicy`** (`copimine-dungeon/.../domain`) owns the deterministic,
   Bukkit-free part of the gate contract: the exact inclusive door mask
@@ -738,15 +740,35 @@ geometry and the wave population were not provable without a running server.
   clamped per-wave counts flagged `truncated`, and cumulative wave start ticks.
   A replayed or simultaneous activation computes exactly the same plan instead
   of standing up a second controller generation.
+- **`DungeonRewardLedger`** records once-only receipts keyed by room generation
+  and player: a repeated/lag-duplicated claim returns `ALREADY_CLAIMED`, a claim
+  fenced behind a newer generation returns `STALE_GENERATION` (an old payout is
+  never resurrected), and an interrupted grant rolls back exactly once so the
+  player can legitimately be paid again after recovery. It owns no gameplay HP
+  or world state.
+- **`DungeonMobRegistry`** is the pure capability/AI-limit table: exactly three
+  vanilla-derived species survive (`newSpeciesCount() == 3`), each extension mob
+  has its own distinct, stable ability set (silverfish burrow+leap, breeze wind
+  projectile, bogged poison bolt), every template is vanilla-derived with a
+  bounded aggro range (ceiling 48, fail-closed above it), and there is no new
+  behavioural scripting runtime.
 - **Tests**: `tests/test_dungeon_controllers.py` compiles and runs the shipped
   domain classes off Bukkit: exact/bounded masks, overlap pairs, six templates
-  with six animation ids and exactly one secret, occupied-doorway deferral, and
-  the bounded/deterministic wave plan (including the live-cap clamp helpers).
-- **Re-pin**: the source change rebuilds `CopiMineDungeon-26.3.jar`, so the
+  with six animation ids and exactly one secret, occupied-doorway deferral, the
+  bounded/deterministic wave plan (live-cap helpers), the once-only/fenced/
+  rollback-safe reward ledger, and the three-species bounded mob registry.
+- **Re-pin**: each source change rebuilds `CopiMineDungeon-26.3.jar`, so the
   migration lock candidate, `OWN_PLUGIN_INVENTORY.json/.md` and the local 26.3
-  runtime receipt move together; the displaced `998f3c2e…` is prepended to
-  `candidate.replaceSha256` (newest first) per the documented convention.
+  runtime receipt move together; the displaced candidate digests are prepended to
+  `candidate.replaceSha256` (newest first) per the documented convention, and the
+  EndEvent candidate stays byte-for-byte at `b88c758f…`, so its pin is untouched.
+  The final candidate is 149 876 B, sha256
+  `33858dfa1a8dfeec699cfc7d3d8517f8cf4c7d0318a1bd32179644145dfeb5a2`, built
+  twice with the CI toolchain and byte-identical both times; `2c1a65ec…` and
+  `998f3c2e…` now head `replaceSha256`. `--stage-only` re-verifies all 31
+  candidates and the local 26.3 runtime was reinstalled from the new lock.
 - **Status**: `SOURCE` + `AUTO`. Whether the six doors look distinct in-game
-  (G01-G09), the six templates' real open/close timing and the live wave
-  population are `NATIVE_BLOCKED` here: no GUI client, no running Paper, no
-  signed V4 client. End Rift's own seven-wave owner is untouched.
+  (G01-G09), the six templates' real open/close timing, the live wave population,
+  real reward delivery and the real Paper mob behaviour (R05) are
+  `NATIVE_BLOCKED` here: no GUI client, no running Paper, no signed V4 client.
+  End Rift's own seven-wave owner is untouched.

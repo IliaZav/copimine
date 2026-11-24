@@ -137,3 +137,126 @@ def test_gate_masks_overlaps_and_bounded_wave_scheduling(core, tmp_path):
     classes = compile_fixture(tmp_path, core, CONTROLLER_SOURCE, "DungeonControllerProbe")
     output = run_fixture(classes, "DungeonControllerProbe")
     assert "PASS dungeon controllers" in output
+
+
+REWARD_SOURCE = r'''
+import java.util.*;
+import me.copimine.dungeon.domain.*;
+
+public class DungeonRewardProbe {
+    static void check(boolean ok, String message) {
+        if (!ok) throw new AssertionError(message);
+    }
+
+    public static void main(String[] args) {
+        DungeonRewardLedger ledger = new DungeonRewardLedger();
+        String a = "11111111-1111-1111-1111-111111111111";
+        String b = "22222222-2222-2222-2222-222222222222";
+
+        // ---- first grant, then never twice ----------------------------------
+        check(ledger.claim("room-a", 1, a, RewardMode.PERSONAL)
+                == DungeonRewardLedger.Decision.GRANTED, "the first claim must grant");
+        check(ledger.claim("room-a", 1, a, RewardMode.PERSONAL)
+                == DungeonRewardLedger.Decision.ALREADY_CLAIMED, "a repeated claim must not pay twice");
+        check(ledger.grantedCount() == 1, "only one live grant");
+        check(ledger.isGranted("room-a", 1, a), "the grant is recorded");
+
+        // ---- per-player independence ----------------------------------------
+        check(ledger.claim("room-a", 1, b, RewardMode.PERSONAL)
+                == DungeonRewardLedger.Decision.GRANTED, "another player is paid independently");
+        check(ledger.grantedCount() == 2, "two live grants");
+
+        // ---- generation fencing ---------------------------------------------
+        check(ledger.latestGeneration("room-a") == 1L, "generation recorded");
+        check(ledger.claim("room-a", 0, a, RewardMode.PERSONAL)
+                == DungeonRewardLedger.Decision.STALE_GENERATION, "an older generation must be rejected");
+        check(ledger.claim("room-a", 2, a, RewardMode.PERSONAL)
+                == DungeonRewardLedger.Decision.GRANTED, "a newer generation pays again");
+        check(ledger.latestGeneration("room-a") == 2L, "latest generation advances");
+
+        // ---- rollback is exact and once-only --------------------------------
+        check(ledger.rollback("room-a", 2, a), "a live grant rolls back");
+        check(!ledger.rollback("room-a", 2, a), "a grant rolls back only once");
+        check(!ledger.isGranted("room-a", 2, a), "a rolled-back grant is not live");
+        check(ledger.claim("room-a", 2, a, RewardMode.PERSONAL)
+                == DungeonRewardLedger.Decision.GRANTED, "after recovery the player is paid again");
+        check(ledger.grantedCount() == 3, "three live grants after recovery");
+
+        // ---- invalid input never records a receipt --------------------------
+        check(ledger.claim("", 3, a, RewardMode.PERSONAL)
+                == DungeonRewardLedger.Decision.INVALID, "a blank room is invalid");
+        check(ledger.claim("room-a", 3, "  ", RewardMode.PERSONAL)
+                == DungeonRewardLedger.Decision.INVALID, "a blank player is invalid");
+        check(ledger.claim("room-a", 3, a, null)
+                == DungeonRewardLedger.Decision.INVALID, "a null mode is invalid");
+        check(ledger.receiptCount() == 3, "invalid attempts add no receipt: " + ledger.receiptCount());
+
+        System.out.println("PASS dungeon rewards");
+    }
+}
+'''
+
+
+def test_reward_ledger_is_once_only_fenced_and_rollback_safe(core, tmp_path):
+    classes = compile_fixture(tmp_path, core, REWARD_SOURCE, "DungeonRewardProbe")
+    output = run_fixture(classes, "DungeonRewardProbe")
+    assert "PASS dungeon rewards" in output
+
+
+MOB_SOURCE = r'''
+import java.util.*;
+import me.copimine.dungeon.domain.*;
+
+public class DungeonMobProbe {
+    static void check(boolean ok, String message) {
+        if (!ok) throw new AssertionError(message);
+    }
+
+    public static void main(String[] args) {
+        check(DungeonMobRegistry.newSpeciesCount() == 3, "exactly three new species");
+
+        Set<DungeonMobRegistry.Ability> silverfish =
+                DungeonMobRegistry.profile(MobTemplate.RIFT_SILVERFISH).abilities();
+        Set<DungeonMobRegistry.Ability> breeze =
+                DungeonMobRegistry.profile(MobTemplate.RIFT_BREEZE).abilities();
+        Set<DungeonMobRegistry.Ability> bogged =
+                DungeonMobRegistry.profile(MobTemplate.RIFT_BOGGED).abilities();
+        check(silverfish.contains(DungeonMobRegistry.Ability.BURROW)
+                && silverfish.contains(DungeonMobRegistry.Ability.LEAP),
+                "silverfish burrows and leaps");
+        check(!silverfish.contains(DungeonMobRegistry.Ability.POISON_BOLT),
+                "silverfish must not borrow another species signature");
+        check(breeze.contains(DungeonMobRegistry.Ability.WIND_PROJECTILE), "breeze casts wind");
+        check(bogged.contains(DungeonMobRegistry.Ability.POISON_BOLT), "bogged casts poison");
+        check(!silverfish.equals(breeze) && !breeze.equals(bogged) && !bogged.equals(silverfish),
+                "the three species have distinct capability sets");
+
+        for (MobTemplate template : MobTemplate.values()) {
+            check(DungeonMobRegistry.isDerivedFromVanilla(template),
+                    "template must derive from a vanilla base type: " + template.id());
+            DungeonMobRegistry.Profile profile = DungeonMobRegistry.profile(template);
+            check(profile.template() == template, "profile round-trips the template");
+            check(profile.aggroRange() >= 1
+                            && profile.aggroRange() <= DungeonMobRegistry.MAX_AGGRO_RANGE,
+                    "aggro range bounded for " + template.id());
+        }
+
+        boolean rejected = false;
+        try {
+            new DungeonMobRegistry.Profile(MobTemplate.RIFT_GIANT,
+                    Set.of(DungeonMobRegistry.Ability.MELEE), DungeonMobRegistry.MAX_AGGRO_RANGE + 1);
+        } catch (IllegalArgumentException expected) {
+            rejected = true;
+        }
+        check(rejected, "an over-limit aggro range must fail closed");
+
+        System.out.println("PASS dungeon mobs");
+    }
+}
+'''
+
+
+def test_mob_registry_keeps_three_species_with_bounded_abilities(core, tmp_path):
+    classes = compile_fixture(tmp_path, core, MOB_SOURCE, "DungeonMobProbe")
+    output = run_fixture(classes, "DungeonMobProbe")
+    assert "PASS dungeon mobs" in output

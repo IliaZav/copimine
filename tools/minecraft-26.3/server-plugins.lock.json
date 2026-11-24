@@ -893,15 +893,16 @@
       "candidate": {
         "filename": "CopiMineDungeon-26.3.jar",
         "runtimeFilename": "CopiMineDungeon.jar",
-        "sha256": "2c1a65ecad515902ed5e094e9f28156bbc04b9ab0a7d04b4b1e06ef49d656d8e",
+        "sha256": "33858dfa1a8dfeec699cfc7d3d8517f8cf4c7d0318a1bd32179644145dfeb5a2",
         "apiVersion": "26.3",
         "buildArtifact": "build/minecraft-26.3/plugins/jars/CopiMineDungeon-26.3.jar",
         "compatibilityStatus": "requires-runtime-validation",
         "nativeVerified": false,
-        "sha512": "dca7c26955b60940b631748bdfb1a6114dfef7f5eedf18c38038898972736aaf85da4e6f083c1c43836f04a01005aaf2ac465da0d4bc658281b6802ab2de536b",
-        "size": 140067,
+        "sha512": "ec6171bca78518e44adc46565e74a2b2241bcdb2008b0afe3a84595b7ee5ce7466813d62183ab6007d867fbdc4f3313c972121f277128358078384b41af696bf",
+        "size": 149876,
         "runtimeEligible": true,
         "replaceSha256": [
+          "2c1a65ecad515902ed5e094e9f28156bbc04b9ab0a7d04b4b1e06ef49d656d8e",
           "998f3c2e34c29d64ccdd3b7606c3ac7a8ad008a5f00fb95964acc2c0d36a9012",
           "356577f8062917bd75709d9da71fcd4ef2193d81a19a5f99e3664bdc7cc63b7b"
         ]

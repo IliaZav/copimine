@@ -506,6 +506,10 @@ $pureTests = @(
   # total are pure, so a regression in the particle cost population fails here
   # without a server.
   'SpellVfxLodPolicyTest',
+  # N23-P1-07: the bounded wire shape of one authored spell cast (start/stage/
+  # cancel). The round-trip, the hard byte ceiling and the hostile-input
+  # rejection are pure, so a malformed cast packet fails here without a client.
+  'SpellCastPacketCodecTest',
   'CreativeTestAdmissionPolicyTest',
   'BossAiSimulationTest',
   'BossCastTimelineTest',

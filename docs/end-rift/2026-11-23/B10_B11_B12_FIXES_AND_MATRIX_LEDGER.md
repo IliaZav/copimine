@@ -583,5 +583,26 @@ lands the server-side half that is provably correct without a live server.
 - **Status**: `SOURCE` + `AUTO`. The percentage reduction is a *contract*, not a
   measurement: real packet counts, bytes/s, MSPT, packet queue, CPU and client
   GPU at 2/5/10/11/20 players are `NATIVE_BLOCKED` here (no running Paper, no GUI
-  client). The signed cast packet and the client-local mesh ownership are NOT
-  done.
+  client). Bridge signing/wiring and the client-local mesh ownership are still
+  open (see the next subsection).
+
+### N23-P1-07 (packet shape): the bounded cast-packet wire contract
+
+V6 asks for "a signed small cast-start/stage/cancel packet carrying
+epoch/generation, spell ID, origin/rotation or locked lane array, seed, tick
+timing, stage, style and VFX LOD". This increment lands that packet's shape and a
+bounded codec; wiring it into the bridge `Type` table and the 26.3 client
+consumer is still open.
+
+- **Types**: `domain/SpellCastPacket.java` (record: phase, generation, spellId,
+  seed, startTick, durationTicks, stage, style, vfxLod, origin, yaw, and up to
+  three frozen lanes; cosmetic-only, clamped) and `domain/SpellCastPacketCodec.java`
+  (`encode`/`decode`, `MAX_BYTES=256`, `MAX_SPELL_ID_BYTES=32`, `MAX_LANES=3`,
+  magic/version framing, hard rejection of bad magic/version/phase/lane-count/
+  truncation).
+- **Tests**: `tests/SpellCastPacketCodecTest.java` (registered in `$pureTests`)
+  pins exact round-trip for START-with-3-lanes and CANCEL-with-0-lanes, the byte
+  ceiling on the widest packet, field clamping, and rejection of malformed input.
+- **Status**: `SOURCE` + `AUTO`. The packet is *not yet* signed by the bridge nor
+  consumed by the 26.3 client; that integration and the measured reduction stay
+  `NATIVE_BLOCKED`/open.

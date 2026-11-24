@@ -12,10 +12,14 @@ LOD, доказательство и точные пути ассетов.
 (12 авторских мешей, все как функция `elapsedMillis`) и подтверждено
 автотестами (`tools/minecraft-26.3/client/src/test/.../SpellVisualGeometryTest.java`,
 `SpellVisualToneMapTest`, `SpellVisualSoundRuntimeTest`,
-`SpellVisualMotionPolicyTest` и `tests/test_end_rift_spell_presentation.py` +
+`SpellVisualMotionPolicyTest`, `SpellVisualEnvelopeTest` и
+`tests/test_end_rift_spell_presentation.py` +
 `tests/test_end_rift_spell_visual_previews.py`, 8 passed). Материал теперь читается
 как раскалённое ядро/холодный край (`SpellVisualToneMap`), а геройские штрихи — как
-объём (скрещённые ленты).
+объём (скрещённые ленты). Дуга каста у каждого семейства авторская:
+`SpellVisualEnvelope` задаёт 7 смысловых ключей, свой re-time (замах → выброс →
+успокоение; строго монотонный) и кривую нагрева материала, которая меняет только
+яркость, но не силуэт.
 Аудио-ассеты **поставлены**: 12 оригинальных Ogg Vorbis на каст, один
 позиционный голос на каст (`SpellVisualSoundRuntime`), воспроизводимые скриптом
 `scripts/minecraft/GenerateEndRiftSpellSounds.py`. «Скриншот из игры» и

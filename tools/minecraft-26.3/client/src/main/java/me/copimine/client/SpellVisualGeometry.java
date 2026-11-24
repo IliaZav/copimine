@@ -263,6 +263,13 @@ public final class SpellVisualGeometry {
     /**
      * Build the local strokes for one cast instant.
      *
+     * <p>Section 9A.03(C): the family builders own the shapes, while
+     * {@link SpellVisualEnvelope} owns the cast arc. The authored clock is
+     * re-timed so each family winds up, releases and settles on its own tempo,
+     * and the authored heat curve scales only material brightness - never a
+     * stroke point or half-width - so the announced silhouette is unchanged at
+     * every beat of the cast.</p>
+     *
      * @param spell        authored spell family
      * @param elapsedMillis monotonic time since the cast's first authored frame
      * @param seed         server-authored stable cast seed (cosmetic only)
@@ -275,6 +282,34 @@ public final class SpellVisualGeometry {
             return List.of();
         }
         long elapsed = Math.max(0L, Math.min(120_000L, elapsedMillis));
+        List<Stroke> strokes = authored(spell, SpellVisualEnvelope.tempoMillis(spell, elapsed),
+                seed, param, quality);
+        double heat = SpellVisualEnvelope.heat(spell, elapsed);
+        if (heat < 0.999D) {
+            float factor = (float) heat;
+            List<Stroke> ignited = new ArrayList<>(strokes.size());
+            for (Stroke stroke : strokes) {
+                ignited.add(new Stroke(stroke.style(), stroke.points(), stroke.halfWidths(),
+                        Math.max(0.0F, Math.min(1.0F, stroke.brightness() * factor)),
+                        stroke.alpha()));
+            }
+            strokes = ignited;
+        }
+        return strokes;
+    }
+
+    /**
+     * Shape-only build at an already-authored cast clock, without the ignition
+     * curve. The heat pass in {@link #build} may only rescale material
+     * brightness, so this is what the tests compare against to prove the
+     * silhouette never depends on the ignition.
+     */
+    static List<Stroke> authored(Spell spell, long authoredMillis, long seed,
+                                 double param, Quality quality) {
+        if (spell == null) {
+            return List.of();
+        }
+        long elapsed = Math.max(0L, Math.min(120_000L, authoredMillis));
         Quality tier = quality == null ? Quality.BALANCED : quality;
         double reach = Double.isFinite(param) ? Math.abs(param) : 0.0D;
         List<Stroke> strokes = switch (spell) {

@@ -300,12 +300,16 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # volume on the hero strokes. Each authored cast also ships its own original
     # Ogg Vorbis sample (Section 9A.03(F)/9A.05) in
     # `assets/copimineclient/sounds/spell/`, registered in `sounds.json` and
-    # fired once per cast by `SpellVisualSoundRuntime`. Repinned from two clean
-    # `--rerun-tasks gradle test jar` runs that agreed byte for byte on the same JDK.
-    assert artifact['size'] == 30_679_295
+    # fired once per cast by `SpellVisualSoundRuntime`. Section 9A.03(C) is now
+    # covered too: `SpellVisualEnvelope` gives every family seven semantic cast
+    # keys, a strictly monotone authored tempo (wind-up, release, settle) and an
+    # ignition curve that scales material brightness only, never the silhouette.
+    # Repinned from two clean `--rerun-tasks gradle test jar` runs that agreed
+    # byte for byte on the same JDK.
+    assert artifact['size'] == 30_684_452
     assert artifact['sha512'] == (
-        '63850b145a04b9f55f2344218b8789fc0625d812f87bbb09e916de2b9c4a7a4f8'
-        'd327355b64fe483230c1f5679c6454649f6f45b787df2a04b5912c86002d859'
+        '4e70f37995e124efa0f7f15b3ee0b484c443cfd6a124eccb464e744672bc0819'
+        '99048df9e4b37acca5fd1e09dabe4f18f2c94503f5152556604eacf9fafaad43'
     )
 
 

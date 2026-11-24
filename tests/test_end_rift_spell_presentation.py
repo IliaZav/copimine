@@ -27,6 +27,7 @@ CLIENT_SRC = ROOT / "tools/minecraft-26.3/client/src/main/java"
 CLIENT_RESOURCES = ROOT / "tools/minecraft-26.3/client/src/main/resources"
 POLICY = CLIENT_SRC / "me/copimine/client/RitualSpellPresentationPolicy.java"
 SPELL_GEOMETRY = CLIENT_SRC / "me/copimine/client/SpellVisualGeometry.java"
+SPELL_ENVELOPE = CLIENT_SRC / "me/copimine/client/SpellVisualEnvelope.java"
 
 STUB_VEC3 = "package me.copimine.client;\n\npublic record Vec3(double x, double y, double z) { }\n"
 
@@ -497,7 +498,8 @@ def test_spell_presentation_is_allowlisted_and_keeps_the_hud_clear(tmp_path: Pat
     probe = package_dir / "SpellPresentationProbe.java"
     probe.write_text(PROBE, encoding="utf-8")
 
-    sources = [str(p) for p in sorted(package_dir.glob("*.java"))] + [str(POLICY), str(SPELL_GEOMETRY)]
+    sources = [str(p) for p in sorted(package_dir.glob("*.java"))] + [
+        str(POLICY), str(SPELL_GEOMETRY), str(SPELL_ENVELOPE)]
     compile_result = subprocess.run(
         [str(javac), "-proc:none", "-encoding", "UTF-8", "-d", str(tmp_path / "out")] + sources,
         capture_output=True, text=True, timeout=300,

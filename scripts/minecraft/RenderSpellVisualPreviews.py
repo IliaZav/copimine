@@ -37,6 +37,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 GEOMETRY = ROOT / "tools/minecraft-26.3/client/src/main/java/me/copimine/client/SpellVisualGeometry.java"
+ENVELOPE = ROOT / "tools/minecraft-26.3/client/src/main/java/me/copimine/client/SpellVisualEnvelope.java"
 DEFAULT_OUT = ROOT / "docs/end-rift/2026-11-23/spell_previews"
 
 # Three authored instants of the cast clock, in milliseconds since the first
@@ -166,7 +167,7 @@ def build_geometry() -> dict:
         package = tmp_path / "src/me/copimine/client"
         package.mkdir(parents=True, exist_ok=True)
         (package / "SpellPreviewProbe.java").write_text(PROBE, encoding="utf-8")
-        sources = [str(package / "SpellPreviewProbe.java"), str(GEOMETRY)]
+        sources = [str(package / "SpellPreviewProbe.java"), str(GEOMETRY), str(ENVELOPE)]
         compiled = subprocess.run(
             [str(javac), "-proc:none", "-encoding", "UTF-8", "-d", str(tmp_path / "out")] + sources,
             capture_output=True, text=True, timeout=300,
@@ -341,6 +342,11 @@ def spell_svg(spell: dict) -> str:
     )
 
 
+def _lfs(path: Path) -> str:
+    """Text with normalised LF so a CRLF checkout still matches the fresh render."""
+    return path.read_text(encoding="utf-8").replace("\r\n", "\n")
+
+
 def render(geometry: dict, out_dir: Path) -> list[Path]:
     out_dir.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
@@ -349,7 +355,9 @@ def render(geometry: dict, out_dir: Path) -> list[Path]:
         if len(frames) != len(FRAMES):
             raise SystemExit(f"probe returned {len(frames)} frames, expected {len(FRAMES)}")
         path = out_dir / f"{spell['token']}.svg"
-        path.write_text(spell_svg(spell), encoding="utf-8")
+        # Always LF: the sheets are committed as text, so a Windows checkout with
+        # core.autocrlf and a Linux runner must produce byte-identical evidence.
+        path.write_text(spell_svg(spell), encoding="utf-8", newline="\n")
         written.append(path)
     return written
 
@@ -384,7 +392,7 @@ def main(argv: list[str] | None = None) -> int:
             if not target.is_file():
                 problems.append(f"missing committed sheet: {target.name}")
                 continue
-            if target.read_text(encoding="utf-8") != sheet.read_text(encoding="utf-8"):
+            if (_lfs(target) != _lfs(sheet)):
                 problems.append(f"stale committed sheet: {target.name}")
         expected = {f"{spell['token']}.svg" for spell in geometry["spells"]}
         for extra in sorted(p.name for p in committed.glob("*.svg") if p.name not in expected):

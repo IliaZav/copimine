@@ -45,6 +45,7 @@ public final class DungeonCommandDispatcher {
     private final CommandRegistry registry;
     private final List<String> extraLootTables = new ArrayList<>();
     private final List<String> playerNames = new ArrayList<>();
+    private WandGateway wandGateway;
 
     public DungeonCommandDispatcher(DungeonDefinitionStore store, EditorSessionManager sessions,
                                     AuditLog audit) {
@@ -57,6 +58,11 @@ public final class DungeonCommandDispatcher {
 
     public CommandRegistry registry() {
         return registry;
+    }
+
+    /** Attaches the live wand hand-off; absent, {@code wand give} never mints. */
+    public void setWandGateway(WandGateway gateway) {
+        this.wandGateway = gateway;
     }
 
     public void setPlayerNames(List<String> names) {
@@ -131,8 +137,23 @@ public final class DungeonCommandDispatcher {
                 return CommandResponse.ok(lines);
             }
             case "wand give", "editor wand" -> {
-                lines.add("Жезл строителя выдан игроку '" + route.argument("player")
-                        + "'. Метка подлинности хранится в PDC; лор/текстура не дают прав.");
+                String target = route.argument("player");
+                if (wandGateway == null) {
+                    // Honest receipt: the request resolved, but this pure core has
+                    // no inventory, so no item exists to hand over.
+                    lines.add("Право строителя подтверждено для '" + target
+                            + "'. Предмет-жезл выдаёт живой адаптер сервера (PDC-метка);"
+                            + " в этом режиме предмет не создаётся.");
+                    return CommandResponse.ok(lines);
+                }
+                WandGateway.Result result = wandGateway.give(target);
+                if (result == null) {
+                    return CommandResponse.fail("Выдача жезла не выполнена.");
+                }
+                if (!result.success()) {
+                    return CommandResponse.fail(result.message());
+                }
+                lines.add(result.message());
                 return CommandResponse.ok(lines);
             }
             case "editor grant" -> {

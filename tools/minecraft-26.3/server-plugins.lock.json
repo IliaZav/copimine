@@ -893,15 +893,17 @@
       "candidate": {
         "filename": "CopiMineDungeon-26.3.jar",
         "runtimeFilename": "CopiMineDungeon.jar",
-        "sha256": "356577f8062917bd75709d9da71fcd4ef2193d81a19a5f99e3664bdc7cc63b7b",
+        "sha256": "998f3c2e34c29d64ccdd3b7606c3ac7a8ad008a5f00fb95964acc2c0d36a9012",
         "apiVersion": "26.3",
         "buildArtifact": "build/minecraft-26.3/plugins/jars/CopiMineDungeon-26.3.jar",
         "compatibilityStatus": "requires-runtime-validation",
         "nativeVerified": false,
-        "sha512": "edada925aabeebd5d0de5b66b828cc1e29867d1f50d5f97eabdea9e7f436fda58934f6737a1b10702789f50d7ffa50a1aca3f708c4265bb1af699571965a6056",
-        "size": 130095,
+        "sha512": "b701d933bf1d1827f0a2d1fac3268695b3a3c94504b291be7343f6f0ee46860f4f3227f64ebb7de78b2efc8ae2bdd67c6a731f6a03d64b7706f3587f027c4e55",
+        "size": 132699,
         "runtimeEligible": true,
-        "replaceSha256": []
+        "replaceSha256": [
+          "356577f8062917bd75709d9da71fcd4ef2193d81a19a5f99e3664bdc7cc63b7b"
+        ]
       },
       "nativeVerified": false,
       "replaceSha256": []
@@ -1025,15 +1027,16 @@
       "candidate": {
         "filename": "CopiMineEndEvent-26.3.jar",
         "runtimeFilename": "CopiMineEndEvent.jar",
-        "sha256": "5029686aa24a3c55e64baf4366047764fcf42128fb598490268dc73533f1d308",
+        "sha256": "3fd473a789909a2ff66251fa41ed0276fc461259c10f30b331e406aeb9ffcd73",
         "apiVersion": "26.3",
         "buildArtifact": "build/minecraft-26.3/plugins/jars/CopiMineEndEvent-26.3.jar",
         "compatibilityStatus": "requires-runtime-validation",
         "nativeVerified": false,
-        "size": 2697362,
-        "sha512": "a61447fd52de42e39b6009379766e165999ce864de2c001d0a9ee8b6b53c36171007ea676debc08a84de78f64920c5bcac9c738e99435d15ebaf418d3ff68633",
+        "size": 2698550,
+        "sha512": "e2541bdc4655ce6f53489166aef21df37fd6e8f9afdc8a9832c964149a6d97843a94d8c701aa95130c8cb1b027e20deea09aed27d3453b39811e8c9dbdfc987f",
         "runtimeEligible": true,
         "replaceSha256": [
+          "5029686aa24a3c55e64baf4366047764fcf42128fb598490268dc73533f1d308",
           "18d44a7e543c7999eba4d9bd33ccda665c4dd1eb99b21755e3bf88cb31ff3603",
           "084cc0f53db7906e7fbae01852dc22a956bff3bba44ecb0fb800ec90d7547836",
           "211c0859c51b3e5495efbcad75bbb489fe469c15640d8499a0dbd1fa07a4d868",

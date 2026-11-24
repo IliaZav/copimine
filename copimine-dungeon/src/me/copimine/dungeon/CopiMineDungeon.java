@@ -3,6 +3,7 @@ package me.copimine.dungeon;
 import me.copimine.dungeon.command.CommandActor;
 import me.copimine.dungeon.command.DungeonCommand;
 import me.copimine.dungeon.command.DungeonCommandDispatcher;
+import me.copimine.dungeon.command.WandGateway;
 import me.copimine.dungeon.editor.DungeonBuilderWand;
 import me.copimine.dungeon.editor.EditorPermissions;
 import me.copimine.dungeon.editor.EditorSessionListener;
@@ -12,6 +13,8 @@ import me.copimine.dungeon.store.DungeonDefinitionStore;
 
 import org.bukkit.Material;
 import org.bukkit.command.PluginCommand;
+import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.IOException;
@@ -63,6 +66,7 @@ public final class CopiMineDungeon extends JavaPlugin {
         store = loadStore(definitions);
         dispatcher = new DungeonCommandDispatcher(store, sessions, audit);
         wand = new DungeonBuilderWand(this, secret, wandMaterial, customModelData);
+        dispatcher.setWandGateway(this::giveBuilderWand);
 
         PluginCommand command = getCommand("cmdungeon");
         if (command != null) {
@@ -113,6 +117,31 @@ public final class CopiMineDungeon extends JavaPlugin {
             }
         }
         return DungeonDefinitionStore.empty();
+    }
+
+    /**
+     * Live {@code /cmdungeon wand give <player>} hand-off (spec OV4.3): mint the
+     * branded wand whose PDC carries the server-side authenticity token, then put
+     * it in the target's inventory. A full inventory drops the wand at the
+     * player's feet rather than silently discarding it, and an offline target is
+     * a refusal, never a fake "given" receipt.
+     */
+    private WandGateway.Result giveBuilderWand(String playerName) {
+        if (playerName == null || playerName.isBlank()) {
+            return WandGateway.Result.fail(
+                    "Укажите игрока: /cmdungeon wand give <player>.");
+        }
+        Player target = getServer().getPlayerExact(playerName);
+        if (target == null) {
+            return WandGateway.Result.fail("Игрок '" + playerName
+                    + "' не в сети: жезл не выдан (предмет нельзя создать оффлайн-игроку).");
+        }
+        ItemStack item = wand.create(target.getUniqueId(), target.getName());
+        if (!target.getInventory().addItem(item).isEmpty()) {
+            target.getWorld().dropItemNaturally(target.getLocation(), item);
+        }
+        return WandGateway.Result.ok("Жезл строителя выдан игроку '" + target.getName()
+                + "'. Метка подлинности хранится в PDC; лор/текстура прав не дают.");
     }
 
     private String ensureWandSecret() {

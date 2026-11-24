@@ -11,6 +11,15 @@ public final class BossSpellGeometryPolicy {
         INFERNO_CROWN, FIREBALL_CAGE, FINAL_SEAL, SWIPE, CHEST_IRIS,
         SLAM_FAULT, AMBUSH_TALONS, KAGUNE_KNOT, PHASE_SHELL, DEFEAT, GEYSER,
         /*
+         * N23-P1-06/N23-P1-08 used to leave three different hazards sharing the
+         * single fault_fragment body: kagune_eruption, rift_fracture and
+         * inferno_geyser all resolved to GEYSER. That made a rock eruption, a
+         * floor cut and a fire column the same visible object, which the spec
+         * forbids. Each now has its own silhouette in sample() and its own
+         * client mesh below, so no two major mechanics share the main body.
+         */
+        RIFT_FRACTURE, INFERNO_GEYSER,
+        /*
          * The four miniboss signatures: a rift dash, a binding snare, a sonic
          * bloom and the euphoria helix. They previously had neither a shape nor
          * a mesh, so their cast could only ever be drawn as a flat camera-facing
@@ -61,7 +70,8 @@ public final class BossSpellGeometryPolicy {
             case "kagune_eruption" -> Shape.GEYSER;
             case "phase_shift" -> Shape.PHASE_SHELL;
             case "defeat_collapse" -> Shape.DEFEAT;
-            case "rift_fracture", "inferno_geyser" -> Shape.GEYSER;
+            case "rift_fracture" -> Shape.RIFT_FRACTURE;
+            case "inferno_geyser" -> Shape.INFERNO_GEYSER;
             // The owner's approved chest beam: a straight, finite ray leaving the
             // chest toward a locked lane, with its own authored body family.
             case "chest_beam" -> Shape.CHEST_BEAM;
@@ -104,7 +114,13 @@ public final class BossSpellGeometryPolicy {
             case FINAL_SEAL -> 830204;
             case CHEST_IRIS -> 830205;
             case AMBUSH_TALONS, KAGUNE_KNOT -> 830206;
-            case SLAM_FAULT, GEYSER -> 830207;
+            // The ground slam keeps the fault fragment; the geyser, the floor
+            // rift and the inferno column each get a body of their own so the
+            // three hazards are never mistaken for one another.
+            case SLAM_FAULT -> 830207;
+            case GEYSER -> 830217;
+            case RIFT_FRACTURE -> 830218;
+            case INFERNO_GEYSER -> 830219;
             // The four miniboss signatures used to return 0, which meant the
             // only thing ever drawn for them was the sampled particle frame:
             // the spell had an authored silhouette list but no body. Each now
@@ -124,7 +140,8 @@ public final class BossSpellGeometryPolicy {
     public static Anchor anchor(Shape shape, Beat beat) {
         if (shape == null || beat == null) return Anchor.FEET;
         return switch (shape) {
-            case VOID_RUNE, FINAL_SEAL, AMBUSH_TALONS, GEYSER, SNARE_CHAINS -> Anchor.LOCKED_FLOOR;
+            case VOID_RUNE, FINAL_SEAL, AMBUSH_TALONS, GEYSER,
+                    RIFT_FRACTURE, INFERNO_GEYSER, SNARE_CHAINS -> Anchor.LOCKED_FLOOR;
             case VOID_SPHERE -> Anchor.LOCKED_FLOOR;
             case RIFT_LANCE, ARROW_RACK, FIREBALL_CAGE, CHEST_IRIS, CHEST_BEAM -> Anchor.CHEST;
             default -> Anchor.FEET;
@@ -251,11 +268,76 @@ public final class BossSpellGeometryPolicy {
                 }
             }
             case GEYSER -> {
-                for (int plume = 0; plume < 3; plume++) for (int i = 0; i < 24; i++) {
-                    double u = i / 23.0, a = plume * TAU / 3 + u * TAU * 1.5 - spin;
-                    double s = r * (0.2 + u * 0.6) * Math.sin(p * Math.PI);
-                    add(out, Math.cos(a) * s, u * 5 * size, Math.sin(a) * s, plume % 2);
+                // N23-P1-08: an original rock/obsidian eruption body, not the
+                // floor-fault fragment it used to share with the ground slam.
+                // A cluster of jagged shards climbs out of a pressure ring and
+                // flares at the crown. The charge beat is the same cluster still
+                // buried, so the tell and the eruption read as one object.
+                double lift = charge ? 0.35 + 0.65 * p : 0.55 + 0.45 * easeOut(p);
+                for (int shard = 0; shard < 5; shard++) {
+                    double a = shard * TAU / 5 + 0.4;
+                    double baseR = r * (0.18 + 0.05 * (shard % 3));
+                    double tipR = baseR * (charge ? 0.9 : 1.7);
+                    double height = (charge ? 1.6 + p : 3.2 + 1.1 * (shard % 3)) * size * lift;
+                    line(out, new Point(Math.cos(a) * baseR, 0.05, Math.sin(a) * baseR, 0),
+                            new Point(Math.cos(a) * tipR, height, Math.sin(a) * tipR, 0), 6, shard % 2);
+                    // A jagged side facet gives the shard width instead of a pencil line.
+                    line(out, new Point(Math.cos(a) * tipR, height, Math.sin(a) * tipR, 1),
+                            new Point(Math.cos(a + 1.1) * (tipR + 0.3), height * 0.55,
+                                    Math.sin(a + 1.1) * (tipR + 0.3), 1), 3, 1);
                 }
+                polygon(out, 10, r * (0.30 + 0.18 * (charge ? p : easeOut(p))), 0.08, spin * 0.3, 2, 2);
+                if (!charge) for (int i = 0; i < 8; i++) {
+                    double a = i * TAU / 8 + spin;
+                    double s = r * 0.22 * size;
+                    add(out, Math.cos(a) * s, 4.2 * size, Math.sin(a) * s, 2);
+                }
+            }
+            case RIFT_FRACTURE -> {
+                // 9D.03: a floor rift slash, not a radial geyser. A jagged crack
+                // opens along one axis and thin fire sheets rise out of it, so
+                // the hazard reads as a cut in the ground rather than a column.
+                double widen = charge ? 0.15 + 0.35 * p : 0.30 + 0.70 * easeOut(p);
+                double length = r * (charge ? 0.7 : 1.0);
+                double prevX = -length, prevZ = 0;
+                for (int i = 0; i <= 7; i++) {
+                    double u = i / 7.0;
+                    double x = -length + 2 * length * u;
+                    double zig = (i % 2 == 0 ? 1 : -1) * 0.18 * r * widen;
+                    double gap = 0.10 + widen * 0.22;
+                    line(out, new Point(prevX, 0.05, prevZ, 0),
+                            new Point(x, 0.05, zig, 0), 1, 0);
+                    line(out, new Point(x, 0.05, zig - gap, 0),
+                            new Point(x, 0.05, zig + gap, 0), 2, 0);
+                    line(out, new Point(x, 0.05, zig, 1),
+                            new Point(x, r * (0.35 + 0.75 * widen), zig, 1), 3, 1);
+                    prevX = x;
+                    prevZ = zig;
+                }
+                for (int i = 0; i < 5; i++) {
+                    double x = -length + 2 * length * (i / 4.0);
+                    double h = r * (0.25 + 0.65 * widen);
+                    line(out, new Point(x, 0.06, -0.06, 2), new Point(x, h, 0.06, 2), 2, 2);
+                }
+            }
+            case INFERNO_GEYSER -> {
+                // N23-P1-08's vertical volumetric-style flame sheets: several
+                // tall staggered ribbons around a hot base, so the column reads
+                // as fire under pressure rather than as a rock shard cluster.
+                double rise = charge ? 0.4 + 0.6 * p : 0.6 + 0.4 * easeOut(p);
+                for (int sheet = 0; sheet < 6; sheet++) {
+                    double a = sheet * TAU / 6 + spin * 0.06;
+                    double baseR = r * 0.42;
+                    double lean = r * 0.10 * (sheet % 2 == 0 ? 1 : -1);
+                    double h = r * (0.55 + 0.12 * (sheet % 3)) * rise;
+                    line(out, new Point(Math.cos(a) * baseR, 0.05, Math.sin(a) * baseR, 0),
+                            new Point(Math.cos(a) * (baseR + lean), h,
+                                    Math.sin(a) * (baseR + lean), 0), 5, sheet % 2);
+                    line(out, new Point(Math.cos(a) * baseR * 0.55, 0.05, Math.sin(a) * baseR * 0.55, 1),
+                            new Point(Math.cos(a) * baseR * 0.62, h * 0.82,
+                                    Math.sin(a) * baseR * 0.62, 1), 4, 1);
+                }
+                polygon(out, 8, r * 0.36, 0.08, spin * 0.4, 2, 2);
             }
             case RIFT_GATE -> {
                 // A standing door the caster steps through: two posts, a lintel,

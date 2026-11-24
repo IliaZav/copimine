@@ -60,6 +60,9 @@ public final class GuardianSpellRenderer {
             case 830214 -> "echo_bloom";
             case 830215 -> "euphoria_helix";
             case 830216 -> "chest_beam";
+            case 830217 -> "geyser";
+            case 830218 -> "rift_fracture";
+            case 830219 -> "inferno_geyser";
             default -> "";
         };
         if (mesh.isEmpty() || GuardianSpellMesh.vertices(mesh).isEmpty()) return null;
@@ -72,7 +75,8 @@ public final class GuardianSpellRenderer {
         // Arches and arrow racks remain upright and keep their committed facing.
         float yaw = -entity.getYRot() + (model == 830208 ? age * 1.8F
                 : model == 830215 ? age * 3F
-                : model == 830216 ? age * 5F : 0F);
+                : model == 830216 ? age * 5F
+                : model == 830219 ? age * 0.7F : 0F);
         float roll = model == 830204 || model >= 830208 ? 0F : age * 4F;
         float size = switch (model) {
             case 830208 -> 2.6F;
@@ -85,6 +89,11 @@ public final class GuardianSpellRenderer {
             case 830214 -> 1.4F;
             case 830215 -> 1.3F;
             case 830216 -> 1.15F;
+            // The floor hazards are sized to their real footprint: the rock
+            // eruption and the rift band read wide, the fire column tall.
+            case 830217 -> 1.5F;
+            case 830218 -> 1.8F;
+            case 830219 -> 1.6F;
             default -> 1F;
         };
         return new Pose(mesh, yaw, entity.getXRot(), roll, scale * size, age);
@@ -133,6 +142,19 @@ public final class GuardianSpellRenderer {
             case "chest_beam" -> new Motion(1F - .16F * charge + .10F * release,
                     1F - .16F * charge + .10F * release,
                     1F + .20F * release, .46F, release + .25F * charge, 0xF3C6FF);
+            // The rock eruption climbs out of its own base, widening on release
+            // rather than spinning, so it never reads as the rotating rune.
+            case "geyser" -> new Motion(1F + .10F * release, .78F + .34F * charge + .14F * release,
+                    1F + .10F * release, .06F, release, 0xFFD9C0);
+            // The floor rift only opens across its committed axis: no roll, a
+            // small spread as the crack widens, and a flat-to-bright surge.
+            case "rift_fracture" -> new Motion(.86F + .20F * charge, 1F + .22F * release,
+                    1.10F - .18F * charge, .02F, release, 0xFFB27A);
+            // The fire column breathes and twists slowly, hotter and taller as
+            // the charge completes, distinct from the rock shards.
+            case "inferno_geyser" -> new Motion(.92F + .14F * heartbeat,
+                    .72F + .40F * charge + .16F * release,
+                    .92F + .14F * heartbeat, -.18F, heartbeat, 0xFFCC86);
             default -> new Motion(1F, 1F, 1F, 0F, 0F, 0xFFFFFF);
         };
     }

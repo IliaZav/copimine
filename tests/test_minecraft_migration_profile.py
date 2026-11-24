@@ -258,10 +258,13 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # cocoon-shatter plate cinematic changed the packaged client resources.
     # Repinned from a clean `gradle test jar` on the pinned JDK; the Windows CI
     # build then reproduced these exact bytes.
-    assert artifact['size'] == 30_368_290
+    # 24-November again: the three authored floor-hazard bodies (the rock
+    # eruption, the rift crack and the pressure fire column) joined the packaged
+    # geometry set, from the same clean `gradle test jar` on the pinned JDK.
+    assert artifact['size'] == 30_371_880
     assert artifact['sha512'] == (
-        'b6aa678ac587c86c5b2808782bb17c7e44aa7b2027295334663c7a258f1413646'
-        'b8142ec1a71570c9f2e146e155e543a51dde50ed159edcd7ef18b1c6643814b'
+        '4ad8f2c33abfceba48f8d0648aaa9a781b368578d6ddd10398f1d22bb757fdcbc'
+        '6f32e4ede9edadbad3eb01671c728e25acbb2190d5d394cbb86ae366e45bc40'
     )
 
 

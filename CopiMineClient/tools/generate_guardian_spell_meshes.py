@@ -179,6 +179,42 @@ def meshes():
         for dy in (-1.2, 1.2):
             beam.append(box(8 + dx, 8 + dy, 19, .9, .9, 10, 2))
     result['chest_beam'] = beam
+    # N23-P1-06/N23-P1-08: the geyser, the floor rift and the inferno column
+    # each get an authored body of their own. They used to share fault_fragment
+    # with the ground slam, so a rock eruption, a cut in the floor and a fire
+    # column were the same visible object.
+    geyser = [box(8, 2.4, 8, 8.6, 2.2, 8.6, 15, ('y', 45))]
+    for index in range(5):
+        a = index * math.pi * 2 / 5 + 0.35
+        radius = 2.4 + (index % 2) * 0.9
+        height = 8.5 + (index % 3) * 2.2
+        x, z = 8 + math.cos(a) * radius, 8 + math.sin(a) * radius
+        geyser.append(box(x, 2.2 + height / 2, z, 1.7, height, 1.7,
+                          0 if index % 2 else 6,
+                          ('x' if index % 2 else 'z', 18 if index % 2 else -18)))
+        geyser.append(box(x, 2.2 + height + 0.6, z, .9, 1.4, .9, 1, ('y', 45)))
+    geyser.append(box(8, 12.8, 8, 1.1, 2.4, 1.1, 14, ('y', 45)))
+    result['geyser'] = geyser
+    rift = []
+    for index in range(7):
+        x = 2.0 + index * 2.0
+        z = 8 + (1.3 if index % 2 else -1.3)
+        rift.append(box(x, 7.4, z, 2.0, .8, 1.4, 15, ('y', 24 if index % 2 else -24)))
+        rift.append(box(x, 9.2, z, 1.0, 2.2, .7, 6, ('z', 18 if index % 2 else -18)))
+    for index in range(4):
+        x = 4.0 + index * 2.6
+        rift.append(box(x, 10.6, 8, .7, 2.6, .7, 7, ('x', 12)))
+    result['rift_fracture'] = rift
+    inferno_geyser = [box(8, 7.8, 8, 6.4, 1.2, 6.4, 15, ('y', 45))]
+    for index in range(6):
+        a = index * math.pi / 3
+        x, z = 8 + math.cos(a) * 2.6, 8 + math.sin(a) * 2.6
+        height = 7.0 + (index % 3) * 1.8
+        inferno_geyser.append(box(x, 8.4 + height / 2, z, 1.3, height, 1.3,
+                                  6 if index % 2 else 7,
+                                  ('x' if index % 2 else 'z', 16)))
+        inferno_geyser.append(box(x, 8.4 + height + 0.6, z, .8, 1.4, .8, 1, ('y', 45)))
+    result['inferno_geyser'] = inferno_geyser
     return result
 
 

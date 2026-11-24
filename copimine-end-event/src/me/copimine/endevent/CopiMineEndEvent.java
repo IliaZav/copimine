@@ -58765,6 +58765,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         state.surfaceProgress = stage.width(eventTickCounter);
+        // N23-P1-06/N23-P1-08: the crack is now an authored floor-rift body, not
+        // only particles. It is leased to the boss and expires as the eruption
+        // takes over, so the warning and the column never fight for the cap.
+        for (Location center : state.centers()) {
+            playCasterSpellBody(boss, BossSpellGeometryPolicy.Shape.RIFT_FRACTURE,
+                    "PHASE3_RIFT_FRACTURE", center.clone().add(0D, 0.06D, 0D),
+                    warningTicks + 2);
+        }
         renderCurrentRiftFracture(state);
         nextCurrentRiftFractureBatchTick = eventTickCounter + batchGapTicks;
         getLogger().info("RIFT_FRACTURES_STARTED event=" + eventId
@@ -59061,6 +59069,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         center.getWorld().playSound(center,
                                 Sound.BLOCK_RESPAWN_ANCHOR_DEPLETE, SoundCategory.HOSTILE,
                                 0.9F, 0.7F);
+                    }
+                    // N23-P1-08: the column is an authored pressure-fire body of
+                    // its own, matching the visible hit cylinder, not the rock
+                    // shards. It is bounded and removed with the event session.
+                    for (Location column : state.centers()) {
+                        playCasterSpellBody(boss, BossSpellGeometryPolicy.Shape.INFERNO_GEYSER,
+                                "PHASE3_GEYSER", column.clone().add(0D, 0.1D, 0D),
+                                RiftFractureEruptionPolicy.ERUPT_TICKS + 8);
                     }
                     getLogger().info("RIFT_FRACTURE_ERUPTION event=" + eventId
                             + " fracture=" + state.id() + " phase=RIFT"

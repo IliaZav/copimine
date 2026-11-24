@@ -119,8 +119,8 @@
         "tests/dungeon_probe.py"
       ],
       "installedJar": "local-runtime/end-rift-server-26.3/plugins/CopiMineDungeon.jar",
-      "candidateSha256": "356577f8062917bd75709d9da71fcd4ef2193d81a19a5f99e3664bdc7cc63b7b",
-      "sha256": "356577f8062917bd75709d9da71fcd4ef2193d81a19a5f99e3664bdc7cc63b7b",
+      "candidateSha256": "998f3c2e34c29d64ccdd3b7606c3ac7a8ad008a5f00fb95964acc2c0d36a9012",
+      "sha256": "998f3c2e34c29d64ccdd3b7606c3ac7a8ad008a5f00fb95964acc2c0d36a9012",
       "sourceBuild": "PASS",
       "unitContract": "PASS",
       "realServerEnable": "BLOCKED",
@@ -234,8 +234,8 @@
         "tests/PrisonerAbilityControllerTest.java"
       ],
       "installedJar": "local-runtime/end-rift-server-26.3/plugins/CopiMineEndEvent.jar",
-      "candidateSha256": "5029686aa24a3c55e64baf4366047764fcf42128fb598490268dc73533f1d308",
-      "sha256": "5029686aa24a3c55e64baf4366047764fcf42128fb598490268dc73533f1d308",
+      "candidateSha256": "3fd473a789909a2ff66251fa41ed0276fc461259c10f30b331e406aeb9ffcd73",
+      "sha256": "3fd473a789909a2ff66251fa41ed0276fc461259c10f30b331e406aeb9ffcd73",
       "sourceBuild": "PASS",
       "unitContract": "PASS",
       "realServerEnable": "BLOCKED",

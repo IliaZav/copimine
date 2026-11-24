@@ -88,6 +88,7 @@ public class DungeonCommandProbe {
             case "unknown" -> unknown();
             case "complete" -> complete();
             case "permissions" -> permissions();
+            case "wand" -> wand();
             default -> throw new AssertionError("unknown scenario " + scenario);
         }
     }
@@ -270,6 +271,44 @@ public class DungeonCommandProbe {
 
         System.out.println("PASS dungeon permissions and safety flags");
     }
+
+    static void wand() {
+        Rig rig = new Rig();
+        List<String> minted = new ArrayList<>();
+        rig.dispatcher.setWandGateway(name -> {
+            if ("ghost".equals(name)) {
+                return WandGateway.Result.fail("Игрок '" + name + "' не в сети.");
+            }
+            minted.add(name);
+            return WandGateway.Result.ok("Жезл выдан '" + name + "'.");
+        });
+
+        CommandResponse given = rig.run("wand give builder_one");
+        check(given.success(), "wand give must succeed through the gateway: " + given.lines());
+        check(minted.contains("builder_one"), "the gateway must receive the typed target: " + minted);
+        check(String.join("\n", given.lines()).contains("builder_one"),
+                "the receipt must name the target: " + given.lines());
+
+        CommandResponse alias = rig.run("editor wand builder_two");
+        check(alias.success() && minted.contains("builder_two"),
+                "editor wand alias must mint through the same gateway: " + alias.lines());
+
+        CommandResponse offline = rig.run("wand give ghost");
+        check(!offline.success(), "an offline target must be a refusal, not a receipt");
+        check(String.join("\n", offline.lines()).contains("не в сети"),
+                "the offline refusal must say why: " + offline.lines());
+
+        // Without a live gateway the pure core must resolve the request but never
+        // claim that an item was created.
+        DungeonCommandDispatcher bare = new DungeonCommandDispatcher(
+                rig.store, rig.sessions, rig.audit);
+        CommandResponse noGateway = bare.execute(rig.builder, List.of("wand", "give", "someone"));
+        check(noGateway.success(), "the no-gateway receipt must still resolve");
+        check(String.join("\n", noGateway.lines()).contains("не создаётся"),
+                "the no-gateway receipt must not claim the item exists: " + noGateway.lines());
+
+        System.out.println("PASS dungeon wand issuance");
+    }
 }
 '''
 
@@ -290,6 +329,7 @@ def compiled(core, tmp_path_factory):
     ("unknown", "PASS dungeon unknown usage and suggestion"),
     ("complete", "PASS dungeon tab completion"),
     ("permissions", "PASS dungeon permissions and safety flags"),
+    ("wand", "PASS dungeon wand issuance"),
 ])
 def test_cmdungeon_contract(compiled, scenario, marker):
     output = run_fixture(compiled, "DungeonCommandProbe", scenario, timeout=60)

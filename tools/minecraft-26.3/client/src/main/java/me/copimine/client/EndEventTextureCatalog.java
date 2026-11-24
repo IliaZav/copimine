@@ -135,6 +135,14 @@ public final class EndEventTextureCatalog {
         for (int stage = 0; stage <= 7; stage++) {
             textures.put(RiftRamVisualPolicy.visualForArmorStage(stage), riftRamHide);
         }
+        // N23-P1-09: the Phase 4 infernal pack. Three authored summon skins, one
+        // per approved species. Each is bound by server UUID, so a natural magma
+        // cube / blaze / wither skeleton keeps the vanilla sheet. The legacy
+        // 1.21.1 client carries the same three ids; this is the 26.3 mirror so
+        // the pair the F2 checklist names renders the pack too.
+        textures.put("END_RIFT_INFERNO_MAGMA_V1", entityTexture("end_rift_inferno_magma.png"));
+        textures.put("END_RIFT_INFERNO_BLAZE_V1", entityTexture("end_rift_inferno_blaze.png"));
+        textures.put("END_RIFT_INFERNO_WITHER_V1", entityTexture("end_rift_inferno_wither.png"));
         return Map.copyOf(textures);
     }
 

@@ -22,7 +22,7 @@
    выше; прод на момент записи нёс предыдущий jar `084cc0f5…`
    (см. `B10_B11_B12_FIXES_AND_MATRIX_LEDGER.md` §3).
 2. Клиент: ровно `CopiMineClient-0.1.4+26.3.jar`
-   (30 371 880 B, sha512 `4ad8f2c3…`, пин `tools/minecraft-26.3/profile.lock.json`;
+   (30 384 667 B, sha512 `4e26b09f…`, пин `tools/minecraft-26.3/profile.lock.json`;
    перепинен 2026-11-24 после того, как chest beam, cocoon-shatter и три авторских
    тела наземных угроз (geyser / rift_fracture / inferno_geyser) попали в клиент).
    Сервер требует `required_client_mod_version: 0.1.4+26.3` — пара должна совпасть,

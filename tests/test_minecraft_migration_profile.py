@@ -261,10 +261,18 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # 24-November again: the three authored floor-hazard bodies (the rock
     # eruption, the rift crack and the pressure fire column) joined the packaged
     # geometry set, from the same clean `gradle test jar` on the pinned JDK.
-    assert artifact['size'] == 30_389_722
+    # 24-November: the V5.1 authored spell meshes (SpellVisualGeometry +
+    # SpellVisualRenderer for the 26.3 client) and their emissive texture joined
+    # the packaged client; repinned from a clean `gradle test jar` on the pinned
+    # JDK, reproduced byte-for-byte twice.
+    # 24-November: those meshes gained authored depth (Crown crest blades + an
+    # animated radial burst, a counter-spinning Circle sigil with ley-spokes, the
+    # five-ring Echo shell and layered Guardian fan bands); repinned from a clean
+    # `gradle test jar` on the pinned JDK, reproduced byte-for-byte twice.
+    assert artifact['size'] == 30_418_805
     assert artifact['sha512'] == (
-        '5967abfa42693d50bc7bec2f5808496691012b6ae34421f6ee72588d15b672fb'
-        'a3fdcc1e6c70329b516513faf651225aefbc731b7c49b89325e4587297d6506a'
+        'd2282e7045ddc152fd02f7ab70173e6cc1d173bb77e5a5a7bd86be56b3560ec0'
+        '9ff2f4e82c385b3ab69c2f23f675f750bd687128ad99fed753d0d05d8a422977'
     )
 
 

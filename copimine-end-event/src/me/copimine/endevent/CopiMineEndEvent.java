@@ -870,6 +870,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final long INFERNO_CYCLE_SEED = 7_919L;
     private static final int MAX_ACTIVE_WORLD_VFX = 64;
     private static final long WORLD_VFX_BEAM_DURATION_MILLIS = 650L;
+    /** Authored V5.1 spell meshes refresh less often than the thin beam permitted. */
+    private static final long SPELL_VISUAL_DURATION_MILLIS = 1_400L;
     private static final float WORLD_VFX_BEAM_DEFAULT_WIDTH = 0.12F;
     /** Every world-vfx key of the center-core chest beam starts with this. */
     private static final String CHEST_BEAM_VFX_PREFIX = "boss-chest-beam-";
@@ -39670,6 +39672,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 TrialAimLock lock = trialAimLocks.get(actor.getUniqueId());
                 if (lock == null) return;
                 Location center = namedTrialAim(actor, target);
+                Vector cueLane = horizontalDirection(actor.getLocation(), center);
+                if (cueLane.lengthSquared() < 1.0E-4D) cueLane = new Vector(0.0D, 0.0D, 1.0D);
+                broadcastSpellVisualCue("fangline", cueSeedFor(actor.getUniqueId()),
+                        center.clone(), center.clone().add(cueLane.normalize().multiply(3.0D)),
+                        0x8A5CFF);
                 // V5.1: the tell now traces the real lane — three consecutive
                 // cells ALONG the aim axis — instead of a wider bar across the
                 // victim, so what a player reads is what will actually spawn.
@@ -39693,6 +39700,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 for (ArchmageV5CombatPolicy.Jaw jaw : ring)
                     emitTrialParticle(actor, center.clone().add(jaw.x(), 0.15D, jaw.z()),
                             Particle.SOUL_FIRE_FLAME, 3, .12D, .03D, .12D, 0);
+                Vector cueDir = target.getLocation().toVector().subtract(center.toVector()).setY(0.0D);
+                if (cueDir.lengthSquared() < 1.0E-4D) cueDir = new Vector(1.0D, 0.0D, 0.0D);
+                cueDir.normalize();
+                broadcastSpellVisualCue("circle", cueSeedFor(actor.getUniqueId()),
+                        center.clone(), center.clone().add(cueDir.clone().multiply(radius)), 0xB070FF);
                 if (playWarningSound) playTrialSound(actor, center,
                         Sound.ENTITY_EVOKER_PREPARE_ATTACK, 0.75F, 0.6F);
             }
@@ -39701,6 +39713,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 // geometry the channel will use, drawn as ground markers.
                 Location base = actor.getLocation().clone();
                 base.setY(Math.floor(base.getY()) + 0.15D);
+                Vector cueFacing = actor.getLocation().getDirection().setY(0.0D);
+                if (cueFacing.lengthSquared() < 1.0E-4D) cueFacing = new Vector(0.0D, 0.0D, 1.0D);
+                cueFacing.normalize();
+                broadcastSpellVisualCue("crown", cueSeedFor(actor.getUniqueId()),
+                        base.clone().add(0.0D, -0.10D, 0.0D),
+                        base.clone().add(cueFacing.clone()
+                                .multiply(ArchmageV5CombatPolicy.CROWN_LENGTH_MAX)), 0x9B5CFF);
                 double[] angles = ArchmageV5CombatPolicy.crownSpokeAnglesDegrees(
                         0L, ArchmageV5CombatPolicy.crownRotation(10.0D), 0.0D);
                 for (double angle : angles) {
@@ -40203,6 +40222,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // Three real teeth per arm keeps the rotating read without flooding the
         // entity budget; the arms themselves are the mesh, not extra fangs.
         int teeth = Math.min(3, ArchmageV5CombatPolicy.crownTeeth(length));
+        long crownSeed = cueSeedFor(actor.getUniqueId());
+        clearSpellVisualCue("crown", crownSeed);
         BukkitTask task = new BukkitRunnable() {
             int elapsed;
             @Override public void run() {
@@ -40211,6 +40232,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         || !actor.isValid() || actor.isDead()
                         || (ownerRole != null && !ownerRole.equals(readString(actor, keyTrialRole)));
                 if (fenced || ArchmageV5CombatPolicy.crownMustFinish(elapsed)) {
+                    clearSpellVisualCue("crown", crownSeed);
                     activeCrownChannels.remove(casterId);
                     cancel();
                     return;
@@ -40219,6 +40241,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         elapsed, degreesPerSecond, 0.0D);
                 Location base = actor.getLocation().clone();
                 base.setY(Math.floor(base.getY()));
+                Vector cueFacing = actor.getLocation().getDirection().setY(0.0D);
+                if (cueFacing.lengthSquared() < 1.0E-4D) cueFacing = new Vector(0.0D, 0.0D, 1.0D);
+                cueFacing.normalize();
+                broadcastSpellVisualCue("crown", crownSeed, base.clone().add(0.0D, 0.05D, 0.0D),
+                        base.clone().add(cueFacing.clone().multiply(length)), 0x9B5CFF);
                 for (double angle : angles) {
                     List<double[]> arm = ArchmageV5CombatPolicy.crownArmPoints(angle, length, teeth);
                     for (double[] point : arm) {
@@ -40232,12 +40259,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 }
                 elapsed += 15;
                 if (elapsed >= standardChannel) {
+                    clearSpellVisualCue("crown", crownSeed);
                     activeCrownChannels.remove(casterId);
                     cancel();
                 }
             }
         }.runTaskTimer(this, 1L, 15L);
-        registerEncounterTask(task, () -> activeCrownChannels.remove(casterId));
+        registerEncounterTask(task, () -> {
+            clearSpellVisualCue("crown", crownSeed);
+            activeCrownChannels.remove(casterId);
+        });
         return true;
     }
 
@@ -40253,6 +40284,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             Wave7NamedTrialActorPolicy.Attack attack) {
         if (actor == null) return false;
         Location center = actor.getLocation();
+        Vector cueDir = actor.getLocation().getDirection().setY(0.0D);
+        if (cueDir.lengthSquared() < 1.0E-4D) cueDir = new Vector(0.0D, 0.0D, 1.0D);
+        broadcastSpellVisualCue("separation", cueSeedFor(actor.getUniqueId()),
+                center.clone(), center.clone().add(cueDir.normalize().multiply(
+                        ArchmageV5CombatPolicy.repulseRadius())), 0x7FE8FF);
         double damage = Wave7NamedTrialActorPolicy.scaledDamage(
                 ArchmageV5CombatPolicy.REPULSE_DAMAGE, wave7FrozenRosterSize());
         int pushed = 0;
@@ -40486,7 +40522,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         state.attackPattern = WARDEN_SLAM_PATTERN;
         state.phaseUntilTick = eventTickCounter + WARDEN_SLAM_TELEGRAPH_TICKS;
         state.hitPlayers.clear();
-        renderWardenSlamTelegraph(warden.getLocation());
+        renderWardenSlamTelegraph(warden.getLocation(), cueSeedFor(warden.getUniqueId()));
         warden.getWorld().playSound(warden.getLocation(), Sound.ENTITY_WARDEN_ROAR,
                 SoundCategory.HOSTILE, 0.85F, 0.55F);
         getLogger().info("WAVE7_WARDEN_SLAM event=" + eventId + " generation=" + generation
@@ -40503,10 +40539,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     /** The radial shockwave warning: a full ground ring plus a rising crown. */
-    private void renderWardenSlamTelegraph(Location center) {
+    private void renderWardenSlamTelegraph(Location center, long seed) {
         if (center == null || center.getWorld() == null) return;
         Vector axisA = new Vector(1.0D, 0.0D, 0.0D);
         Vector axisB = new Vector(0.0D, 0.0D, 1.0D);
+        broadcastSpellVisualCue("sphere", seed,
+                center.clone().add(0.0D, 0.1D, 0.0D),
+                center.clone().add(6.0D, 0.1D, 0.0D), 0x62FFE0);
         for (Player viewer : eventAudience()) {
             if (!isEventParticleViewer(viewer, center)) continue;
             spawnPatternRing(viewer, center.clone().add(0.0D, 0.12D, 0.0D),
@@ -40584,6 +40623,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                                            RealitySplitTrialRuntimeState state) {
         if (warden == null || state == null || state.direction == null) return;
         Location origin = warden.getLocation();
+        broadcastSpellVisualCue("sweep", cueSeedFor(warden.getUniqueId()),
+                origin.clone().add(0.0D, 0.05D, 0.0D),
+                origin.clone().add(state.direction.clone().multiply(4.0D)), 0x58E0C8);
         int accepted = 0;
         for (Player player : realitySplitTrialTargets(warden)) {
             if (!isCurrentRealitySplitTrialTarget(warden, player)
@@ -40795,6 +40837,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (warden == null || state == null || state.traceSegments == null
                 || warden.getWorld() == null) return;
         double y = warden.getLocation().getY() + 0.12D;
+        if (eventTickCounter % 5 == 0 && !state.traceSegments.isEmpty()) {
+            double[] first = state.traceSegments.get(0);
+            double[] last = state.traceSegments.get(state.traceSegments.size() - 1);
+            Location anchor = new Location(warden.getWorld(), first[0], y, first[1]);
+            Location reach = new Location(warden.getWorld(), last[2], y, last[3]);
+            if (anchor.distanceSquared(reach) > 0.05D) {
+                broadcastSpellVisualCue("sculk", cueSeedFor(warden.getUniqueId()),
+                        anchor, reach, 0x4FD9A8);
+            }
+        }
         for (double[] seg : state.traceSegments) {
             double length = Math.hypot(seg[2] - seg[0], seg[3] - seg[1]);
             int steps = Math.max(2, (int) Math.ceil(length / 0.55D));
@@ -40902,7 +40954,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             // and its own resolution instead of the directional warning cone.
             if (state.attackPattern == WARDEN_SLAM_PATTERN) {
                 if (eventTickCounter < state.phaseUntilTick) {
-                    renderWardenSlamTelegraph(warden.getLocation());
+                    renderWardenSlamTelegraph(warden.getLocation(), cueSeedFor(warden.getUniqueId()));
                     return;
                 }
                 warden.setVelocity(new Vector());
@@ -53199,6 +53251,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void renderGuardianFanTelegraph(LivingEntity boss, Vector facing, double progress) {
         Location base = boss.getLocation().clone().add(0.0D, 0.1D, 0.0D);
+        if (eventTickCounter % 10 == 0) {
+            broadcastSpellVisualCue("fan", cueSeedFor(boss.getUniqueId()),
+                    base.clone(), base.clone().add(facing.clone()
+                            .multiply(GuardianV5MeleePolicy.FAN_RANGE_MAX_BLOCKS)), 0x66FFC2);
+        }
         double half = Math.toRadians(GuardianV5MeleePolicy.FAN_HALF_ANGLE_DEGREES);
         double closing = GuardianV5MeleePolicy.FAN_RANGE_MAX_BLOCKS
                 - (GuardianV5MeleePolicy.FAN_RANGE_MAX_BLOCKS - GuardianV5MeleePolicy.FAN_RANGE_MIN_BLOCKS)
@@ -53219,6 +53276,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void renderGuardianHeavyTelegraph(LivingEntity boss, Vector facing, double progress) {
         Location base = boss.getLocation().clone().add(0.0D, 0.15D, 0.0D);
+        if (eventTickCounter % 10 == 0) {
+            broadcastSpellVisualCue("heavy", cueSeedFor(boss.getUniqueId()),
+                    base.clone(), base.clone().add(facing.clone()
+                            .multiply(GuardianV5MeleePolicy.HEAVY_RANGE_BLOCKS)), 0xFFB44A);
+        }
         double half = Math.toRadians(GuardianV5MeleePolicy.HEAVY_HALF_ANGLE_DEGREES);
         for (int i = 0; i <= 14; i++) {
             double angle = -half + 2.0D * half * i / 14.0D;
@@ -53241,6 +53303,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private void renderGuardianSeparationTelegraph(LivingEntity boss, double progress) {
         Location base = boss.getLocation().clone().add(0.0D, 0.08D, 0.0D);
         double radius = GuardianV5MeleePolicy.SEPARATION_RADIUS_MAX_BLOCKS * progress;
+        if (eventTickCounter % 10 == 0) {
+            broadcastSpellVisualCue("separation", cueSeedFor(boss.getUniqueId()),
+                    base.clone(), base.clone().add(
+                            GuardianV5MeleePolicy.SEPARATION_RADIUS_MAX_BLOCKS, 0.0D, 0.0D), 0x7FE8FF);
+        }
         Vector axisA = new Vector(1.0D, 0.0D, 0.0D);
         Vector axisB = new Vector(0.0D, 0.0D, 1.0D);
         for (Player viewer : eventAudience()) {
@@ -53387,6 +53454,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void endCrushingGravity(String reason) {
+        clearSpellVisualCue("gravity", crushingGravityGeneration);
         int arrows = crushingGravityArrows.size();
         releaseCrushingGravityPull();
         crushingGravityPlayers.clear();
@@ -53458,6 +53526,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 crushingGravityBounds.minY() + 0.1D, crushingGravityBounds.centerZ());
         double radius = crushingGravityBounds.radius();
         double progress = CrushingGravityPolicy.progress(elapsed);
+        if (elapsed % 5 == 0) {
+            broadcastSpellVisualCue("gravity", crushingGravityGeneration,
+                    center.clone(), center.clone().add(Math.max(4.0D, radius), 0.0D, 0.0D),
+                    0xB48CFF);
+        }
         Vector axisA = new Vector(1.0D, 0.0D, 0.0D);
         Vector axisB = new Vector(0.0D, 0.0D, 1.0D);
         for (Player viewer : eventAudience()) {
@@ -66505,6 +66578,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      */
     private void sendWorldBeamPacket(Player viewer, String beamKey, Location from,
                                      Location to, int colorRgb, float width) {
+        sendWorldBeamPacket(viewer, beamKey, from, to, colorRgb, width,
+                WORLD_VFX_BEAM_DURATION_MILLIS);
+    }
+
+    private void sendWorldBeamPacket(Player viewer, String beamKey, Location from,
+                                     Location to, int colorRgb, float width, long durationMillis) {
         if (viewer == null || !viewer.isOnline() || config == null
                 || from == null || to == null || from.getWorld() == null
                 || !from.getWorld().equals(to.getWorld())
@@ -66537,8 +66616,44 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 ? Math.max(0.02F, Math.min(0.45F, width))
                 : WORLD_VFX_BEAM_DEFAULT_WIDTH;
         sendClientPacket(viewer, "END_WORLD_BEAM", instance,
-                WORLD_VFX_BEAM_DURATION_MILLIS, mode, "RIFT_BEAM",
+                Math.max(1L, Math.min(2_000L, durationMillis)), mode, "RIFT_BEAM",
                 0, 0, safeWidth, clearPolicy);
+    }
+
+    /**
+     * Broadcast one compact authored spell cue.
+     *
+     * <p>The client reconstructs the whole 3D mesh (Crown arms, jaw ring,
+     * Warden box, echo shell, gravity field) from this single key plus the
+     * anchor/direction pair; the server never streams per-fang vertices. The
+     * key is stable for the whole cast so a refresh preserves the animation
+     * clock instead of restarting it.</p>
+     */
+    private void broadcastSpellVisualCue(String token, long seed, Location anchor,
+                                         Location reach, int colorRgb) {
+        if (token == null || token.isBlank() || anchor == null || reach == null
+                || anchor.getWorld() == null || !anchor.getWorld().equals(reach.getWorld())) {
+            return;
+        }
+        String key = "v51-" + token + "-" + Math.floorMod(seed, 1_000_000_000L);
+        for (Player viewer : Bukkit.getOnlinePlayers()) {
+            sendWorldBeamPacket(viewer, key, anchor, reach, colorRgb, 0.12F,
+                    SPELL_VISUAL_DURATION_MILLIS);
+        }
+    }
+
+    private void clearSpellVisualCue(String token, long seed) {
+        if (token == null || token.isBlank()) {
+            return;
+        }
+        clearWorldVfxBeam("v51-" + token + "-" + Math.floorMod(seed, 1_000_000_000L));
+    }
+
+    private static long cueSeedFor(UUID id) {
+        if (id == null) {
+            return 0L;
+        }
+        return id.getMostSignificantBits() ^ id.getLeastSignificantBits();
     }
 
     private String normalizeWorldVfxKey(String raw) {

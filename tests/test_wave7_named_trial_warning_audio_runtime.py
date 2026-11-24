@@ -48,6 +48,11 @@ public class Wave7WarningAudioProbe {
         @Override public Vector clone(){return cloneVector();}
         double getX(){return x;}double getZ(){return z;}
         Vector multiply(double f){x*=f;y*=f;z*=f;return this;}
+        Vector subtract(Vector o){return new Vector(x-o.x,y-o.y,z-o.z);}
+        double lengthSquared(){return x*x+y*y+z*z;}
+        Vector setY(double v){y=v;return this;}
+        Vector normalize(){double l=Math.sqrt(x*x+y*y+z*z);
+            if(l<1.0E-8D){x=0;y=0;z=0;}else{x/=l;y/=l;z/=l;}return this;}
     }
     static class Location implements Cloneable {
         final World world;double x,y,z;
@@ -58,6 +63,8 @@ public class Wave7WarningAudioProbe {
         void setY(double y){this.y=y;}
         double getY(){return y;}
         double getYaw(){return 0.0D;}
+        Vector toVector(){return new Vector(x,y,z);}
+        Vector getDirection(){return new Vector(0.0D,0.0D,1.0D);}
     }
     static class LivingEntity {
         final World world;final Location location;
@@ -109,6 +116,11 @@ public class Wave7WarningAudioProbe {
     void playTrialSound(LivingEntity actor,Location at,Sound sound,float volume,float pitch){
         actor.getWorld().playSound(at,sound,volume,pitch);
     }
+    // The V5.1 authored-cast cue is presentation-only, so the probe records it as
+    // a no-op; the "one sound, many visual frames" claim still measures real
+    // particle/sound gating inside the sliced production renderer.
+    static long cueSeedFor(UUID id){return id==null?0L:id.getMostSignificantBits()^id.getLeastSignificantBits();}
+    void broadcastSpellVisualCue(String token,long seed,Location anchor,Location reach,int colorRgb){}
 """ + production + r"""
     static void require(boolean yes,String message){if(!yes)throw new AssertionError(message);}
     void verify(Wave7NamedTrialActorPolicy.Attack attack) {

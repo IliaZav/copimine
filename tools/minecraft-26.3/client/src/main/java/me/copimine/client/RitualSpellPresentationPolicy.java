@@ -10,7 +10,7 @@ public final class RitualSpellPresentationPolicy {
     public enum Channel { GLYPH, SCREEN }
     public enum Stage { WARNING, ACTIVE }
     public enum Orientation { HORIZONTAL, BILLBOARD }
-    public enum PassKind { CORE_OUTLINE, RIBBON, BEACON, CHANNEL, RITUAL, GLYPH, WAVE }
+    public enum PassKind { CORE_OUTLINE, RIBBON, BEACON, CHANNEL, RITUAL, GLYPH, WAVE, SPELL }
 
     public enum Spell {
         RIFT_BARRAGE(4.7F, Orientation.HORIZONTAL, "barrage", "Разломный обстрел"),
@@ -95,6 +95,7 @@ public final class RitualSpellPresentationPolicy {
         passes.add(new WorldPass(PassKind.BEACON, null));
         passes.add(new WorldPass(PassKind.CHANNEL, null));
         passes.add(new WorldPass(PassKind.RITUAL, null));
+        passes.add(new WorldPass(PassKind.SPELL, null));
         passes.add(new WorldPass(PassKind.WAVE, null));
         for (Spell spell : Spell.values()) passes.add(new WorldPass(PassKind.GLYPH, spell));
         for (WorldPass pass : passes) {
@@ -111,6 +112,9 @@ public final class RitualSpellPresentationPolicy {
         if (WaveCombatPresentationPolicy.parse(instance) != null) return new WorldPass(PassKind.WAVE, null);
         Cue cue = parse(instance);
         if (cue != null) return cue.channel() == Channel.GLYPH ? new WorldPass(PassKind.GLYPH, cue.spell()) : null;
+        // V5.1 authored casts arrive as a compact v51-<token>-<seed> key and are
+        // drawn as reconstructed meshes, never as a fallback ribbon.
+        if (SpellVisualGeometry.spellCue(instance) != null) return new WorldPass(PassKind.SPELL, null);
         String key = worldKey(instance);
         if (key != null && key.startsWith("wave-ai-")) return null;
         if (key != null && key.startsWith("wave5-safe-zone-")) return new WorldPass(PassKind.BEACON, null);

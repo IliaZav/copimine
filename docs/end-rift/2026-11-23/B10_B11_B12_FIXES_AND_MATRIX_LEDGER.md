@@ -165,7 +165,7 @@ summary lines captured in `bite2_summary.txt`). All groups exit 0.
 | B-10 | Guardian AI frozen / spells missing | **Fixed this session** | `SOURCE` + `AUTO` | Live timed multiplayer cast/impact count |
 | B-11 | Phase 6 Kagune invulnerable/tiny/dead/corpses | **Fixed this session** (budget, pursuit, carrier cleanup) | `SOURCE` + `AUTO` | Native Phase 6 visual + damage pass |
 | B-12 | Boss HUD blinking/stale bar | **Fixed this session** (stale bar on unsanctioned removal) | `SOURCE` | Native HUD comparison |
-| B-13 | Client/bridge/audio/effects drift | Which tree builds the shipped jar is now resolved: the 26.3 client artifact is `CopiMineClient-0.1.4+26.3.jar` (30 367 332 B, SHA-512 `5cf53ffe632550d2b145d3f18c76b3d08aec4aeafad98ef2ccd4bb7fe4e91c11c1b33b7562521ca32fa380dc37ab4fa70c6e925f6919feb00ce5fe77430709dd`) pinned in `tools/minecraft-26.3/profile.lock.json → clientArtifact`, built from `tools/minecraft-26.3/client` with shared resources from `CopiMineClient/src/main/resources`, where `GuardianSpellRenderer`/`GuardianSpellMesh`/`LastSealSpellEffects` and the `guardian_spells` geometry are packaged. A stale `CopiMineClient-0.1.3+26.3.jar` (Oct 20) in the sibling `end-rift-26-3-integrated-final` worktree lacks them and is **not** the shipped client. Re-pinned 2026-11-24 to 30 368 290 B / SHA-512 `b6aa678ac5…6643814b` once the authored chest-beam family and cocoon-shatter cinematic were packaged into the client; the Windows CI build reproduced those exact bytes. Re-pinned again 2026-11-24 to 30 371 880 B / SHA-512 `4ad8f2c33a…45bc40` once the three authored floor-hazard bodies (rock eruption, rift crack, pressure fire column) replaced the shared ground-slam fragment in the packaged geometry. Re-pinned a third time 2026-11-24 to 30 384 667 B / SHA-512 `4e26b09fdd…1b6c10` once the three Phase 4 infernal summon skins (magma cube / blaze / wither skeleton) were packaged into the shared resources and their 26.3 renderer mixins were added; a clean two-run `gradle test jar` on the pinned JDK reproduced both bytes exactly. Re-pinned a fourth time 2026-11-24 to 30 389 722 B / SHA-512 `5967abfa42…97d6506a` once the three residual Kagune spell bodies (stab spine, floor eruption, small claw-knot) replaced three borrowed bodies in the packaged geometry; a clean two-run `gradle test jar` on the pinned JDK reproduced both bytes exactly. | `SOURCE` (+ prior `AUTO`) | Native V4-signed client/server pair check |
+| B-13 | Client/bridge/audio/effects drift | Which tree builds the shipped jar is now resolved: the 26.3 client artifact is `CopiMineClient-0.1.4+26.3.jar` (30 367 332 B, SHA-512 `5cf53ffe632550d2b145d3f18c76b3d08aec4aeafad98ef2ccd4bb7fe4e91c11c1b33b7562521ca32fa380dc37ab4fa70c6e925f6919feb00ce5fe77430709dd`) pinned in `tools/minecraft-26.3/profile.lock.json → clientArtifact`, built from `tools/minecraft-26.3/client` with shared resources from `CopiMineClient/src/main/resources`, where `GuardianSpellRenderer`/`GuardianSpellMesh`/`LastSealSpellEffects` and the `guardian_spells` geometry are packaged. A stale `CopiMineClient-0.1.3+26.3.jar` (Oct 20) in the sibling `end-rift-26-3-integrated-final` worktree lacks them and is **not** the shipped client. Re-pinned 2026-11-24 to 30 368 290 B / SHA-512 `b6aa678ac5…6643814b` once the authored chest-beam family and cocoon-shatter cinematic were packaged into the client; the Windows CI build reproduced those exact bytes. Re-pinned again 2026-11-24 to 30 371 880 B / SHA-512 `4ad8f2c33a…45bc40` once the three authored floor-hazard bodies (rock eruption, rift crack, pressure fire column) replaced the shared ground-slam fragment in the packaged geometry. Re-pinned a third time 2026-11-24 to 30 384 667 B / SHA-512 `4e26b09fdd…1b6c10` once the three Phase 4 infernal summon skins (magma cube / blaze / wither skeleton) were packaged into the shared resources and their 26.3 renderer mixins were added; a clean two-run `gradle test jar` on the pinned JDK reproduced both bytes exactly. Re-pinned a fourth time 2026-11-24 to 30 389 722 B / SHA-512 `5967abfa42…97d6506a` once the three residual Kagune spell bodies (stab spine, floor eruption, small claw-knot) replaced three borrowed bodies in the packaged geometry; a clean two-run `gradle test jar` on the pinned JDK reproduced both bytes exactly. Re-pinned a fifth time 2026-11-24 to 30 417 908 B / SHA-512 `59eec2ba1e…31ef6469` once the V5.1 authored spell meshes (`SpellVisualGeometry`/`SpellVisualRenderer`, 26.3 client) and their emissive texture were packaged; a clean `gradle test jar` reproduced the exact bytes twice. Re-pinned a sixth time 2026-11-24 to 30 418 805 B / SHA-512 `d2282e70…8a422977` once those V5.1 meshes gained authored depth (Crown crest blades and an animated radial burst, a counter-spinning Circle sigil with ley-spokes, the five-ring Echo shell and layered Guardian fan bands); a clean two-run `gradle test jar` on the pinned JDK reproduced both bytes exactly. | `SOURCE` (+ prior `AUTO`) | Native V4-signed client/server pair check |
 | B-14 | Historical/extra risks | **32 passed** — 7 files (`task5_projectile_regressions`, `rift_ram_restart_cleanup_runtime`, `scoped_cleanup`, `recovery_contract`, `evidence_portability`, `seal_lance_volley_guard`, `java_tests_are_all_executed`); carrier cleanup covered by B-11 | `AUTO_TESTED_ONLY` | Item-by-item native re-audit |
 
 **Boss-AI evidence (objective §5, "нормальный ИИ боссу").** Dedicated group
@@ -966,3 +966,119 @@ testable off a live server.
   real reward delivery and the trigger volume - is `NATIVE_BLOCKED` here: no GUI
   client, no running Paper, no signed V4 client. The runtime is off by default and
   no world block, player or reward state was changed by this batch.
+
+### V5.1 - authored animated 3D spell VFX (client geometry + renderer) and the server cue stream
+
+Задание V5.1 требует, чтобы заклы босса, Стража и миниибоссов читались как
+авторские анимированные 3D-эффекты, а не как набор частиц. До этого инкремента
+клиент умел рисовать только одиночный луч (`END_WORLD_BEAM`), поэтому сложные
+силуэты (сжимающаяся сфера, вращающаяся печать, копьё кагуне, веер Стража,
+вена скользкого следа) не существовали нигде. Этот инкремент добавляет
+оригинальную авторскую геометрию, рендерер и компактный серверный поток
+подсказок, который её запускает.
+
+- **`SpellVisualGeometry`** (`CopiMineClient/.../client`) - чистая, без зависимости
+  от GL, геометрия всех десяти реперных заклов: `crown`, `fangline`, `circle`,
+  `separation`, `sweep`, `sphere`, `sculk`, `gravity`, `fan`, `heavy`. Каждый закл
+  собирается из параметризованных «полос» (дуги, кольца, рёбра, вихри, сферы),
+  детерминированно (`splitUnit` даёт стабильное разбиение без дрожания кадра),
+  с жёсткими потолками вершин/полос и LOD-уровнями. Плюс парсер компактного ключа
+  `spellCue`/`cueSeed` (`v51-<spell-token>-<seed>`) для сетевой реконструкции.
+- **`SpellVisualRenderer`** - мировой рендерер: строит квады в локальном кадре
+  закла (x = направление каста/луча, z = боковое, y = вверх) и кладёт их на
+  единственную серверную пару «якорь → досягаемость»; эмиссивная текстура
+  `assets/copimineclient/textures/entity/end_rift_spell_arc.png`.
+- **Клиентская проводка**: `RitualSpellPresentationPolicy` получает
+  `PassKind.SPELL` и `worldPass`-маршрутизацию; `EndEventWorldVfxManager` получает
+  слой `SPELL` и `draw`-ветки. Клиентский `activeWorldVfxInstances` ограничен 64,
+  версий инстанса 256, время жизни луча 2000 мс, ширина зажата 0.02-0.45; повторная
+  отправка сохраняет `startedAtMillis`, пока инстанс жив, поэтому анимация не
+  перезапускается.
+- **Серверный поток подсказок** (`CopiMineEndEvent.java`): перегрузка
+  `sendWorldBeamPacket(...durationMillis)`, `broadcastSpellVisualCue` /
+  `clearSpellVisualCue`, константа `SPELL_VISUAL_DURATION_MILLIS = 1400`. Подсказки
+  эмитятся для `crown` (канал + телеграф заряда + очистка), `fangline`, `circle`,
+  `separation` (Архимаг), `sweep`, `sphere` (телеграф удара, с seed-параметром),
+  `gravity` (+очистка), `sculk` (направленная вена) и веера/тяжёлого
+  удара/разъединения Стража (с троттлингом `%10`). Seed стабилен на актёра/поколение
+  (`cueSeedFor(uuid)` для короны/печати/линии; `cueSeedFor(warden)` для
+  свипа/сферы/скользкого; `cueSeedFor(guardian)` для веера/тяжёлого;
+  `crushingGravityGeneration` для гравитации) - это ограничивает число живых
+  инстансов и не создаёт новый тип пакета.
+- **Клиентская вена следа скользкого** - одиночная направленная жила от первой к
+  последней реальной точке `traceSegments`; точный коридор по-прежнему рисуется
+  частицами и не заявлен как точный путь.
+- **Тесты**: `SpellVisualGeometryTest` (14 поведенческих проверок: детерминизм,
+  границы, потолки, парсер ключа, LOD). Клиентская сборка `gradle test build`
+  зелёная: всего 301 тест, `FAIL=0 ERR=0 SKIP=0`. Сервер компилируется и
+  упаковывается чисто (`BUILD SUCCESSFUL`).
+- **Re-pin**: изменение серверных исходников меняет Gradle-кандидат
+  `migrationPlugins` `CopiMineEndEvent-26.3.jar`. Он теперь sha256
+  `7a6a7d570d396f3b664684ffd8eaed8d86a135caacdebe9e229e393411ea9cc5`
+  (2 796 480 B, sha512 `1ef8f05231...`), собран дважды из одного исходника на
+  инструментальной цепочке CI (Temurin 25.0.4.1) и оба раза байт-в-байт
+  идентичен. Смещённый `b577d1f6...` добавлен в начало
+  `candidate.replaceSha256` (сначала новое), локальный 26.3-рантайм переустановлен
+  из нового лока (`--stage-only` перепроверил 29 кандидатов; установленный jar и
+  запись в реестре равны новому отпечатку), а `OWN_PLUGIN_INVENTORY.json/.md`,
+  миграционный пин-тест и шапка F2-чек-листа обновлены вместе. Кандидат Дана
+  (Dungeon) остался байт-в-байт на `416e4091...`; его пин не тронут.
+- **Статус**: `SOURCE` + `AUTO`. Как новые силуэты заклов выглядят на живом кадре
+  (силуэт+цвет+звук, отсутствие призрачных лучей после фазы/смерти/рестарта) и как
+  они совмещаются с реальными попаданиями - `NATIVE_BLOCKED`: в этой среде нет
+  GUI-клиента, запущенного Paper и подписанного V4-клиента. Ни один живой мир,
+  игрок или ассет не изменён этим инкрементом. Не заявлены как сделанные:
+  подпись моста N23-P1-07 и передача клиентской геометрии; переиспользуемые
+  `SpellVisualDefinition/Runtime`; прод-релиз.
+
+### V5.1 - порт авторских заклов в поставляемый 26.3-клиент
+
+При проверке выяснилось важное: поставляемый клиент (тот, что закреплён в
+`tools/minecraft-26.3/profile.lock.json` и который обязан использовать владелец
+для F2) собирается из проекта `tools/minecraft-26.3/client`, а НЕ из
+`CopiMineClient` (последний - независимая сборка 1.21.1, версия `0.1.1`, её
+собирает отдельный legacy-шаг гейта и стейджит в modpack). То есть авторская
+геометрия, добавленная только в `CopiMineClient`, не попала бы в клиент, который
+тестирует владелец. Этот инкремент переносит эффект в реальный 26.3-клиент.
+
+- **Перенесено дословно**: `SpellVisualGeometry` (чистая геометрия без
+  зависимости от GL) и `SpellVisualGeometryTest` (14 тестов) скопированы в
+  `tools/minecraft-26.3/client/src/main/java/me/copimine/client/` и
+  `.../src/test/java/me/copimine/client/`.
+- **Адаптировано под API 26.3**: `SpellVisualRenderer` в 26.3-дереве рисует те же
+  ленточные квады через отложенный рендерер - `PoseStack` + `RenderTypes.entityTranslucentEmissive`
+  + `Identifier.fromNamespaceAndPath` + `VertexConsumer.addVertex(Pose, ...).setColor(int).setUv(...).setOverlay(...).setLight(...).setNormal(...)`.
+  Математика та же (локальный кадр x=направление, z=бок, y=вверх; `Vec3.scale/cross/normalize`).
+- **Проводка**: `RitualSpellPresentationPolicy` получил `PassKind.SPELL` и маршрут
+  `v51-<token>-<seed>` в `worldPass`, а `drawWorldPasses` - отдельный проход
+  `SPELL`; `EndEventWorldVfxManager.render` получил слой `SPELL` и его отрисовку.
+  Ключи `v51-` не подпадают под другие префиксы, а неизвестный ключ по-прежнему
+  падает в `RIBBON` - регрессии для существующих лучей нет.
+- **Текстура**: `end_rift_spell_arc.png` лежит в общих ресурсах
+  `CopiMineClient/src/main/resources` и подключается 26.3-клиентом через
+  `resources.srcDir`, поэтому она уже была в поставляемом jar (именно она сдвинула
+  пин), а тест `authoredTextureIsShipped` проверяет её наличие на classpath.
+- **Сборка и воспроизводимость**: `gradle --no-daemon --offline -p tools/minecraft-26.3/client test jar`
+  на инструментальной цепочке CI (Temurin 25.0.4.1, Gradle 9.8.1): 406 тестов,
+  `FAIL=0 ERR=0 SKIP=0`, включая `SpellVisualGeometryTest` (14). Чистая пересборка
+  (`clean` + `test jar`) дала sha512
+  `d2282e7045ddc152fd02f7ab70173e6cc1d173bb77e5a5a7bd86be56b3560ec09ff2f4e82c385b3ab69c2f23f675f750bd687128ad99fed753d0d05d8a422977`
+  (30 418 805 B) и повторилась байт-в-байт двумя прогонами.
+- **Авторская глубина мешей**: корона получила вертикальные клинки-гребни на кончиках
+  лучей и анимированную радиальную вспышку (пульсирует по часам каста), круг -
+  контр-вращающуюся внутреннюю печать с радиальными лучами, эхо - пятикольцевую
+  оболочку вместо трёх, веер Стража - три вложенные полосы. Все добавления
+  детерминированы по (seed, elapsed) и остаются строго внутри уже проверенных
+  границ: 5 ARM/20 JAW короны, 9 JAW круга, `maxX==4.0`/`maxZ==2.5` Стража-удара,
+  `maxX==4.8` веера, ≥7 оболочек эха в радиусе r+0.35 с сжатием на заряде, поле
+  гравитации по горизонтали ≤10.5.
+- **Re-pin клиента**: `tools/minecraft-26.3/profile.lock.json` (`clientArtifact`
+  size/sha512), `docs/minecraft-26.3/README.md`,
+  `tests/test_minecraft_migration_profile.py` и шапка
+  `NATIVE_F2_VISUAL_CHECKLIST.md` обновлены вместе. Списка `replaceSha256` у этого
+  пина нет: клиент перезаписывается целиком.
+- **Статус**: `SOURCE` + `AUTO`. Как силуэты заклов выглядят на живом кадре
+  (силуэт+цвет+звук, отсутствие призрачных лучей после фазы/смерти/рестарта),
+  совмещение с реальными попаданиями и пара V4-подписанного клиента/сервера -
+  `NATIVE_BLOCKED`: в этой среде нет GUI-клиента, запущенного Paper и подписанного
+  V4-клиента. Ни один живой мир, игрок или ассет не изменён.

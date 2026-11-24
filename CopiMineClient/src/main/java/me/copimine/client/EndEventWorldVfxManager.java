@@ -249,6 +249,7 @@ public final class EndEventWorldVfxManager {
         try {
             RitualSpellPresentationPolicy.drawWorldPasses(snapshots(nowMillis), dimension, nowMillis, pass -> {
                 RenderLayer layer = switch (pass.kind()) {
+                    case SPELL -> SpellVisualRenderer.layer();
                     case RIBBON -> RenderLayer.getLines();
                     case CHANNEL -> RenderLayer.getEntityTranslucentEmissive(
                             Identifier.ofVanilla("textures/entity/end_crystal/end_crystal_beam.png"));
@@ -260,6 +261,7 @@ public final class EndEventWorldVfxManager {
                 VertexConsumer buffer = consumers.getBuffer(layer);
                 return beam -> {
                     switch (pass.kind()) {
+                        case SPELL -> SpellVisualRenderer.draw(buffer, entry, beam, nowMillis);
                         case RIBBON -> drawRibbon(buffer, entry, beam, nowMillis);
                         case CHANNEL -> drawRitualBeam(buffer, entry, beam, nowMillis, true);
                         case RITUAL -> drawRitualBeam(buffer, entry, beam, nowMillis);

@@ -266,6 +266,7 @@ public final class EndEventWorldVfxManager {
                         Identifier.withDefaultNamespace("textures/entity/end_crystal/end_crystal_beam.png"));
                 case RITUAL -> RenderTypes.lightning();
                 case GLYPH -> RenderTypes.entityTranslucentEmissive(spellTexture(pass.spell()));
+                case SPELL -> SpellVisualRenderer.layer();
                 case WAVE -> RenderTypes.entityTranslucentEmissive(
                         Identifier.fromNamespaceAndPath("copimineclient", "textures/entity/wave_combat_glyphs.png"));
             };
@@ -279,6 +280,7 @@ public final class EndEventWorldVfxManager {
                         case CHANNEL -> drawRitualBeam(buffer, entryPose, beam, nowMillis, true);
                         case RITUAL -> drawRitualBeam(buffer, entryPose, beam, nowMillis);
                         case GLYPH -> drawSpellGlyph(buffer, matrices, cameraPos, cameraRotation, beam, nowMillis);
+                        case SPELL -> SpellVisualRenderer.draw(matrices, buffer, beam, nowMillis);
                         case WAVE -> drawWaveCombatGlyph(buffer, matrices, cameraPos, cameraRotation, beam, nowMillis);
                     }
                 }

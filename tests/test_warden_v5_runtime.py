@@ -50,6 +50,7 @@ public class WardenV5RuntimeProbe {
         double getX(){return x;} double getY(){return y;} double getZ(){return z;}
         World getWorld(){return world;}
         Location add(double dx,double dy,double dz){return new Location(world,x+dx,y+dy,z+dz);}
+        Location add(Vector v){return add(v.x,v.y,v.z);}
         Vector toVector(){return new Vector(x,y,z);}
     }
     enum Sound { ENTITY_WARDEN_ATTACK_IMPACT, ENTITY_WARDEN_SONIC_BOOM }
@@ -124,6 +125,10 @@ public class WardenV5RuntimeProbe {
     boolean isEventParticleViewer(Player viewer,Location at){return true;}
     void spawnPatternRing(Player viewer,Location c,Vector a,Vector b,double r,int n,double rot,Particle p){}
     java.util.logging.Logger getLogger(){return java.util.logging.Logger.getLogger("WardenV5RuntimeProbe");}
+    // The V5.1 authored sweep cue is presentation-only: the probe records it as a
+    // no-op so the "committed geometry" assertions still measure real hits.
+    static long cueSeedFor(UUID id){return id==null?0L:id.getMostSignificantBits()^id.getLeastSignificantBits();}
+    void broadcastSpellVisualCue(String token,long seed,Location anchor,Location reach,int colorRgb){}
 
 """ + production + r"""
     Player player(double x,double y,double z){

@@ -47,6 +47,7 @@ public final class CopiMineClient implements ClientModInitializer {
         CopiMineClientLogger.info("CopiMineClient bootstrap started");
         sharedConfig = config;
         SpellVisualRenderer.setQuality(config.spellVisualQuality());
+        SpellVisualRenderer.setReducedMotion(config.reducedMotion());
         BossCameraShakeRuntime.configure(config);
         shaderRuntimeManager.initialize();
         visualManager.setShaderRuntimeManager(shaderRuntimeManager);
@@ -138,12 +139,29 @@ public final class CopiMineClient implements ClientModInitializer {
                                     context.getSource().sendFeedback(Component.literal("Плотность мешей заклинаний: REDUCED"));
                                     return 1;
                                 })))
+                        .then(ClientCommands.literal("reduced-motion")
+                                .then(ClientCommands.literal("on").executes(context -> {
+                                    config.setReducedMotion(true);
+                                    SpellVisualRenderer.setReducedMotion(true);
+                                    context.getSource().sendFeedback(Component.literal(
+                                            "Reduced motion ON: spell pulses stilled, warning geometry unchanged"));
+                                    return 1;
+                                }))
+                                .then(ClientCommands.literal("off").executes(context -> {
+                                    config.setReducedMotion(false);
+                                    SpellVisualRenderer.setReducedMotion(false);
+                                    context.getSource().sendFeedback(Component.literal(
+                                            "Reduced motion OFF: authored spell motion restored"));
+                                    return 1;
+                                })))
                         .then(ClientCommands.literal("status")
                                 .executes(context -> {
                                     context.getSource().sendFeedback(Component.literal(visualManager.statusLine()));
                                     context.getSource().sendFeedback(Component.literal(ClientBridgeProtocol.handshakeStatusLine()));
                                     context.getSource().sendFeedback(Component.literal("active=" + visualManager.activeSummary()));
                                     context.getSource().sendFeedback(Component.literal("spellQuality=" + SpellVisualRenderer.quality()));
+                                    context.getSource().sendFeedback(Component.literal(
+                                            "reducedMotion=" + SpellVisualRenderer.reducedMotion()));
                                     EndEventClientState endEvent = ClientBridgeProtocol.endEventState();
                                     context.getSource().sendFeedback(Component.literal(
                                             "endEvent=" + (endEvent.eventId().isBlank() ? "-" : endEvent.eventId())

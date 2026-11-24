@@ -292,12 +292,15 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # `spell_visual_quality` config key, the `SpellVisualRenderer.setQuality`
     # call at bootstrap/reload and the `/copimineclient spell-quality` command,
     # so the owner can trade sample density for frame time without ever
-    # shrinking the warning footprint. Repinned from two clean `--rerun-tasks
-    # gradle test jar` runs that agreed byte for byte on the same JDK.
-    assert artifact['size'] == 30_426_917
+    # shrinking the warning footprint. It also now honors reduced motion for the
+    # authored world spell meshes (Section 9A.04/9A.05) through
+    # `SpellVisualMotionPolicy`, `SpellVisualRenderer.setReducedMotion` and the
+    # `/copimineclient reduced-motion` command. Repinned from two clean
+    # `--rerun-tasks gradle test jar` runs that agreed byte for byte on the same JDK.
+    assert artifact['size'] == 30_428_023
     assert artifact['sha512'] == (
-        'ff8013ae47611229adec685ba2b7452b68c5a3c11c0ac5183f5c985884630241'
-        '5f4af5be5ba639f9f8316d55a48f5d567534969bd7438d142e6cf8c6088f5229'
+        '45c839f3f0c64fcc4248a36a07d0acb3559375721b6ee6962d3cb0ed6872db74'
+        'b3685c0728f21ca25ae42d795dd89ad71c00489f5a876bed94e6079d204098c6'
     )
 
 

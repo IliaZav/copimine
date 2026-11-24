@@ -320,20 +320,50 @@ Dungeon и третьи стороны не тронуты; инкремент �
   `/copimineclient reload`; добавлена команда
   `/copimineclient spell-quality full|balanced|reduced`; в `/copimineclient status`
   добавлена строка `spellQuality=…`.
-- **Перепин клиента (десятый)**: полная пересборка (`--rerun-tasks test jar`)
+- **Перепин клиента (одиннадцатый)**: полная пересборка (`--rerun-tasks test jar`)
   выполнена **дважды** на Temurin 25.0.4.1 / Gradle 9.8.1 и дала идентичные
-  байты — размер **30426917**, sha512
-  `ff8013ae47611229adec685ba2b7452b68c5a3c11c0ac5183f5c9858846302415f4af5be5ba639f9f8316d55a48f5d567534969bd7438d142e6cf8c6088f5229`.
-  Предыдущий пин `2fb6870c…531a61484` (30 425 923 B) заменён целиком (у
-  клиентского пина нет списка `replaceSha256`).
+  байты — размер **30428023**, sha512
+  `45c839f3f0c64fcc4248a36a07d0acb3559375721b6ee6962d3cb0ed6872db74b3685c0728f21ca25ae42d795dd89ad71c00489f5a876bed94e6079d204098c6`.
+  Предыдущий пин `ff8013ae…6088f5229` (30 426 917 B) заменён целиком (у
+  клиентского пина нет списка `replaceSha256`). Тот же jar теперь несёт и
+  пресеты плотности (§1.11), и режим снижения движения для мировых мешей (§1.12).
 - Обновлены: `tools/minecraft-26.3/profile.lock.json` (`clientArtifact`),
   `docs/minecraft-26.3/README.md`,
   `tests/test_minecraft_migration_profile.py` (size + sha512 + комментарий), плюс
-  новый контракт `test_client_ships_the_three_spell_visual_quality_presets` в
+  новые контракты `test_client_ships_the_three_spell_visual_quality_presets` и
+  `test_client_honors_reduced_motion_for_world_spells` в
   `tests/test_end_rift_spell_presentation.py`.
-- Локально: 26.3-клиент `test jar` — BUILD SUCCESSFUL (включая
-  `SpellVisualGeometryTest`); тесты на пин и клиентские команды — **175 passed,
-  1 skipped**.
+- Локально: 26.3-клиент `test jar` — BUILD SUCCESSFUL; полная батарея клиента
+  **415 тестов, `FAIL=0 ERR=0 SKIP=0`** (`SpellVisualGeometryTest` 19/19,
+  `SpellVisualMotionPolicyTest` 4/4); тесты на пин и клиентские команды —
+  175+ passed.
+
+### 1.12 Снижение движения для авторских мировых мешей (§9A.04, §9A.05, SOURCE + AUTO)
+
+- Закрыт ещё один зафиксированный пробел доступности: `ClientConfig.reducedMotion()`
+  (ключ `hud_reduced_motion`) читался **только** тремя HUD-классами
+  (`EndRiftBossBarHud`, `RiftRamBossBarHud`, `Wave7MinibossBossBarHud`), а
+  авторские мировые меши заклов продолжали пульсировать бегущей волной
+  яркости. §9A.04 прямо требует, чтобы reduced-motion гасил **пульсацию /
+  виньетку**, сохраняя силуэт, тайминг и зону поражения.
+- Новый чистый класс `SpellVisualMotionPolicy` владеет этим решением и тестируется
+  как арифметика: `alphaScale(index, phase, reducedMotion)` в анимированном виде
+  дышит в полосе 0.60..1.00, а при снижении движения возвращает ровно `1.0`
+  (никакого мерцания); `flowPhase` замораживается в 0; `travels` = false.
+- `SpellVisualRenderer`: добавлены `setReducedMotion(boolean)` / `reducedMotion()`;
+  рендер использует `SpellVisualMotionPolicy` вместо приватной `pulse(...)`.
+  Геометрия, дальность и число вершин **не меняются** — это подтверждено тестом
+  `reducedMotionDoesNotChangeSampleDensity` по всем 12 семействам × 3 уровня.
+- `CopiMineClient`: режим применяется при старте
+  (`SpellVisualRenderer.setReducedMotion(config.reducedMotion())`), после
+  `/copimineclient reload`, и переключается командой
+  `/copimineclient reduced-motion on|off`; в `/copimineclient status` добавлена
+  строка `reducedMotion=…`.
+- Тесты: `SpellVisualMotionPolicyTest` (4 теста: стабилизация волны, полоса
+  альфы, заморозка фазы при неизменной геометрии, независимость плотности от
+  accessibility-режима). Плюс python-контракт
+  `test_client_honors_reduced_motion_for_world_spells` в
+  `tests/test_end_rift_spell_presentation.py`.
 
 ## 2. Проверки (AUTO)
 
@@ -419,7 +449,7 @@ Dungeon и третьи стороны не тронуты; инкремент �
 ## 5. Передача
 
 - Собранный клиент: `build/minecraft-26.3/client/libs/CopiMineClient-0.1.4+26.3.jar`
-  (30426917 B, sha512 `ff8013ae…6088f5229`).
+  (30428023 B, sha512 `45c839f3…79d204098c6`).
 - Чек-лист для нативного прогона: `docs/end-rift/2026-11-23/NATIVE_F2_VISUAL_CHECKLIST.md`
   (шапка уже указывает на новый хэш клиента).
 - Одностраничные арт-листы по §9A.02:

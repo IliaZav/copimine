@@ -31,6 +31,7 @@ public final class SpellVisualRenderer {
     private static final Vec3 UP = new Vec3(0.0D, 1.0D, 0.0D);
     private static volatile SpellVisualGeometry.Quality quality =
             SpellVisualGeometry.Quality.BALANCED;
+    private static volatile boolean reducedMotion;
 
     private SpellVisualRenderer() {
     }
@@ -42,6 +43,19 @@ public final class SpellVisualRenderer {
 
     public static SpellVisualGeometry.Quality quality() {
         return quality;
+    }
+
+    /**
+     * Section 9A.04: reduced motion stills the travelling pulse and the
+     * brightness throb while every warning and hit silhouette stays exactly
+     * the same size. Independent of the quality preset.
+     */
+    public static void setReducedMotion(boolean value) {
+        reducedMotion = value;
+    }
+
+    public static boolean reducedMotion() {
+        return reducedMotion;
     }
 
     /** Parse the delivered spell cue from an event world instance. */
@@ -119,7 +133,9 @@ public final class SpellVisualRenderer {
         PoseStack.Pose pose = matrices.last();
         // One global phase makes the wave travel along every stroke in unison;
         // the style offset keeps neighbouring families from pulsing as clones.
-        double flowPhase = Math.toRadians(elapsed * 0.42D);
+        // Reduced motion freezes both the phase and the per-vertex throb.
+        boolean calm = reducedMotion;
+        double flowPhase = SpellVisualMotionPolicy.flowPhase(elapsed, calm);
         for (SpellVisualGeometry.Stroke stroke : strokes) {
             int tint = shade(base, stroke.brightness());
             int alpha = Math.max(0, Math.min(255, Math.round(255.0F * stroke.alpha() * fade)));
@@ -133,18 +149,14 @@ public final class SpellVisualRenderer {
                         upX, upY, upZ, points.get(index));
                 Vec3 to = world(beam.start(), dirX, dirY, dirZ, rightX, rightZ,
                         upX, upY, upZ, points.get(index + 1));
-                float pulseFrom = pulse(index, stylePhase);
-                float pulseTo = pulse(index + 1, stylePhase);
+                float pulseFrom = SpellVisualMotionPolicy.alphaScale(index, stylePhase, calm);
+                float pulseTo = SpellVisualMotionPolicy.alphaScale(index + 1, stylePhase, calm);
                 int argbFrom = (scaleAlpha(alpha, pulseFrom) << 24) | tint;
                 int argbTo = (scaleAlpha(alpha, pulseTo) << 24) | tint;
                 emit(buffer, pose, from, to, stroke.halfWidths().get(index),
                         stroke.halfWidths().get(index + 1), argbFrom, argbTo);
             }
         }
-    }
-
-    private static float pulse(int vertexIndex, double phase) {
-        return (float) (0.80D + 0.20D * Math.sin(vertexIndex * 0.85D - phase));
     }
 
     private static int scaleAlpha(int alpha, float pulse) {

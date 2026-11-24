@@ -1090,12 +1090,19 @@ testable off a live server.
 - **Пресеты качества §9.3 (25 ноября)**: клиент получил сохраняемый ключ
   `spell_visual_quality` (`full`/`balanced`/`reduced`), применяемый при старте и
   `/copimineclient reload`, команду `/copimineclient spell-quality` и строку
-  `spellQuality=` в `/copimineclient status`. Десятый перепин клиента →
-  `ff8013ae47611229adec685ba2b7452b68c5a3c11c0ac5183f5c9858846302415f4af5be5ba639f9f8316d55a48f5d567534969bd7438d142e6cf8c6088f5229`
-  (30 426 917 B), подтверждён двумя полными `--rerun-tasks test jar` прогонами;
+  `spellQuality=` в `/copimineclient status`.
+- **Снижение движения §9A.04/§9A.05 (25 ноября)**: новый чистый
+  `SpellVisualMotionPolicy` + `SpellVisualRenderer.setReducedMotion`, применяемый
+  при старте и `/copimineclient reload`, команда
+  `/copimineclient reduced-motion on|off`, строка `reducedMotion=` в
+  `/copimineclient status`. Гасит пульсацию бегущей волны мировых мешей, силуэт и
+  опасную зону не меняет (проверено `reducedMotionDoesNotChangeSampleDensity`).
+  Одиннадцатый перепин клиента →
+  `45c839f3f0c64fcc4248a36a07d0acb3559375721b6ee6962d3cb0ed6872db74b3685c0728f21ca25ae42d795dd89ad71c00489f5a876bed94e6079d204098c6`
+  (30 428 023 B), подтверждён двумя полными `--rerun-tasks test jar` прогонами;
   обновлены `profile.lock.json`, `docs/minecraft-26.3/README.md`,
-  `tests/test_minecraft_migration_profile.py` и новый контракт в
-  `tests/test_end_rift_spell_presentation.py`.
+  `tests/test_minecraft_migration_profile.py`, `SpellVisualMotionPolicyTest` и
+  новые контракты в `tests/test_end_rift_spell_presentation.py`.
 - **Авторская глубина мешей**: корона получила вертикальные клинки-гребни на кончиках
   лучей и анимированную радиальную вспышку (пульсирует по часам каста), круг -
   контр-вращающуюся внутреннюю печать с радиальными лучами, эхо - пятикольцевую

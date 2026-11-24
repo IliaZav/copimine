@@ -538,3 +538,40 @@ def test_client_ships_the_three_spell_visual_quality_presets() -> None:
     assert "SpellVisualRenderer.setQuality(config.spellVisualQuality())" in client_text
     for branch in ('literal("full")', 'literal("balanced")', 'literal("reduced")'):
         assert branch in client_text
+
+
+def test_client_honors_reduced_motion_for_world_spells() -> None:
+    """Section 9A.04/9A.05: reduced motion must calm the authored world meshes.
+
+    Before this wiring the persisted ``hud_reduced_motion`` switch was read only
+    by the boss bars, so the 3D spell ribbons kept throbbing for motion-sensitive
+    players. The renderer must route its pulse through a dedicated, testable
+    policy, apply it at bootstrap and reload, and expose an in-game switch. The
+    hazard silhouette must never change - only the travelling pulse is stilled.
+    """
+    config = CLIENT_SRC / "me/copimine/client/ClientConfig.java"
+    client = CLIENT_SRC / "me/copimine/client/CopiMineClient.java"
+    renderer = CLIENT_SRC / "me/copimine/client/SpellVisualRenderer.java"
+    policy = CLIENT_SRC / "me/copimine/client/SpellVisualMotionPolicy.java"
+    assert policy.is_file(), "SpellVisualMotionPolicy must exist"
+
+    policy_text = policy.read_text(encoding="utf-8")
+    assert "reduce" in policy_text.lower()
+    assert "STEADY_ALPHA_SCALE" in policy_text
+    assert "reducedMotion" in policy_text
+
+    renderer_text = renderer.read_text(encoding="utf-8")
+    assert "SpellVisualMotionPolicy.flowPhase" in renderer_text
+    assert "SpellVisualMotionPolicy.alphaScale" in renderer_text
+    assert "void setReducedMotion(boolean value)" in renderer_text
+
+    config_text = config.read_text(encoding="utf-8")
+    assert 'KEY_HUD_REDUCED_MOTION = "hud_reduced_motion"' in config_text
+    assert "public boolean reducedMotion()" in config_text
+
+    client_text = client.read_text(encoding="utf-8")
+    assert "SpellVisualRenderer.setReducedMotion(config.reducedMotion())" in client_text
+    assert 'ClientCommands.literal("reduced-motion")' in client_text
+    assert (
+        "SpellVisualRenderer.reducedMotion()" in client_text
+    ), "status must report the effective reduced-motion state"

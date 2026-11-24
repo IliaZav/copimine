@@ -295,12 +295,14 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # shrinking the warning footprint. It also now honors reduced motion for the
     # authored world spell meshes (Section 9A.04/9A.05) through
     # `SpellVisualMotionPolicy`, `SpellVisualRenderer.setReducedMotion` and the
-    # `/copimineclient reduced-motion` command. Repinned from two clean
-    # `--rerun-tasks gradle test jar` runs that agreed byte for byte on the same JDK.
-    assert artifact['size'] == 30_428_023
+    # `/copimineclient reduced-motion` command, and it renders the Section 9A.02
+    # hot-core/deep-edge energy through `SpellVisualToneMap` with crossed-ribbon
+    # volume on the hero strokes. Repinned from two clean `--rerun-tasks gradle
+    # test jar` runs that agreed byte for byte on the same JDK.
+    assert artifact['size'] == 30_429_320
     assert artifact['sha512'] == (
-        '45c839f3f0c64fcc4248a36a07d0acb3559375721b6ee6962d3cb0ed6872db74'
-        'b3685c0728f21ca25ae42d795dd89ad71c00489f5a876bed94e6079d204098c6'
+        'd381d1b2740b1a28923567c0596d2e085133dbc3d4849e0ebf3340b268bcf385'
+        'd29342f40dc9124009dfae5a22824e014ab043b5884f12a040e1d6784f4e1494'
     )
 
 

@@ -575,3 +575,37 @@ def test_client_honors_reduced_motion_for_world_spells() -> None:
     assert (
         "SpellVisualRenderer.reducedMotion()" in client_text
     ), "status must report the effective reduced-motion state"
+
+
+def test_client_renders_the_authored_hot_core_tone_and_hero_volume() -> None:
+    """Section 9A.01/9A.02: hot cores, deep edges, real volume - not a flat decal.
+
+    The old renderer multiplied one server hue by a brightness factor, so every
+    stroke was a darker copy of the same colour and every segment was a single
+    plane that vanished edge-on. This guards the two authored presentation
+    upgrades: the pure ``SpellVisualToneMap`` ramp (deep exterior -> base ->
+    white-hot core) wired into the draw loop, and the ``volumetric`` style flag
+    that makes the renderer emit a crossed pair of ribbons for hero strokes
+    without touching the hazard footprint.
+    """
+    geometry = CLIENT_SRC / "me/copimine/client/SpellVisualGeometry.java"
+    renderer = CLIENT_SRC / "me/copimine/client/SpellVisualRenderer.java"
+    tone = CLIENT_SRC / "me/copimine/client/SpellVisualToneMap.java"
+    assert tone.is_file(), "SpellVisualToneMap must exist"
+
+    tone_text = tone.read_text(encoding="utf-8")
+    assert "public static int tone(int rgb, float brightness)" in tone_text
+    assert "HOT_START" in tone_text and "COLD_SCALE" in tone_text
+
+    geometry_text = geometry.read_text(encoding="utf-8")
+    assert "public boolean volumetric()" in geometry_text
+    for hero in ("ARM", "JAW", "WEDGE", "TRACE", "FIELD"):
+        assert f"{hero}(true)" in geometry_text, f"{hero} must be a volumetric hero stroke"
+    for flat in ("LANE", "SHELL", "RING"):
+        assert f"{flat}(false)" in geometry_text, f"{flat} must stay a single-sided decal"
+
+    renderer_text = renderer.read_text(encoding="utf-8")
+    assert "SpellVisualToneMap.tone(base, stroke.brightness())" in renderer_text
+    assert "style.volumetric()" in renderer_text
+    assert "CROSS_VOLUME_INSET" in renderer_text
+    assert "private static void ribbon(" in renderer_text

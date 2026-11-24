@@ -28,6 +28,12 @@ public final class SpellVisualRenderer {
             "copimineclient", "textures/entity/end_rift_spell_arc.png");
 
     private static final int FULL_BRIGHT = 0x00F000F0;
+    /**
+     * The orthogonal twin ribbon is drawn slightly inset so the two crossed
+     * blends do not stack into a blown-out seam along the shared centre line.
+     * The outer silhouette is still exactly the authored half-width.
+     */
+    private static final float CROSS_VOLUME_INSET = 0.86F;
     private static final Vec3 UP = new Vec3(0.0D, 1.0D, 0.0D);
     private static volatile SpellVisualGeometry.Quality quality =
             SpellVisualGeometry.Quality.BALANCED;
@@ -137,7 +143,7 @@ public final class SpellVisualRenderer {
         boolean calm = reducedMotion;
         double flowPhase = SpellVisualMotionPolicy.flowPhase(elapsed, calm);
         for (SpellVisualGeometry.Stroke stroke : strokes) {
-            int tint = shade(base, stroke.brightness());
+            int tint = SpellVisualToneMap.tone(base, stroke.brightness());
             int alpha = Math.max(0, Math.min(255, Math.round(255.0F * stroke.alpha() * fade)));
             if (alpha == 0) {
                 continue;
@@ -153,7 +159,7 @@ public final class SpellVisualRenderer {
                 float pulseTo = SpellVisualMotionPolicy.alphaScale(index + 1, stylePhase, calm);
                 int argbFrom = (scaleAlpha(alpha, pulseFrom) << 24) | tint;
                 int argbTo = (scaleAlpha(alpha, pulseTo) << 24) | tint;
-                emit(buffer, pose, from, to, stroke.halfWidths().get(index),
+                emit(buffer, pose, from, to, stroke.style(), stroke.halfWidths().get(index),
                         stroke.halfWidths().get(index + 1), argbFrom, argbTo);
             }
         }
@@ -163,7 +169,6 @@ public final class SpellVisualRenderer {
         int scaled = Math.round(alpha * Math.max(0.0F, Math.min(1.0F, pulse)));
         return Math.max(0, Math.min(255, scaled));
     }
-
     private static Vec3 world(Vec3 origin, double dirX, double dirY, double dirZ,
                               double rightX, double rightZ,
                               double upX, double upY, double upZ,
@@ -174,9 +179,15 @@ public final class SpellVisualRenderer {
                 origin.z + dirZ * point.x() + rightZ * point.z() + upZ * point.y());
     }
 
-    /** One tapered, double-sided emissive ribbon segment. */
+    /**
+     * One tapered, double-sided emissive ribbon segment. Hero strokes also get an
+     * orthogonal twin ribbon rotated 90 degrees about the segment axis, so the
+     * mesh keeps real volume instead of collapsing edge-on; the twin never
+     * reaches past the authored half-width, so the warning silhouette is intact.
+     */
     private static void emit(VertexConsumer buffer, PoseStack.Pose pose, Vec3 from, Vec3 to,
-                             float halfWidthFrom, float halfWidthTo, int argbFrom, int argbTo) {
+                             SpellVisualGeometry.Style style, float halfWidthFrom, float halfWidthTo,
+                             int argbFrom, int argbTo) {
         Vec3 delta = to.subtract(from);
         if (delta.lengthSqr() < 1.0E-8D) {
             return;
@@ -190,12 +201,27 @@ public final class SpellVisualRenderer {
             return;
         }
         side = side.normalize();
-        Vec3 normal = side.cross(direction).normalize();
         // The authored chest-beam cross-section legitimately reaches the real
         // damage capsule radius; every other family stays well under 0.2. The
         // ceiling matches BEAM_RADIUS so a coarse mesh can never overshoot it.
         float wa = Math.max(0.01F, Math.min(1.72F, halfWidthFrom));
         float wb = Math.max(0.01F, Math.min(1.72F, halfWidthTo));
+        ribbon(buffer, pose, from, to, side, wa, wb, argbFrom, argbTo);
+        if (style != null && style.volumetric()) {
+            Vec3 cross = side.cross(direction);
+            if (cross.lengthSqr() > 1.0E-8D) {
+                // Slightly inset so the shared centre line does not double-expose
+                // into a hard seam, while the outer silhouette stays exact.
+                float inset = CROSS_VOLUME_INSET;
+                ribbon(buffer, pose, from, to, cross.normalize(),
+                        wa * inset, wb * inset, argbFrom, argbTo);
+            }
+        }
+    }
+
+    private static void ribbon(VertexConsumer buffer, PoseStack.Pose pose, Vec3 from, Vec3 to,
+                               Vec3 side, float wa, float wb, int argbFrom, int argbTo) {
+        Vec3 normal = side.cross(to.subtract(from).normalize()).normalize();
         Vec3 aLeft = from.subtract(side.scale(wa));
         Vec3 aRight = from.add(side.scale(wa));
         Vec3 bRight = to.add(side.scale(wb));
@@ -223,13 +249,5 @@ public final class SpellVisualRenderer {
                 .setColor(argb).setUv(u, v)
                 .setOverlay(OverlayTexture.NO_OVERLAY).setLight(FULL_BRIGHT)
                 .setNormal(pose, (float) normal.x, (float) normal.y, (float) normal.z);
-    }
-
-    private static int shade(int rgb, float brightness) {
-        double factor = Math.max(0.0D, Math.min(1.0D, brightness));
-        int red = (int) Math.round(((rgb >> 16) & 0xFF) * factor);
-        int green = (int) Math.round(((rgb >> 8) & 0xFF) * factor);
-        int blue = (int) Math.round((rgb & 0xFF) * factor);
-        return (red << 16) | (green << 8) | blue;
     }
 }

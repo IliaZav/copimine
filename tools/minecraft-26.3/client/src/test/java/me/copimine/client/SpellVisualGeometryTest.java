@@ -449,4 +449,31 @@ class SpellVisualGeometryTest {
                     + reducedPoints + ") than FULL (" + fullPoints + ")");
         }
     }
+
+    @Test
+    void heroStrokesCarryVolumeWhileGroundDecalsStaySingleSided() {
+        // Section 9A.01/9A.03: a hero arm, jaw, wedge, vein or force field must
+        // read as a volume from the side, never as a one-plane billboard. The
+        // ground lanes and the stacked shell/ring geometry already read in 3D, so
+        // they stay single-sided to keep the fill rate low. This flag is what the
+        // renderer uses to decide, so it is pinned here rather than in the GPU path.
+        for (SpellVisualGeometry.Style style : SpellVisualGeometry.Style.values()) {
+            boolean hero = style == SpellVisualGeometry.Style.ARM
+                    || style == SpellVisualGeometry.Style.JAW
+                    || style == SpellVisualGeometry.Style.WEDGE
+                    || style == SpellVisualGeometry.Style.TRACE
+                    || style == SpellVisualGeometry.Style.FIELD;
+            assertEquals(hero, style.volumetric(), style + " volume flag drifted");
+        }
+        // The flag is presentation-only: it may not add or remove geometry.
+        for (SpellVisualGeometry.Spell spell : SpellVisualGeometry.Spell.values()) {
+            List<SpellVisualGeometry.Stroke> strokes = SpellVisualGeometry.build(
+                    spell, 700L, SEED, 9.0D, SpellVisualGeometry.Quality.BALANCED);
+            for (SpellVisualGeometry.Stroke stroke : strokes) {
+                assertTrue(stroke.points().size() >= 2);
+                assertTrue(stroke.halfWidths().stream().allMatch(width -> width > 0.0F),
+                        spell + " " + stroke.style() + " has a non-positive half-width");
+            }
+        }
+    }
 }

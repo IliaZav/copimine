@@ -83,16 +83,37 @@ public final class SpellVisualGeometry {
         }
     }
 
-    /** Readability role of a stroke; the renderer picks alpha / brightness. */
+    /**
+     * Readability role of a stroke; the renderer picks alpha / brightness.
+     *
+     * <p>{@code volumetric} marks the hero strokes - arms, jaws, wedges, veins
+     * and force fields - that the renderer draws as a crossed pair of ribbons so
+     * they keep real volume from every camera angle. Ground lanes, shell rings
+     * and pressure rings stay single-sided because they already read as 3D
+     * through their own stacked geometry, and a second ribbon there would only
+     * add fill cost. Neither choice changes the authored half-width, so the
+     * visible hazard silhouette is identical on every tier.</p>
+     */
     public enum Style {
-        ARM,
-        JAW,
-        LANE,
-        WEDGE,
-        SHELL,
-        TRACE,
-        FIELD,
-        RING
+        ARM(true),
+        JAW(true),
+        LANE(false),
+        WEDGE(true),
+        SHELL(false),
+        TRACE(true),
+        FIELD(true),
+        RING(false);
+
+        private final boolean volumetric;
+
+        Style(boolean volumetric) {
+            this.volumetric = volumetric;
+        }
+
+        /** True when this role is drawn as a crossed pair of ribbons. */
+        public boolean volumetric() {
+            return volumetric;
+        }
     }
 
     public record Point(double x, double y, double z) {

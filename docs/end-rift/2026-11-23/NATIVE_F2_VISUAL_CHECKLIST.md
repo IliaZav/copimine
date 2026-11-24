@@ -34,7 +34,7 @@
    выше; прод на момент записи нёс предыдущий jar `084cc0f5…`
    (см. `B10_B11_B12_FIXES_AND_MATRIX_LEDGER.md` §3).
 2. Клиент: ровно `CopiMineClient-0.1.4+26.3.jar`
-   (30 428 023 B, sha512 `45c839f3f0c64fcc4248a36a07d0acb3559375721b6ee6962d3cb0ed6872db74b3685c0728f21ca25ae42d795dd89ad71c00489f5a876bed94e6079d204098c6`,
+   (30 429 320 B, sha512 `d381d1b2740b1a28923567c0596d2e085133dbc3d4849e0ebf3340b268bcf385d29342f40dc9124009dfae5a22824e014ab043b5884f12a040e1d6784f4e1494`,
    пин `tools/minecraft-26.3/profile.lock.json`;
    перепинен повторно 2026-11-25: клиент получил пресеты плотности заклов §9.3
    (`spell_visual_quality` + `/copimineclient spell-quality full|balanced|reduced`,

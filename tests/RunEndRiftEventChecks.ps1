@@ -144,8 +144,14 @@ function Invoke-JavaTest {
     # pinned JVM with the bounded heap args), executed through Start-Process so
     # that no stderr text reaches PowerShell at all.
     #   & $script:javaExecutable @javaTestJvmArgs -cp $Classpath $MainClass
+    # A few probes read repository sources through a relative path (e.g.
+    # EncounterGenerationPreflightTest), so an operator who launches this gate
+    # from another directory used to get a false failure. Pin the child JVM's
+    # working directory to the repository root the gate itself resolved, so the
+    # result depends on the source tree and not on the caller's shell location.
     $javaProcess = Start-Process -FilePath $script:javaExecutable `
         -ArgumentList (@($javaTestJvmArgs) + @('-cp', ('"{0}"' -f $Classpath), $MainClass)) `
+        -WorkingDirectory $root `
         -NoNewWindow -Wait -PassThru `
         -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
     $exitCode = $javaProcess.ExitCode
@@ -947,7 +953,13 @@ Invoke-GateStep 'Diff hygiene' {
     # step fail on any uncommitted edit locally while CI (an LF checkout) stayed
     # green. cr-at-eol tells git the CR is part of the terminator, so real
     # trailing spaces and tabs are still reported.
-    $diffProcess = Start-Process -FilePath 'git' -ArgumentList @('-c', 'core.whitespace=cr-at-eol', 'diff', '--check') -NoNewWindow -Wait -PassThru -RedirectStandardOutput $diffOutPath -RedirectStandardError $diffErrPath
+    # Like every other native child of this gate, git must run against the
+    # repository the gate resolved rather than the caller's shell directory: from
+    # a non-repo CWD git exits 128 ("not a git repository"), which used to be
+    # reported here as a whitespace error on a perfectly clean tree.
+    $diffProcess = Start-Process -FilePath 'git' -ArgumentList @('-c', 'core.whitespace=cr-at-eol', 'diff', '--check') `
+        -WorkingDirectory $root `
+        -NoNewWindow -Wait -PassThru -RedirectStandardOutput $diffOutPath -RedirectStandardError $diffErrPath
     $diffExitCode = $diffProcess.ExitCode
     if (Test-Path -LiteralPath $diffOutPath) { Get-Content -LiteralPath $diffOutPath | Write-Host }
   } finally {

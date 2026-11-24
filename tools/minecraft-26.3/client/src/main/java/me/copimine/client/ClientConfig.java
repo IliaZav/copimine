@@ -19,6 +19,7 @@ public final class ClientConfig {
     private static final String KEY_ALLOW_OVERRIDE_EXISTING_SHADERPACK = "allow_override_existing_shaderpack";
     private static final String KEY_BOSS_CAMERA_SHAKE_STRENGTH = "boss_camera_shake_strength";
     private static final String KEY_HUD_REDUCED_MOTION = "hud_reduced_motion";
+    private static final String KEY_SPELL_VISUAL_QUALITY = "spell_visual_quality";
 
     private final Path path;
     private boolean renderWhenHudHidden = true;
@@ -29,6 +30,7 @@ public final class ClientConfig {
     private boolean allowOverrideExistingShaderpack = true;
     private double bossCameraShakeStrength = 0.65D;
     private boolean hudReducedMotion;
+    private SpellVisualGeometry.Quality spellVisualQuality = SpellVisualGeometry.Quality.BALANCED;
 
     private ClientConfig(Path path) {
         this.path = path;
@@ -63,6 +65,7 @@ public final class ClientConfig {
         }
         maxVisualDurationSeconds = clamp(parseInt(properties.getProperty(KEY_MAX_VISUAL_DURATION_SECONDS), 600), 1, 600);
         hudReducedMotion = parseBoolean(properties.getProperty(KEY_HUD_REDUCED_MOTION), false);
+        spellVisualQuality = parseQuality(properties.getProperty(KEY_SPELL_VISUAL_QUALITY));
         save();
     }
 
@@ -95,8 +98,16 @@ public final class ClientConfig {
     /** Accessibility switch: draw static final HUD poses, no sweeps or drops. */
     public boolean reducedMotion() { return hudReducedMotion; }
 
+    /** Authored spell-mesh density: FULL, BALANCED or REDUCED (never shrinks the warning). */
+    public SpellVisualGeometry.Quality spellVisualQuality() { return spellVisualQuality; }
+
     public void setReducedMotion(boolean enabled) {
         this.hudReducedMotion = enabled;
+        save();
+    }
+
+    public void setSpellVisualQuality(SpellVisualGeometry.Quality value) {
+        this.spellVisualQuality = value == null ? SpellVisualGeometry.Quality.BALANCED : value;
         save();
     }
 
@@ -122,12 +133,25 @@ public final class ClientConfig {
             properties.setProperty(KEY_ALLOW_OVERRIDE_EXISTING_SHADERPACK, Boolean.toString(allowOverrideExistingShaderpack));
             properties.setProperty(KEY_BOSS_CAMERA_SHAKE_STRENGTH, Double.toString(bossCameraShakeStrength));
             properties.setProperty(KEY_HUD_REDUCED_MOTION, Boolean.toString(hudReducedMotion));
+            properties.setProperty(KEY_SPELL_VISUAL_QUALITY, spellVisualQuality.name());
             try (OutputStream out = Files.newOutputStream(path)) {
                 properties.store(out, "CopiMineClient settings");
             }
         } catch (IOException error) {
             CopiMineClientLogger.warn("Failed to persist client config " + path, error);
         }
+    }
+
+    /** Spell mesh density preset; an unknown value falls back to BALANCED. */
+    private static SpellVisualGeometry.Quality parseQuality(String raw) {
+        if (raw == null) {
+            return SpellVisualGeometry.Quality.BALANCED;
+        }
+        return switch (raw.trim().toLowerCase()) {
+            case "full" -> SpellVisualGeometry.Quality.FULL;
+            case "reduced" -> SpellVisualGeometry.Quality.REDUCED;
+            default -> SpellVisualGeometry.Quality.BALANCED;
+        };
     }
 
     private static boolean parseBoolean(String raw, boolean fallback) {

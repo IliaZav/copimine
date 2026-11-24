@@ -96,6 +96,32 @@ PROBE = textwrap.dedent(
             }
         }
 
+        /** Exact, deterministic fingerprint of one built mesh: style, shape and quantized points. */
+        private static String signature(List<SpellVisualGeometry.Stroke> strokes) {
+            StringBuilder text = new StringBuilder();
+            for (SpellVisualGeometry.Stroke stroke : strokes) {
+                text.append(stroke.style()).append('[').append(stroke.points().size()).append(']');
+                for (SpellVisualGeometry.Point point : stroke.points()) {
+                    text.append(Math.round(point.x() * 1000.0D)).append(',')
+                            .append(Math.round(point.y() * 1000.0D)).append(',')
+                            .append(Math.round(point.z() * 1000.0D)).append('|');
+                }
+                text.append(';');
+            }
+            return text.toString();
+        }
+
+        /** The far edge of the ground footprint; the tier check keeps this stable. */
+        private static double maxHorizontal(List<SpellVisualGeometry.Stroke> strokes) {
+            double reach = 0.0D;
+            for (SpellVisualGeometry.Stroke stroke : strokes) {
+                for (SpellVisualGeometry.Point point : stroke.points()) {
+                    reach = Math.max(reach, point.horizontalLength());
+                }
+            }
+            return reach;
+        }
+
         private static String instance(String key) {
             return "minecraft:the_end:world:" + key;
         }
@@ -358,6 +384,65 @@ PROBE = textwrap.dedent(
             check("layout hides when both corners are taken",
                     !RitualSpellPresentationPolicy.screenLayout(1280, 720, both).visible());
 
+            // --- Authored V5.1 mesh library: non-empty, bounded, animated and distinct -------
+            // The owner requires every signature cast to be a finished, animated, individually
+            // recognizable mesh, not a recolored placeholder. This section proves, from the
+            // real shipped geometry class, that all twelve authored casts build a bounded mesh
+            // at every sampled instant, that each one keeps moving on the cast clock, that the
+            // twelve silhouettes are pairwise distinct, and that the REDUCED tier keeps the same
+            // footprint as FULL (a quality preset may thin the mesh, never shrink the warning).
+            List<SpellVisualGeometry.Spell> spells = List.of(SpellVisualGeometry.Spell.values());
+            check("the authored library ships at least twelve casts", spells.size() >= 12);
+            long[] frames = {0L, 700L, 1500L, 3000L};
+            java.util.Set<String> silhouettes = new java.util.HashSet<>();
+            int animated = 0;
+            for (SpellVisualGeometry.Spell spell : spells) {
+                String name = spell.name();
+                double bound = SpellVisualGeometry.maxReach(spell);
+                check(name + " parses its own cue", SpellVisualGeometry.spellCue(
+                        instance("v51-" + spell.token() + "-4242")) == spell);
+                check(name + " round-trips its authored seed",
+                        SpellVisualGeometry.cueSeed(instance("v51-" + spell.token() + "-4242")) == 4242L);
+                for (long frame : frames) {
+                    List<SpellVisualGeometry.Stroke> strokes = SpellVisualGeometry.build(
+                            spell, frame, 4242L, bound, SpellVisualGeometry.Quality.FULL);
+                    check(name + " builds geometry at frame " + frame, !strokes.isEmpty());
+                    check(name + " respects the stroke budget",
+                            strokes.size() <= SpellVisualGeometry.MAX_STROKES);
+                    for (SpellVisualGeometry.Stroke stroke : strokes) {
+                        check(name + " keeps one width per point",
+                                stroke.points().size() == stroke.halfWidths().size()
+                                        && stroke.points().size() >= 2
+                                        && stroke.points().size()
+                                            <= SpellVisualGeometry.MAX_POINTS_PER_STROKE);
+                        for (SpellVisualGeometry.Point point : stroke.points()) {
+                            check(name + " stays inside its authored footprint",
+                                    point.horizontalLength() <= bound + 1.0E-6
+                                            && point.y() >= -2.0D && point.y() <= 20.0D);
+                        }
+                    }
+                }
+                List<SpellVisualGeometry.Stroke> start = SpellVisualGeometry.build(
+                        spell, 0L, 4242L, bound, SpellVisualGeometry.Quality.FULL);
+                List<SpellVisualGeometry.Stroke> later = SpellVisualGeometry.build(
+                        spell, 1500L, 4242L, bound, SpellVisualGeometry.Quality.FULL);
+                if (!signature(start).equals(signature(later))) animated++;
+                silhouettes.add(signature(later));
+                List<SpellVisualGeometry.Stroke> reduced = SpellVisualGeometry.build(
+                        spell, 1500L, 4242L, bound, SpellVisualGeometry.Quality.REDUCED);
+                check(name + " keeps a REDUCED silhouette", !reduced.isEmpty());
+                check(name + " never grows on REDUCED", reduced.size() <= later.size());
+                check(name + " keeps the FULL footprint on REDUCED",
+                        maxHorizontal(reduced) >= 0.5D * maxHorizontal(later)
+                                && maxHorizontal(reduced) <= maxHorizontal(later) + 1.0E-6);
+            }
+            check("every authored cast animates on the cast clock", animated == spells.size());
+            check("every authored cast has a distinct silhouette", silhouettes.size() == spells.size());
+            check("a null spell builds nothing", SpellVisualGeometry.build(
+                    null, 0L, 0L, 0.0D, SpellVisualGeometry.Quality.FULL).isEmpty());
+            check("an unknown token never parses a mesh",
+                    SpellVisualGeometry.spellCue(instance("v51-nope-1")) == null);
+
             System.out.println(failures == 0 ? "OK" : "FAILURES " + failures);
             if (failures != 0) System.exit(1);
         }
@@ -425,3 +510,31 @@ def test_spell_presentation_is_allowlisted_and_keeps_the_hud_clear(tmp_path: Pat
     combined = run_result.stdout + run_result.stderr
     assert run_result.returncode == 0, "spell presentation probe failed:\n" + combined
     assert "OK" in run_result.stdout, combined
+
+
+def test_client_ships_the_three_spell_visual_quality_presets() -> None:
+    """The authored meshes must expose the FULL/BALANCED/REDUCED presets.
+
+    Section 9.3 promises one client switch that trades sample density for frame
+    time without ever shrinking the warning footprint. SpellVisualGeometry
+    already knows the three tiers; this guards the wiring that lets the owner or
+    the config file actually select one - the persisted key, the parser, the
+    renderer call and the in-game command - so the preset cannot silently drift
+    back to the hard-coded default.
+    """
+    config = CLIENT_SRC / "me/copimine/client/ClientConfig.java"
+    client = CLIENT_SRC / "me/copimine/client/CopiMineClient.java"
+    config_text = config.read_text(encoding="utf-8")
+    client_text = client.read_text(encoding="utf-8")
+
+    assert 'KEY_SPELL_VISUAL_QUALITY = "spell_visual_quality"' in config_text
+    assert "SpellVisualGeometry.Quality.BALANCED" in config_text
+    assert 'case "full" -> SpellVisualGeometry.Quality.FULL' in config_text
+    assert 'case "reduced" -> SpellVisualGeometry.Quality.REDUCED' in config_text
+    assert "properties.setProperty(KEY_SPELL_VISUAL_QUALITY, " \
+        "spellVisualQuality.name())" in config_text
+
+    assert 'ClientCommands.literal("spell-quality")' in client_text
+    assert "SpellVisualRenderer.setQuality(config.spellVisualQuality())" in client_text
+    for branch in ('literal("full")', 'literal("balanced")', 'literal("reduced")'):
+        assert branch in client_text

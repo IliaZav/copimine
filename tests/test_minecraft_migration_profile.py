@@ -287,10 +287,17 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # debris and a collapsing crown, all rebuilt from the cast clock inside the
     # authored 1.58-block visual radius (under the real 1.9-block damage radius).
     # Repinned from two clean `gradle test jar` runs that agreed byte for byte.
-    assert artifact['size'] == 30_425_923
+    # 25-November: the client now persists and applies the three Section 9.3
+    # spell-visual density presets (FULL/BALANCED/REDUCED) through the new
+    # `spell_visual_quality` config key, the `SpellVisualRenderer.setQuality`
+    # call at bootstrap/reload and the `/copimineclient spell-quality` command,
+    # so the owner can trade sample density for frame time without ever
+    # shrinking the warning footprint. Repinned from two clean `--rerun-tasks
+    # gradle test jar` runs that agreed byte for byte on the same JDK.
+    assert artifact['size'] == 30_426_917
     assert artifact['sha512'] == (
-        '2fb6870c84f1bcbebb97c91f643b25a1a1ec928009848b3a05a9e40c0c9a92b3'
-        '0f3d305c4c701c2b6d9b34589d85371b2a32f8a3d1677cda5317860531a61484'
+        'ff8013ae47611229adec685ba2b7452b68c5a3c11c0ac5183f5c985884630241'
+        '5f4af5be5ba639f9f8316d55a48f5d567534969bd7438d142e6cf8c6088f5229'
     )
 
 

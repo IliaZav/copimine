@@ -46,6 +46,7 @@ public final class CopiMineClient implements ClientModInitializer {
     public void onInitializeClient() {
         CopiMineClientLogger.info("CopiMineClient bootstrap started");
         sharedConfig = config;
+        SpellVisualRenderer.setQuality(config.spellVisualQuality());
         BossCameraShakeRuntime.configure(config);
         shaderRuntimeManager.initialize();
         visualManager.setShaderRuntimeManager(shaderRuntimeManager);
@@ -118,11 +119,31 @@ public final class CopiMineClient implements ClientModInitializer {
                                     context.getSource().sendFeedback(Component.literal("Тряска камеры босса включена"));
                                     return 1;
                                 })))
+                        .then(ClientCommands.literal("spell-quality")
+                                .then(ClientCommands.literal("full").executes(context -> {
+                                    config.setSpellVisualQuality(SpellVisualGeometry.Quality.FULL);
+                                    SpellVisualRenderer.setQuality(SpellVisualGeometry.Quality.FULL);
+                                    context.getSource().sendFeedback(Component.literal("Плотность мешей заклинаний: FULL"));
+                                    return 1;
+                                }))
+                                .then(ClientCommands.literal("balanced").executes(context -> {
+                                    config.setSpellVisualQuality(SpellVisualGeometry.Quality.BALANCED);
+                                    SpellVisualRenderer.setQuality(SpellVisualGeometry.Quality.BALANCED);
+                                    context.getSource().sendFeedback(Component.literal("Плотность мешей заклинаний: BALANCED"));
+                                    return 1;
+                                }))
+                                .then(ClientCommands.literal("reduced").executes(context -> {
+                                    config.setSpellVisualQuality(SpellVisualGeometry.Quality.REDUCED);
+                                    SpellVisualRenderer.setQuality(SpellVisualGeometry.Quality.REDUCED);
+                                    context.getSource().sendFeedback(Component.literal("Плотность мешей заклинаний: REDUCED"));
+                                    return 1;
+                                })))
                         .then(ClientCommands.literal("status")
                                 .executes(context -> {
                                     context.getSource().sendFeedback(Component.literal(visualManager.statusLine()));
                                     context.getSource().sendFeedback(Component.literal(ClientBridgeProtocol.handshakeStatusLine()));
                                     context.getSource().sendFeedback(Component.literal("active=" + visualManager.activeSummary()));
+                                    context.getSource().sendFeedback(Component.literal("spellQuality=" + SpellVisualRenderer.quality()));
                                     EndEventClientState endEvent = ClientBridgeProtocol.endEventState();
                                     context.getSource().sendFeedback(Component.literal(
                                             "endEvent=" + (endEvent.eventId().isBlank() ? "-" : endEvent.eventId())
@@ -202,6 +223,7 @@ public final class CopiMineClient implements ClientModInitializer {
                         .then(ClientCommands.literal("reload")
                                 .executes(context -> {
                                     config.reload();
+                                    SpellVisualRenderer.setQuality(config.spellVisualQuality());
                                     shaderRuntimeManager.initialize();
                                     context.getSource().sendFeedback(Component.literal("CopiMineClient: config and shaderpacks reloaded"));
                                     return 1;

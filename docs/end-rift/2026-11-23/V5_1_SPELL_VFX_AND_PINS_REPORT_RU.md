@@ -347,8 +347,16 @@ Dungeon и третьи стороны не тронуты; инкремент �
   Эта работа пользователя в коммит не входит и не трогалась; мой staged-диф
   (`git diff --cached --check`) чист (`exit 0`). Поэтому шаг гигиены не выдаю за
   зелёный — он честно красный из-за чужого грязного файла.
-- 26.3-клиент (поставляемое дерево): **408 тестов, `FAIL=0 ERR=0 SKIP=0`**, включая
-  `SpellVisualGeometryTest` (16/16).
+- 26.3-клиент (поставляемое дерево): **411 тестов, `FAIL=0 ERR=0 SKIP=0`**, включая
+  `SpellVisualGeometryTest` (19/19).
+- **Ужесточены гарантии уровней §9A.04 в собственной батарее 26.3-клиента**
+  (только тесты; в jar не попадают, пин не меняется): в
+  `tools/minecraft-26.3/client/src/test/java/me/copimine/client/SpellVisualGeometryTest.java`
+  добавлены три контракта на **все 12 семейств × 3 уровня**: (1) документированные
+  плотности сэмплов `FULL/BALANCED/REDUCED = 12/8/5`, (2) каст каждого уровня
+  непустой, в бюджетах штрихов/сегментов и **анимируется** (t=0 ≠ t=1500),
+  (3) `REDUCED` никогда не тратит больше вершин, чем `FULL`. Теперь `:test`
+  = **19/19** (`FAIL=0 ERR=0 SKIP=0`), `BUILD SUCCESSFUL`.
 - 1.21.1-клиент: **BUILD SUCCESSFUL**.
 - Pin-тесты (`test_own_plugin_inventory_contract.py`,
   `test_minecraft_migration_server_plugins.py`): **144 passed, 1 skipped**

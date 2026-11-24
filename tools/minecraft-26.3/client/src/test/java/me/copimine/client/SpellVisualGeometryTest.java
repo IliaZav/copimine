@@ -390,4 +390,63 @@ class SpellVisualGeometryTest {
             assertTrue(stream.readAllBytes().length > 200);
         }
     }
+
+    @Test
+    void qualityTiersUseTheDocumentedSampleDensities() {
+        // Section 9A.04: three production tiers that differ only in sample
+        // density, exactly the documented 12 / 8 / 5 samples.
+        assertEquals(12, SpellVisualGeometry.Quality.FULL.samples());
+        assertEquals(8, SpellVisualGeometry.Quality.BALANCED.samples());
+        assertEquals(5, SpellVisualGeometry.Quality.REDUCED.samples());
+        assertTrue(SpellVisualGeometry.Quality.FULL.samples()
+                > SpellVisualGeometry.Quality.BALANCED.samples());
+        assertTrue(SpellVisualGeometry.Quality.BALANCED.samples()
+                > SpellVisualGeometry.Quality.REDUCED.samples());
+    }
+
+    @Test
+    void everyAuthoredSpellFillsEveryTierAndAnimates() {
+        // The roster is documented as twelve continuously animated families, and
+        // the owner may select FULL, BALANCED or REDUCED at any time. A tier that
+        // draws nothing, overruns the caps or freezes on the cast clock is a real
+        // defect, so it must fail here without a server.
+        for (SpellVisualGeometry.Spell spell : SpellVisualGeometry.Spell.values()) {
+            for (SpellVisualGeometry.Quality quality : SpellVisualGeometry.Quality.values()) {
+                List<SpellVisualGeometry.Stroke> early =
+                        SpellVisualGeometry.build(spell, 0L, SEED, 9.0D, quality);
+                List<SpellVisualGeometry.Stroke> late =
+                        SpellVisualGeometry.build(spell, 1500L, SEED, 9.0D, quality);
+                assertTrue(!early.isEmpty(), spell + "/" + quality + " drew nothing");
+                assertTrue(early.size() <= SpellVisualGeometry.MAX_STROKES,
+                        spell + "/" + quality + " exceeded the stroke cap");
+                int segments = 0;
+                for (SpellVisualGeometry.Stroke stroke : early) {
+                    assertTrue(stroke.points().size() >= 2);
+                    assertEquals(stroke.points().size(), stroke.halfWidths().size());
+                    segments += stroke.points().size() - 1;
+                }
+                assertTrue(segments <= SpellVisualGeometry.MAX_SEGMENTS,
+                        spell + "/" + quality + " exceeded the segment cap");
+                assertTrue(!early.equals(late),
+                        spell + "/" + quality + " did not animate on the cast clock");
+            }
+        }
+    }
+
+    @Test
+    void reducedTierNeverSpendsMoreVerticesThanFull() {
+        // REDUCED exists to trade density for frame time: it may only ever spend
+        // fewer (or equal) vertices than FULL, so a low-end client can never be
+        // the more expensive one.
+        for (SpellVisualGeometry.Spell spell : SpellVisualGeometry.Spell.values()) {
+            List<SpellVisualGeometry.Stroke> full = SpellVisualGeometry.build(
+                    spell, 1300L, SEED, 9.0D, SpellVisualGeometry.Quality.FULL);
+            List<SpellVisualGeometry.Stroke> reduced = SpellVisualGeometry.build(
+                    spell, 1300L, SEED, 9.0D, SpellVisualGeometry.Quality.REDUCED);
+            int fullPoints = full.stream().mapToInt(stroke -> stroke.points().size()).sum();
+            int reducedPoints = reduced.stream().mapToInt(stroke -> stroke.points().size()).sum();
+            assertTrue(reducedPoints <= fullPoints, spell + " REDUCED spent more vertices ("
+                    + reducedPoints + ") than FULL (" + fullPoints + ")");
+        }
+    }
 }

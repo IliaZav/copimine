@@ -1,5 +1,7 @@
 package me.copimine.endevent;
 
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.function.BiPredicate;
 import java.util.function.BooleanSupplier;
@@ -7,6 +9,7 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 import me.copimine.endevent.domain.BossImpactGeometryPolicy;
 import me.copimine.endevent.domain.BossImpactGeometryPolicy.Kind;
+import me.copimine.endevent.domain.SpellVfxLodPolicy;
 import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.Particle;
@@ -47,10 +50,14 @@ final class BossPresentationEffects {
                 if (!plugin.isEnabled() || !stillOwned.getAsBoolean() || !boss.isValid() || boss.isDead()
                         || !boss.getWorld().equals(anchor.getWorld()) || frame >= frames) { cancel(); return; }
                 var points = BossImpactGeometryPolicy.sample(kind, radius, frame / (double) Math.max(1, frames - 1));
-                for (Player viewer : audience.get().stream().limit(32).toList()) {
-                    if (viewer == null || !viewer.isOnline() || !viewer.getWorld().equals(anchor.getWorld())
-                            || viewer.getLocation().distanceSquared(anchor) > 48 * 48
-                            || !viewerAllowed.test(viewer, anchor)) continue;
+                // N23-P1-07: sort the admitted viewers nearest first, then cap the
+                // total shipped points with the party's frame budget. A watcher on
+                // top of the spell keeps the authored silhouette; only the surplus
+                // far viewers shed detail, and sound is never budgeted away.
+                List<Player> viewers = admittedViewers(audience.get(), anchor, viewerAllowed);
+                int budget = SpellVfxLodPolicy.framePointBudget(Math.max(1, viewers.size()));
+                int spent = 0;
+                for (Player viewer : viewers) {
                     if (sound && frame == 0) viewer.playSound(anchor, soundFor(kind), SoundCategory.HOSTILE,
                             kind == Kind.DEFEAT ? 0.9F : 0.7F, kind == Kind.SWIPE ? 0.8F : 0.55F);
                     if (kind == Kind.PHASE && frame == 2) {
@@ -58,12 +65,17 @@ final class BossPresentationEffects {
                         viewer.spawnParticle(Particle.END_ROD, anchor.clone().add(0, 2.4, 0),
                                 12, 0.6, 0.8, 0.6, 0.04);
                     }
-                    for (var point : points) {
+                    if (spent >= budget) continue;
+                    int stride = SpellVfxLodPolicy.sampleStride(SpellVfxLodPolicy.lodForViewer(
+                            Math.sqrt(viewer.getLocation().distanceSquared(anchor)), viewers.size()));
+                    for (int i = 0; i < points.size() && spent < budget; i += stride) {
+                        var point = points.get(i);
                         Location at = anchor.clone().add(side.clone().multiply(point.x()))
                                 .add(0, point.y(), 0).add(direction.clone().multiply(point.z()));
                         if (point.layer() == 2) viewer.spawnParticle(Particle.END_ROD, at, 1, 0.025, 0.025, 0.025, 0);
                         else viewer.spawnParticle(Particle.DUST, at, 1, 0.045, 0.03, 0.045, 0,
                                 point.layer() == 0 ? primary : accent);
+                        spent++;
                     }
                 }
                 if (++frame >= frames) cancel();
@@ -102,25 +114,55 @@ final class BossPresentationEffects {
                 var points = BossImpactGeometryPolicy.phaseTransition(signature, radius,
                         frame / (double) Math.max(1, frames - 1));
                 int roarFrame = Math.max(1, frames / 2);
-                for (Player viewer : audience.get().stream().limit(32).toList()) {
-                    if (viewer == null || !viewer.isOnline() || !viewer.getWorld().equals(anchor.getWorld())
-                            || viewer.getLocation().distanceSquared(anchor) > 48 * 48
-                            || !viewerAllowed.test(viewer, anchor)) continue;
+                List<Player> viewers = admittedViewers(audience.get(), anchor, viewerAllowed);
+                int budget = SpellVfxLodPolicy.framePointBudget(Math.max(1, viewers.size()));
+                int spent = 0;
+                for (Player viewer : viewers) {
                     if (frame == 0) viewer.playSound(anchor, Sound.BLOCK_END_PORTAL_SPAWN,
                             SoundCategory.HOSTILE, 0.7F, 0.55F);
                     if (frame == roarFrame) viewer.playSound(anchor, Sound.ENTITY_WARDEN_ROAR,
                             SoundCategory.HOSTILE, 0.5F, 0.7F);
-                    for (var point : points) {
+                    if (spent >= budget) continue;
+                    int stride = SpellVfxLodPolicy.sampleStride(SpellVfxLodPolicy.lodForViewer(
+                            Math.sqrt(viewer.getLocation().distanceSquared(anchor)), viewers.size()));
+                    for (int i = 0; i < points.size() && spent < budget; i += stride) {
+                        var point = points.get(i);
                         Location at = anchor.clone().add(point.x(), point.y(), point.z());
                         if (point.layer() == 2) viewer.spawnParticle(Particle.END_ROD, at, 1, 0.025, 0.025, 0.025, 0);
                         else viewer.spawnParticle(Particle.DUST, at, 1, 0.045, 0.03, 0.045, 0,
                                 point.layer() == 0 ? primary : accent);
+                        spent++;
                     }
                 }
                 if (++frame >= frames) cancel();
             }
         }.runTaskTimer(plugin, 0, 8L);
         register.accept(task);
+    }
+
+    /**
+     * The admitted viewers for one frame, nearest first, capped at 32.
+     *
+     * <p>Ordering by distance is what lets the frame budget spend its points on
+     * the watchers who can read the spell, rather than on the far fraction of the
+     * party. Non-finite or out-of-world viewers are dropped exactly as the old
+     * inline filter did.</p>
+     */
+    private static List<Player> admittedViewers(List<Player> audience, Location anchor,
+            BiPredicate<Player, Location> viewerAllowed) {
+        List<Player> viewers = new ArrayList<>();
+        if (audience == null) {
+            return viewers;
+        }
+        for (Player viewer : audience) {
+            if (viewer == null || !viewer.isOnline() || !viewer.getWorld().equals(anchor.getWorld())
+                    || viewer.getLocation().distanceSquared(anchor) > 48 * 48
+                    || !viewerAllowed.test(viewer, anchor)) continue;
+            viewers.add(viewer);
+            if (viewers.size() >= 32) break;
+        }
+        viewers.sort(Comparator.comparingDouble(viewer -> viewer.getLocation().distanceSquared(anchor)));
+        return viewers;
     }
 
     private static Sound soundFor(Kind kind) {

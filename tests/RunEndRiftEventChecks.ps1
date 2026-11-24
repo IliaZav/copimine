@@ -501,6 +501,11 @@ $pureTests = @(
   # ladder are pure, so a regression fails here without a server.
   'InfernoMobWindowPolicyTest',
   'InfernoSceneryPolicyTest',
+  # N23-P1-07: the per-viewer spell VFX LOD and the bounded per-frame point
+  # budget. The distance/party ladder, the never-erase floor and the shipped
+  # total are pure, so a regression in the particle cost population fails here
+  # without a server.
+  'SpellVfxLodPolicyTest',
   'CreativeTestAdmissionPolicyTest',
   'BossAiSimulationTest',
   'BossCastTimelineTest',

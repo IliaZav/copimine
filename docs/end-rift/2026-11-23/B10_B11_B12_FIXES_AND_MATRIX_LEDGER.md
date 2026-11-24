@@ -555,3 +555,33 @@ Evidence tiers: `SOURCE` / `AUTO` / `NATIVE_BLOCKED`, as in section 1.
   bodies (silhouette/colour/sound) during a real eruption, and whether the window
   feels fair at 2/5/10/11/20 real players, is `NATIVE_BLOCKED` here (no GUI
   client, no running Paper, no signed V4 client).
+
+### N23-P1-07 (partial): per-viewer spell VFX LOD and a bounded per-frame point budget
+
+V6 is explicit that the interim server emitter is `O(samples * viewers * frames)`
+and that a large reduction must be shown, not guessed, and that art must never
+starve combat/gameplay packets. The full deliverable - one signed cast packet
+that lets a single client-local instance own mesh/sprite evolution - still needs
+the 26.3 client work and a native, measured run, so it stays open. This increment
+lands the server-side half that is provably correct without a live server.
+
+- **Pure policy**: `domain/SpellVfxLodPolicy.java`. A viewer resolves to
+  `LOD_FULL`/`LOD_REDUCED`/`LOD_SILHOUETTE` from its distance and the living
+  party size (bands tighten from 14/28 to 11/24 to 8/20 blocks as the party
+  grows); a frame ships at most `framePointBudget` = `min(480, 128 + 24*(n-1))`
+  points across all viewers, spent nearest first; a per-viewer count is
+  `max(1, ceil(base/stride))`, so an effect is coarsened but never erased; and
+  `totalPoints` mirrors the emitter exactly, so the budget cannot drift.
+- **Emitter**: `BossPresentationEffects.play` and `.playPhaseTransition` now
+  build the admitted viewer list nearest-first (`admittedViewers`) and walk each
+  geometry at the viewer's stride under the shared budget. Sound is never
+  budgeted away; only particles are.
+- **Tests**: `tests/SpellVfxLodPolicyTest.java` (registered in `$pureTests`)
+  pins monotonicity in distance, tightening with party size, the never-erase
+  floor, a bounded monotonic budget, `shipped <= budget <= unbounded`, a >=4x
+  reduction at a 20-player raid, and safe clamping of non-finite/negative input.
+- **Status**: `SOURCE` + `AUTO`. The percentage reduction is a *contract*, not a
+  measurement: real packet counts, bytes/s, MSPT, packet queue, CPU and client
+  GPU at 2/5/10/11/20 players are `NATIVE_BLOCKED` here (no running Paper, no GUI
+  client). The signed cast packet and the client-local mesh ownership are NOT
+  done.

@@ -1714,6 +1714,7 @@ def test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar():
         '839ebae4196c5bbbe6d6171dea1a484e6fb021dc77a869996543a71858f4d3d4',
     ]
     assert candidate['replaceSha256']==[
+        '7a6a7d570d396f3b664684ffd8eaed8d86a135caacdebe9e229e393411ea9cc5',
         'b577d1f6dcb867e54254e90d213bdc521b1d7a5fcbc6a623f65deb88255e160e',
         '9806720acb38743760b60a6ab98419fa4f1f582d2aec015327ab236743a774c8',
         'b88c758fa0d8eabfe6d63e30f4d28d8c27d213748e776ce19f4ba2958482b8d6',

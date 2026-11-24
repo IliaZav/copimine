@@ -772,3 +772,65 @@ capabilities.
   real reward delivery and the real Paper mob behaviour (R05) are
   `NATIVE_BLOCKED` here: no GUI client, no running Paper, no signed V4 client.
   End Rift's own seven-wave owner is untouched.
+
+### V6 OV4.10 - the arena, victory and cinematic cores
+
+The V4 decomposition (V6 master §OV4.10) also names `ArenaTransformationController`,
+`EndRiftVictoryCoordinator` and `CinematicEffectCoordinator`. Each existed only as
+game logic reached through Paper call sites: nothing bounded a transformation mask,
+proved a defeat commits exactly once, or kept two casts off the same rig.
+
+- **`ArenaTransformationPolicy`** (`copimine-end-event/.../domain`) owns the
+  deterministic geometry of the approved square -> circular transformation: the two
+  validated masks (square footprint, circular hall) with a hard half-extent ceiling
+  (96) and a block budget (400 000) that fail closed; the exact cell/block counts in
+  closed form; a containment test proving the hall lies inside the snapshot so the
+  reveal is reversible (`revealIsReversible`); the exact number of cells the reveal
+  actually changes (`revealCellDelta`); a monotone five-step ladder
+  (`SNAPSHOT -> CIRCULAR_REVEAL -> PHASE_SIX_OPENING -> PORTALS -> REBUILD`) that never
+  skips or moves backwards; and a true void rescue (`voidRescueY`) that returns a
+  below-void-floor or non-finite Y to the validated safe landing above it. It touches
+  no world and mutates no block.
+- **`EndRiftVictoryCoordinatorPolicy`** owns the durable official victory path
+  (`ACCEPTED LEGAL LETHAL HIT -> DURABLE DEFEAT -> DYING -> REWARDS -> END_OPEN ->
+  MEMORIAL -> CLEANUP -> UNLOCKED`): an exactly-once defeat commit with a frozen
+  official roster (two same-tick lethal hits -> one commit), a refusal of a
+  diagnostic/admin kill (`NOT_OFFICIAL`, nothing recorded), a monotone stage ladder,
+  once-only reward operations keyed by operation id, a once-only WorldCore End-open
+  intent that is only visible after a live authoritative read-back, generation fencing
+  for stale callbacks, and a versioned `encode`/`decode` that fails closed on a
+  foreign generation, an unknown stage or a contradictory receipt.
+- **`CinematicEffectCoordinatorPolicy`** owns the shared cinematic bookkeeping: one
+  live lease per owner key (a second cast is refused instead of replacing a committed
+  animation), a monotone seven-rung ladder (`SELECT -> WARN -> LOCK -> EXECUTE ->
+  RECOVERY -> CLEANUP -> DONE`) with an overrun past the cast deadline returning
+  `EXPIRED` so a stuck cast must clean up, a once-only outcome settle, a bounded (16)
+  resource ledger with a deterministic cleanup plan ordered by kind then id, a
+  once-only release that frees the owner slot, and a reduced-motion fallback that
+  drops the flourish (EXECUTE/RECOVERY; three flourish layers -> zero) while never
+  dropping the WARN dodge window, the LOCK or the CLEANUP. It reuses
+  `SpellVfxLodPolicy` for the per-viewer cost ladder rather than inventing a second
+  budget.
+- **Tests**: `tests/ArenaTransformationPolicyTest.java`,
+  `tests/EndRiftVictoryCoordinatorPolicyTest.java` and
+  `tests/CinematicEffectCoordinatorPolicyTest.java` (all registered in `$pureTests`)
+  compile and run the shipped classes off Bukkit and pin the exact geometry, the
+  fail-closed bounds, both monotone ladders, the once-only commits and releases, the
+  bounded ordered cleanup plan, the generation fence, durable recovery and the
+  reduced-motion contract.
+- **Re-pin**: the three new classes change the Gradle `migrationPlugins` candidate
+  `CopiMineEndEvent-26.3.jar`, so the pin moved. It is now sha256
+  `9806720acb38743760b60a6ab98419fa4f1f582d2aec015327ab236743a774c8` (2 783 295 B,
+  sha512 `4c84f423…`), built twice from the same source with the CI toolchain
+  (Temurin 25.0.4.1) and byte-identical both times; the Dungeon candidate stayed
+  byte-for-byte at `33858dfa…`, so its pin is untouched. The displaced `b88c758f…` is
+  prepended to `candidate.replaceSha256` (newest first), and the lock, the migration
+  pin test (sequential assertions, the index block and the full-list pin),
+  `OWN_PLUGIN_INVENTORY.json/.md` and the F2 checklist header move together.
+  `install_migration_server_plugins.py --stage-only` re-verifies all 31 candidates and
+  the local 26.3 runtime was reinstalled from the new lock.
+- **Status**: `SOURCE` + `AUTO`. Whether the circular hall reads correctly in the real
+  world (block-by-block visual and collision), the two-second `Dying2` presentation,
+  the real reward delivery, the real WorldCore End open and the authored cinematic
+  timeline on the signed 26.3 client are `NATIVE_BLOCKED` here: no GUI client, no
+  running Paper, no signed V4 client. No HP, damage, reward or world state changed.

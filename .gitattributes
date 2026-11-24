@@ -63,3 +63,7 @@ CopiMineClient/src/main/resources/assets/copimineclient/geometry/guardian_spells
 
 # Required-client sound catalog must have the same bytes on authoring hosts and CI.
 resourcepacks/src/assets/copimine/sounds.json text eol=lf
+# The 26.3 client packages its own spell cue catalog; a runner with
+# core.autocrlf=true turns its 62 LF bytes into CRLF and the pinned client jar
+# grows by exactly 62 bytes, so the line endings are stated explicitly.
+tools/minecraft-26.3/client/src/main/resources/assets/copimineclient/sounds.json text eol=lf

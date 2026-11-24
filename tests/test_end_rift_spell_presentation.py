@@ -672,3 +672,25 @@ def test_every_authored_spell_ships_its_own_original_sound() -> None:
     assert generator.is_file(), "the reproducible sound generator must live in-repo"
     generator_text = generator.read_text(encoding="utf-8")
     assert "soundfile" in generator_text and "numpy" in generator_text
+
+
+def test_the_server_emits_exactly_the_client_authored_cue_tokens() -> None:
+    """The cue transport is a contract between two trees.
+
+    Section 9A.04 requires a compact signed event whose id the client rebuilds
+    deterministically. The server names the token and the client resolves it to
+    an authored mesh and sound, so a token known to only one side is a silently
+    missing spectacle (or a dead asset nothing can ever trigger). This pins the
+    server's emitted ``v51-`` tokens to the client ``Spell`` roster and requires
+    each roster entry to actually be broadcast.
+    """
+    server = ROOT / "copimine-end-event/src/me/copimine/endevent/CopiMineEndEvent.java"
+    assert server.is_file(), "the End Event server source must exist"
+    server_text = server.read_text(encoding="utf-8", errors="surrogateescape")
+    emitted = set(re.findall(r'broadcastSpellVisualCue\(\s*"([a-z_]+)"', server_text))
+    client = set(_spell_tokens())
+    assert len(client) == 12, client
+    assert emitted == client, (
+        "the server and client cue rosters drifted: "
+        f"server-only {sorted(emitted - client)}, client-only {sorted(client - emitted)}"
+    )

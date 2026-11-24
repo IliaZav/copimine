@@ -92,7 +92,13 @@ def test_lanes_and_origin_are_frozen_at_aim_lock():
 
 
 def test_fire_reuses_the_snapshot_and_never_retargets():
-    """9H.03: do not re-aim a visibly locked beam at fire time."""
+    """9H.03 / N23-P1-03: fire only along the lanes frozen at aim-lock.
+
+    The old code kept a fire-time re-selection fallback for a cast with no lock.
+    That is exactly the silent retarget the no-retarget contract forbids, so the
+    fallback is gone: a cast that lost its generation-locked snapshot cancels
+    safely instead of firing along an undisclosed replacement lane.
+    """
     source = _event_source()
     start = source.index("private void startChestBeam(")
     body = source[start:source.index("private void renderChestBeamStage(", start)]
@@ -102,11 +108,35 @@ def test_fire_reuses_the_snapshot_and_never_retargets():
     assert "new ArrayList<>(bossChestBeamLockedAims)" in body, (
         "fire must copy the frozen lanes verbatim"
     )
-    # Any re-pick is only a defensive fallback for a legacy path with no lock.
-    pick = body.index("ChestBeamPolicy.selectLaneIndices(")
-    guard = body.index("if (aims.isEmpty())", 0)
-    assert guard < pick, (
-        "target re-selection must sit behind the locked-snapshot fallback"
+    assert "ChestBeamPolicy.selectLaneIndices(" not in body, (
+        "fire must never re-select targets: the aim-lock snapshot is authoritative"
+    )
+    assert "cancelChestBeamWithoutLock(boss, callbackGeneration)" in body, (
+        "a cast with no locked snapshot must cancel safely, not re-aim"
+    )
+
+
+def test_lock_loss_cancels_refunds_and_clears_the_beam():
+    """N23-P1-03: losing the aim lock must fail closed.
+
+    The cancel path may not leave a live cast, a stale stripe or an unreleased
+    hazard reservation behind, and it must return to recovery so the brain can
+    choose a legal action instead of the shot silently firing elsewhere.
+    """
+    source = _event_source()
+    start = source.index("private void cancelChestBeamWithoutLock(")
+    body = source[start:source.index("private void abortChestBeam(", start)]
+    assert "clearWorldVfxBeamsByPrefix(CHEST_BEAM_VFX_PREFIX)" in body, (
+        "the cancel must clear any staged beam stripe"
+    )
+    assert 'releaseBossHazardReservation("chest-beam-lock-lost")' in body, (
+        "the cancel must refund the hazard reservation"
+    )
+    assert "bossChestBeamLockedAims = List.of()" in body, (
+        "the cancel must drop the stale lane snapshot"
+    )
+    assert "BossAbilityState.RECOVERY" in body, (
+        "the cancel must return the brain to recovery for another legal action"
     )
 
 

@@ -53730,38 +53730,22 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 .filter(player -> player != null && player.isOnline() && !player.isDead()
                         && world.equals(player.getWorld()) && isActiveBossParticipant(player))
                 .toList();
-        // Specification 7.1.3 and 9H.03: fire along the lanes frozen at
-        // aim-lock. Re-selecting targets here would silently re-aim an attack
-        // the party already watched lock, so the snapshot is authoritative.
-        // The chest origin is frozen with it so rails, charge and damage share
-        // one exact source point. Only a defensive fallback re-derives the
-        // lanes when no lock was captured for this generation.
-        Location chest = bossChestBeamLockedGeneration == callbackGeneration
+        // Specification 7.1.3, 9H.03 and N23-P1-03: fire ONLY along the lanes
+        // frozen at aim-lock. There is deliberately NO fire-time re-selection: a
+        // cast whose generation-locked snapshot is gone (generation reset,
+        // restart, or a legacy start path) must CANCEL SAFELY rather than pick
+        // new targets and fire along a lane the party never watched lock. The
+        // chest origin is frozen with the lanes so rails, charge and damage share
+        // one exact source point.
+        boolean lockedForThisGeneration = bossChestBeamLockedGeneration == callbackGeneration
                 && bossChestBeamLockedChest != null
-                ? bossChestBeamLockedChest.clone()
-                : boss.getLocation().clone()
-                        .add(0.0D, boss.getHeight() * BossContactStrikePolicy.CHEST_HEIGHT_RATIO, 0.0D);
-        List<ChestBeamPolicy.Aim> aims = bossChestBeamLockedGeneration == callbackGeneration
-                && !bossChestBeamLockedAims.isEmpty()
-                ? new ArrayList<>(bossChestBeamLockedAims)
-                : new ArrayList<>();
-        if (aims.isEmpty()) {
-            if (participants.isEmpty()) {
-                releaseBossHazardReservation("chest-beam-no-targets");
-                return;
-            }
-            long laneSeed = bossChestBeamSequence + eventTickCounter + generation;
-            for (int index : ChestBeamPolicy.selectLaneIndices(participants.size(),
-                    ChestBeamPolicy.laneCount(participants.size()), laneSeed)) {
-                Location eye = participants.get(index).getEyeLocation();
-                aims.add(ChestBeamPolicy.aimAt(chest.getX(), chest.getY(), chest.getZ(),
-                        eye.getX(), eye.getY(), eye.getZ()));
-            }
-        }
-        if (aims.isEmpty()) {
-            releaseBossHazardReservation("chest-beam-no-lane");
+                && !bossChestBeamLockedAims.isEmpty();
+        if (!lockedForThisGeneration) {
+            cancelChestBeamWithoutLock(boss, callbackGeneration);
             return;
         }
+        Location chest = bossChestBeamLockedChest.clone();
+        List<ChestBeamPolicy.Aim> aims = new ArrayList<>(bossChestBeamLockedAims);
         long castSequence = ++bossChestBeamSequence;
         String callbackEvent = eventId;
         UUID bossId = boss.getUniqueId();
@@ -54071,6 +54055,30 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         bossCastDeadlineMillis = System.currentTimeMillis() + ChestBeamPolicy.AFTERMATH_TICKS * 50L;
         bossSpellPauseUntilMillis = bossCastDeadlineMillis;
         releaseBossHazardReservation("chest-beam-impact");
+    }
+
+    /**
+     * N23-P1-03 / 9H.03: a cast that reached fire without its generation-locked
+     * lane snapshot must cancel safely. The hazard reservation/lease is refunded,
+     * any staged beam stripe is cleared so no ghost geometry can outlive the
+     * cancel, and the boss eases into a short recovery instead of silently
+     * re-aiming a beam the party never watched lock. This is the fail-closed
+     * counterpart to {@link #lockChestBeamAims}: no lock, no shot.
+     */
+    private void cancelChestBeamWithoutLock(LivingEntity boss, long callbackGeneration) {
+        getLogger().info("BOSS_CHEST_BEAM_CANCEL_LOCK_LOST event=" + eventId
+                + " boss=" + (boss == null ? "null" : boss.getUniqueId())
+                + " generation=" + callbackGeneration
+                + " lockedGeneration=" + bossChestBeamLockedGeneration);
+        bossChestBeamLockedAims = List.of();
+        bossChestBeamLockedChest = null;
+        bossChestBeamLockedGeneration = -1L;
+        bossChestBeamActive = false;
+        clearWorldVfxBeamsByPrefix(CHEST_BEAM_VFX_PREFIX);
+        bossAbilityState = BossAbilityState.RECOVERY;
+        bossCastDeadlineMillis = System.currentTimeMillis() + 20L * 50L;
+        bossSpellPauseUntilMillis = bossCastDeadlineMillis;
+        releaseBossHazardReservation("chest-beam-lock-lost");
     }
 
     private void abortChestBeam(long castSequence, String reason) {

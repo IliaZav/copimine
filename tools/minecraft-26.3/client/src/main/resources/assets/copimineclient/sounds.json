@@ -1,0 +1,62 @@
+{
+  "spell.fangline": {
+    "sounds": [
+      { "name": "copimineclient:spell/fangline", "volume": 0.9, "pitch": 1.0, "attenuation_distance": 48 }
+    ]
+  },
+  "spell.circle": {
+    "sounds": [
+      { "name": "copimineclient:spell/circle", "volume": 0.9, "pitch": 1.0, "attenuation_distance": 40 }
+    ]
+  },
+  "spell.crown": {
+    "sounds": [
+      { "name": "copimineclient:spell/crown", "volume": 0.9, "pitch": 1.0, "attenuation_distance": 44 }
+    ]
+  },
+  "spell.separation": {
+    "sounds": [
+      { "name": "copimineclient:spell/separation", "volume": 1.0, "pitch": 1.0, "attenuation_distance": 40 }
+    ]
+  },
+  "spell.sphere": {
+    "sounds": [
+      { "name": "copimineclient:spell/sphere", "volume": 0.9, "pitch": 1.0, "attenuation_distance": 44 }
+    ]
+  },
+  "spell.sweep": {
+    "sounds": [
+      { "name": "copimineclient:spell/sweep", "volume": 1.0, "pitch": 1.0, "attenuation_distance": 40 }
+    ]
+  },
+  "spell.sculk": {
+    "sounds": [
+      { "name": "copimineclient:spell/sculk", "volume": 0.9, "pitch": 1.0, "attenuation_distance": 40 }
+    ]
+  },
+  "spell.fan": {
+    "sounds": [
+      { "name": "copimineclient:spell/fan", "volume": 0.95, "pitch": 1.0, "attenuation_distance": 44 }
+    ]
+  },
+  "spell.heavy": {
+    "sounds": [
+      { "name": "copimineclient:spell/heavy", "volume": 1.0, "pitch": 1.0, "attenuation_distance": 44 }
+    ]
+  },
+  "spell.gravity": {
+    "sounds": [
+      { "name": "copimineclient:spell/gravity", "volume": 0.95, "pitch": 1.0, "attenuation_distance": 56 }
+    ]
+  },
+  "spell.beam": {
+    "sounds": [
+      { "name": "copimineclient:spell/beam", "volume": 1.0, "pitch": 1.0, "attenuation_distance": 64 }
+    ]
+  },
+  "spell.geyser": {
+    "sounds": [
+      { "name": "copimineclient:spell/geyser", "volume": 1.0, "pitch": 1.0, "attenuation_distance": 48 }
+    ]
+  }
+}

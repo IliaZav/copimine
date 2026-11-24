@@ -169,6 +169,7 @@ public final class EndEventWorldVfxManager {
         beams.clear();
         locallyCleared = locallyCleared || generation > clearedGeneration;
         clearedGeneration = Math.max(clearedGeneration, generation);
+        SpellVisualSoundRuntime.reset();
     }
 
     public synchronized boolean resumeAfterLocalExit(String expectedEventId, long expectedGeneration, long timestamp) {
@@ -193,6 +194,7 @@ public final class EndEventWorldVfxManager {
         resumedAtTimestamp = 0L;
         locallyCleared = false;
         retiredEvents.clear();
+        SpellVisualSoundRuntime.reset();
     }
 
     /** Clear all geometry for the current event without retaining stale ids. */
@@ -239,6 +241,10 @@ public final class EndEventWorldVfxManager {
         }
         long nowMillis = System.currentTimeMillis();
         tick(nowMillis);
+        List<BeamSnapshot> live = snapshots(nowMillis);
+        // Section 9A.03(F)/9A.05: one authored, positional voice per new cast,
+        // driven by the same signed cue and silenced as soon as the cue is gone.
+        SpellVisualSoundRuntime.observe(live, nowMillis);
         if (beams.isEmpty()) return;
         String dimension = dimensionId(client.level);
         if (dimension.isBlank()) {
@@ -249,7 +255,7 @@ public final class EndEventWorldVfxManager {
         Vec3 cameraPos = camera.position();
         Quaternionf cameraRotation = new Quaternionf(camera.rotation());
         Map<RitualSpellPresentationPolicy.WorldPass, List<BeamSnapshot>> batches = new LinkedHashMap<>();
-        RitualSpellPresentationPolicy.drawWorldPasses(snapshots(nowMillis), dimension, nowMillis, pass -> {
+        RitualSpellPresentationPolicy.drawWorldPasses(live, dimension, nowMillis, pass -> {
             List<BeamSnapshot> batch = new ArrayList<>();
             batches.put(pass, batch);
             return batch::add;

@@ -14,7 +14,9 @@ exercised for real.
 """
 from __future__ import annotations
 
+import json
 import os
+import re
 import shutil
 import subprocess
 import textwrap
@@ -22,6 +24,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CLIENT_SRC = ROOT / "tools/minecraft-26.3/client/src/main/java"
+CLIENT_RESOURCES = ROOT / "tools/minecraft-26.3/client/src/main/resources"
 POLICY = CLIENT_SRC / "me/copimine/client/RitualSpellPresentationPolicy.java"
 SPELL_GEOMETRY = CLIENT_SRC / "me/copimine/client/SpellVisualGeometry.java"
 
@@ -609,3 +612,63 @@ def test_client_renders_the_authored_hot_core_tone_and_hero_volume() -> None:
     assert "style.volumetric()" in renderer_text
     assert "CROSS_VOLUME_INSET" in renderer_text
     assert "private static void ribbon(" in renderer_text
+
+
+def _spell_tokens() -> list[str]:
+    """The authored cast tokens, read straight from the Spell enum."""
+    text = SPELL_GEOMETRY.read_text(encoding="utf-8")
+    return re.findall(r'^\s+[A-Z_]+\("([a-z]+)"\)', text, flags=re.MULTILINE)
+
+
+def test_every_authored_spell_ships_its_own_original_sound() -> None:
+    """Section 9A.03(F)/9A.05: an authored anticipation/release/tail per cast.
+
+    Every hero ability must be audible as itself. This pins the whole chain
+    without a live client: one original Ogg Vorbis sample per token, a
+    ``sounds.json`` registration for each, the one-shot runtime wired into the
+    world-VFX manager, and the editable generator that produced the samples.
+    The samples are synthesised from seeded noise and simple oscillators by
+    ``scripts/minecraft/GenerateEndRiftSpellSounds.py``, so no copyrighted audio
+    is lifted and the bytes stay reproducible.
+    """
+    tokens = _spell_tokens()
+    assert len(tokens) == 12, f"expected 12 authored casts, found {tokens}"
+
+    sounds_root = CLIENT_RESOURCES / "assets/copimineclient/sounds/spell"
+    registry = CLIENT_RESOURCES / "assets/copimineclient/sounds.json"
+    assert registry.is_file(), "the copimineclient sounds.json registry must ship"
+    registry_text = registry.read_text(encoding="utf-8")
+    registered = json.loads(registry_text)
+
+    for token in tokens:
+        sample = sounds_root / f"{token}.ogg"
+        assert sample.is_file(), f"missing authored spell sound for {token}"
+        raw = sample.read_bytes()
+        assert raw[:4] == b"OggS", f"{token}.ogg is not an Ogg container"
+        assert b"vorbis" in raw[:64], f"{token}.ogg is not Ogg Vorbis"
+        assert len(raw) > 4_096, f"{token}.ogg looks empty ({len(raw)} bytes)"
+        key = f"spell.{token}"
+        assert key in registered, f"sounds.json does not register {key}"
+        entry = registered[key]["sounds"][0]
+        assert entry["name"] == f"copimineclient:spell/{token}"
+        assert 0.0 < float(entry["volume"]) <= 1.0
+
+    runtime = CLIENT_SRC / "me/copimine/client/SpellVisualSoundRuntime.java"
+    assert runtime.is_file(), "the authored spell sound runtime must exist"
+    runtime_text = runtime.read_text(encoding="utf-8")
+    assert 'Identifier.fromNamespaceAndPath("copimineclient", "spell." + spell.token())' in runtime_text
+    assert "playLocalSound" in runtime_text
+    assert "MAX_SOUNDS_PER_FRAME" in runtime_text
+    assert "soundedStart.keySet().retainAll(present)" in runtime_text, (
+        "a finished cast must be forgotten so the next cast sounds again"
+    )
+
+    vfx = CLIENT_SRC / "me/copimine/client/EndEventWorldVfxManager.java"
+    vfx_text = vfx.read_text(encoding="utf-8")
+    assert "SpellVisualSoundRuntime.observe(" in vfx_text, "the manager must fire the authored voice"
+    assert "SpellVisualSoundRuntime.reset()" in vfx_text, "reset/clear must silence stale voices"
+
+    generator = ROOT / "scripts/minecraft/GenerateEndRiftSpellSounds.py"
+    assert generator.is_file(), "the reproducible sound generator must live in-repo"
+    generator_text = generator.read_text(encoding="utf-8")
+    assert "soundfile" in generator_text and "numpy" in generator_text

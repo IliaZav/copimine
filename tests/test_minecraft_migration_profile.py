@@ -297,12 +297,15 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # `SpellVisualMotionPolicy`, `SpellVisualRenderer.setReducedMotion` and the
     # `/copimineclient reduced-motion` command, and it renders the Section 9A.02
     # hot-core/deep-edge energy through `SpellVisualToneMap` with crossed-ribbon
-    # volume on the hero strokes. Repinned from two clean `--rerun-tasks gradle
-    # test jar` runs that agreed byte for byte on the same JDK.
-    assert artifact['size'] == 30_429_320
+    # volume on the hero strokes. Each authored cast also ships its own original
+    # Ogg Vorbis sample (Section 9A.03(F)/9A.05) in
+    # `assets/copimineclient/sounds/spell/`, registered in `sounds.json` and
+    # fired once per cast by `SpellVisualSoundRuntime`. Repinned from two clean
+    # `--rerun-tasks gradle test jar` runs that agreed byte for byte on the same JDK.
+    assert artifact['size'] == 30_679_295
     assert artifact['sha512'] == (
-        'd381d1b2740b1a28923567c0596d2e085133dbc3d4849e0ebf3340b268bcf385'
-        'd29342f40dc9124009dfae5a22824e014ab043b5884f12a040e1d6784f4e1494'
+        '63850b145a04b9f55f2344218b8789fc0625d812f87bbb09e916de2b9c4a7a4f8'
+        'd327355b64fe483230c1f5679c6454649f6f45b787df2a04b5912c86002d859'
     )
 
 

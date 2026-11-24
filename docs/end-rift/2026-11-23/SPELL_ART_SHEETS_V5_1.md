@@ -10,11 +10,16 @@ LOD, доказательство и точные пути ассетов.
 **Честность доказательств.** Всё, что описано как форма/размер/анимация/LOD —
 это `SOURCE + AUTO`: оно следует из реального класса `SpellVisualGeometry`
 (12 авторских мешей, все как функция `elapsedMillis`) и подтверждено
-автотестами (`tools/minecraft-26.3/client/src/test/.../SpellVisualGeometryTest.java`
-и `tests/test_end_rift_spell_presentation.py`, 175 passed/1 skipped).
-«Скриншот из игры» и «F2-видео» — **`NATIVE_BLOCKED`** (в этой среде нет GUI,
-живого Paper и подписанного V4-клиента). Аудио-ассеты — **GAP**: в этой итерации
-авторские звуковые файлы не добавлялись; ниже указан замысел, а не факт поставки.
+автотестами (`tools/minecraft-26.3/client/src/test/.../SpellVisualGeometryTest.java`,
+`SpellVisualToneMapTest`, `SpellVisualSoundRuntimeTest`,
+`SpellVisualMotionPolicyTest` и `tests/test_end_rift_spell_presentation.py`,
+178 passed/1 skipped). Материал теперь читается как раскалённое ядро/холодный
+край (`SpellVisualToneMap`), а геройские штрихи — как объём (скрещённые ленты).
+Аудио-ассеты **поставлены**: 12 оригинальных Ogg Vorbis на каст, один
+позиционный голос на каст (`SpellVisualSoundRuntime`), воспроизводимые скриптом
+`scripts/minecraft/GenerateEndRiftSpellSounds.py`. «Скриншот из игры» и
+«F2-видео», а также **прослушивание** звука в живом клиенте — **`NATIVE_BLOCKED`**
+(в этой среде нет GUI, живого Paper и подписанного V4-клиента).
 
 ---
 
@@ -56,6 +61,11 @@ LOD, доказательство и точные пути ассетов.
 | Авторская геометрия (12 мешей) | `tools/minecraft-26.3/client/src/main/java/me/copimine/client/SpellVisualGeometry.java` |
 | Авторский рендер лент | `tools/minecraft-26.3/client/src/main/java/me/copimine/client/SpellVisualRenderer.java` |
 | Авторская текстура дуги | `CopiMineClient/src/main/resources/assets/copimineclient/textures/entity/end_rift_spell_arc.png` (общая для Tree B через `resources.srcDir`) |
+| Авторский горячий тон материала | `tools/minecraft-26.3/client/src/main/java/me/copimine/client/SpellVisualToneMap.java` |
+| Авторские звуки (12 Ogg) | `tools/minecraft-26.3/client/src/main/resources/assets/copimineclient/sounds/spell/<token>.ogg` |
+| Реестр звуков | `tools/minecraft-26.3/client/src/main/resources/assets/copimineclient/sounds.json` |
+| Рантайм звука | `tools/minecraft-26.3/client/src/main/java/me/copimine/client/SpellVisualSoundRuntime.java` |
+| Генератор звука | `scripts/minecraft/GenerateEndRiftSpellSounds.py` |
 | Конфиг/LOD-ключ | `tools/minecraft-26.3/client/src/main/java/me/copimine/client/ClientConfig.java` |
 | Тесты геометрии | `tools/minecraft-26.3/client/src/test/java/me/copimine/client/SpellVisualGeometryTest.java` |
 | Тесты проводки/геометрии | `tests/test_end_rift_spell_presentation.py` |
@@ -70,25 +80,28 @@ LOD, доказательство и точные пути ассетов.
 
 | Заклинание | Токен/cue | Фаза | Серверная геометрия урона | Клиентские Style-роли | Атлас/источник | Материал/проход | Звук | Статус | Доказательство |
 |---|---|---|---|---|---|---|---|---|---|
-| Корона | `v51-crown-<seed>` | Rage/Archmage | вращающийся радиальный, луки 7–9 бл. | ARM, JAW, RING, FIELD, LANE | `end_rift_spell_arc.png` | emissive ribbon, SPELL | GAP | SOURCE+AUTO | `crownHasFiveCurvedArmsThatRotate` |
-| Круг | `v51-circle-<seed>` | Rage/Archmage | кольцо 1.8–4.0 бл., проход ≥ 2 бл. | JAW, RING, FIELD, LANE | тот же | тот же | GAP | SOURCE+AUTO | `circleJawsLeaveATraversableGap` |
-| Линия клыков | `v51-fangline-<seed>` | Rage/Archmage | направленная 1.5–4.5 бл., 3 клыка | LANE, JAW, FIELD | тот же | тот же | GAP | SOURCE+AUTO | `fangLineIsThreeLocalTeeth` |
-| Сминающий клин | `v51-sweep-<seed>` | Warden | коммитнутая коробка 5×4 бл. | WEDGE, FIELD, LANE | тот же | тот же | GAP | SOURCE+AUTO | `wardenSweepIsTheCommittedFiveByFourFrontBox` |
-| Эхо-сфера | `v51-sphere-<seed>` | Warden | самоцентрированная R=6 бл. | SHELL, LANE, FIELD, RING | тот же | тот же | GAP | SOURCE+AUTO | `echoSphereIsSelfCentredWithRadiusSix` |
-| Скалк-жила | `v51-sculk-<seed>` | Warden | seed-детерминированный путь 3–5 бл. | TRACE, JAW, LANE, FIELD | тот же | тот же | GAP | SOURCE+AUTO | `sculkTraceIsSeededAndEndsInALockedMarker` |
-| Гравитация | `v51-gravity-<seed>` | Guardian/арена | без прямого урона; дальность до 48 бл. | FIELD, RING | тот же | тот же | GAP | SOURCE+AUTO | `gravityFieldCompressesInwardAndStaysBounded` |
-| Веер Стража | `v51-fan-<seed>` | Guardian | конус R=4.8 бл., полуугол 62.5° | WEDGE, FIELD, LANE | тот же | тот же | GAP | SOURCE+AUTO | `guardianFanReadsAsAnAsymmetricFrontCone` |
-| Тяжёлый удар | `v51-heavy-<seed>` | Guardian | клин вперёд 4.6 бл., полуширина 2.4 бл. | WEDGE, ARM, LANE, FIELD | тот же | тот же | GAP | SOURCE+AUTO | покрыт `everySpellAndQualityStaysFiniteAndBounded` |
-| Разъединение | `v51-separation-<seed>` | Guardian | расширяющееся кольцо R=4.8 бл. | RING, FIELD | тот же | тот же | GAP | SOURCE+AUTO | `separationExpandsFromPlantedStance` |
-| Луч сундука | `v51-beam-<seed>` | Guardian/Archmage | капсула `ChestBeamPolicy.BEAM_RADIUS`=1.7, до 26 бл. | ARM, SHELL, FIELD, RING, JAW, WEDGE | тот же | тот же | GAP | SOURCE+AUTO | `beamIsAFullLengthLayeredShaftInsideTheDamageCapsule` |
-| Гейзер | `v51-geyser-<seed>` | Guardian (Rift) | колонна 8–12 бл., радиус 1.9 | LANE, JAW, FIELD, TRACE, RING | тот же | тот же | GAP | SOURCE+AUTO | `geyserIsAnAuthoredCollapsingColumnInsideTheVisualRadius` |
+| Корона | `v51-crown-<seed>` | Rage/Archmage | вращающийся радиальный, луки 7–9 бл. | ARM, JAW, RING, FIELD, LANE | `end_rift_spell_arc.png` | emissive ribbon, SPELL | `spell/crown.ogg` | SOURCE+AUTO | `crownHasFiveCurvedArmsThatRotate` |
+| Круг | `v51-circle-<seed>` | Rage/Archmage | кольцо 1.8–4.0 бл., проход ≥ 2 бл. | JAW, RING, FIELD, LANE | тот же | тот же | `spell/circle.ogg` | SOURCE+AUTO | `circleJawsLeaveATraversableGap` |
+| Линия клыков | `v51-fangline-<seed>` | Rage/Archmage | направленная 1.5–4.5 бл., 3 клыка | LANE, JAW, FIELD | тот же | тот же | `spell/fangline.ogg` | SOURCE+AUTO | `fangLineIsThreeLocalTeeth` |
+| Сминающий клин | `v51-sweep-<seed>` | Warden | коммитнутая коробка 5×4 бл. | WEDGE, FIELD, LANE | тот же | тот же | `spell/sweep.ogg` | SOURCE+AUTO | `wardenSweepIsTheCommittedFiveByFourFrontBox` |
+| Эхо-сфера | `v51-sphere-<seed>` | Warden | самоцентрированная R=6 бл. | SHELL, LANE, FIELD, RING | тот же | тот же | `spell/sphere.ogg` | SOURCE+AUTO | `echoSphereIsSelfCentredWithRadiusSix` |
+| Скалк-жила | `v51-sculk-<seed>` | Warden | seed-детерминированный путь 3–5 бл. | TRACE, JAW, LANE, FIELD | тот же | тот же | `spell/sculk.ogg` | SOURCE+AUTO | `sculkTraceIsSeededAndEndsInALockedMarker` |
+| Гравитация | `v51-gravity-<seed>` | Guardian/арена | без прямого урона; дальность до 48 бл. | FIELD, RING | тот же | тот же | `spell/gravity.ogg` | SOURCE+AUTO | `gravityFieldCompressesInwardAndStaysBounded` |
+| Веер Стража | `v51-fan-<seed>` | Guardian | конус R=4.8 бл., полуугол 62.5° | WEDGE, FIELD, LANE | тот же | тот же | `spell/fan.ogg` | SOURCE+AUTO | `guardianFanReadsAsAnAsymmetricFrontCone` |
+| Тяжёлый удар | `v51-heavy-<seed>` | Guardian | клин вперёд 4.6 бл., полуширина 2.4 бл. | WEDGE, ARM, LANE, FIELD | тот же | тот же | `spell/heavy.ogg` | SOURCE+AUTO | покрыт `everySpellAndQualityStaysFiniteAndBounded` |
+| Разъединение | `v51-separation-<seed>` | Guardian | расширяющееся кольцо R=4.8 бл. | RING, FIELD | тот же | тот же | `spell/separation.ogg` | SOURCE+AUTO | `separationExpandsFromPlantedStance` |
+| Луч сундука | `v51-beam-<seed>` | Guardian/Archmage | капсула `ChestBeamPolicy.BEAM_RADIUS`=1.7, до 26 бл. | ARM, SHELL, FIELD, RING, JAW, WEDGE | тот же | тот же | `spell/beam.ogg` | SOURCE+AUTO | `beamIsAFullLengthLayeredShaftInsideTheDamageCapsule` |
+| Гейзер | `v51-geyser-<seed>` | Guardian (Rift) | колонна 8–12 бл., радиус 1.9 | LANE, JAW, FIELD, TRACE, RING | тот же | тот же | `spell/geyser.ogg` | SOURCE+AUTO | `geyserIsAnAuthoredCollapsingColumnInsideTheVisualRadius` |
 
 Три уровня плотности §9A.04 (`FULL/BALANCED/REDUCED = 12/8/5`) теперь проверяются
 на всех 12 семействах в собственной батарее клиента
 (`qualityTiersUseTheDocumentedSampleDensities`,
 `everyAuthoredSpellFillsEveryTierAndAnimates`,
-`reducedTierNeverSpendsMoreVerticesThanFull`). Звуковые слои остаются `GAP`
-(авторские аудио-ассеты не поставлялись), нативные скриншоты/F2 — `NATIVE_BLOCKED`.
+`reducedTierNeverSpendsMoreVerticesThanFull`). Звуковые слои **поставлены**:
+12 оригинальных `spell/<token>.ogg` в `sounds.json`, один позиционный голос на
+каст (`SpellVisualSoundRuntime`), контракт
+`test_every_authored_spell_ships_its_own_original_sound`; прослушивание в живом
+клиенте и нативные скриншоты/F2 — `NATIVE_BLOCKED`.
 
 ---
 
@@ -307,7 +320,8 @@ LOD, доказательство и точные пути ассетов.
   геометрию** (разные `Style`-профили и формы) и свой токен `v51-…`, то есть
   «одинаково выглядящих заклов» нет (тест «every authored cast has a distinct
   silhouette»).
-- Ещё не закрыто честно: **аудио-ассеты (GAP)** и **нативные скриншоты/F2
-  (`NATIVE_BLOCKED`)**; три уровня LOD реализованы и проверены в `AUTO`, но их
+- Аудио-ассеты **поставлены** (12 оригинальных Ogg, один голос на каст); ещё не
+  закрыто честно: **нативные скриншоты/F2 и прослушивание (`NATIVE_BLOCKED`)**;
+  три уровня LOD реализованы и проверены в `AUTO`, но их
   «измеренные бюджеты» (§9A.04) требуют нативного прогона — см. чек-лист
   `NATIVE_F2_VISUAL_CHECKLIST.md`.

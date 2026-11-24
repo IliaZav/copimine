@@ -834,3 +834,67 @@ proved a defeat commits exactly once, or kept two casts off the same rig.
   the real reward delivery, the real WorldCore End open and the authored cinematic
   timeline on the signed 26.3 client are `NATIVE_BLOCKED` here: no GUI client, no
   running Paper, no signed V4 client. No HP, damage, reward or world state changed.
+
+### V6 OV4.10 - the Core memorial's durable winner ledger
+
+The previous section's `CoreMemorialLayoutPolicy` fixed how a roster is *drawn*, but
+nothing fixed what the roster *is*. The memorial body was still built from the live
+display names at victory time with no durable record, so a renamed account rewrote
+history, two different accounts sharing a nickname were indistinguishable, and there
+was no way to tell a genuine repeat victory from a replayed write.
+
+- **Policy**: `domain/CoreMemorialLedgerPolicy.java` is the durable record behind that
+  viewport. It is Bukkit-free and owns no health, damage, reward or End-access state:
+  `EndRiftVictoryCoordinatorPolicy` owns the victory commit, and this class only
+  records the outcome it was given.
+  - `Entry` is keyed by `attemptId:uuid`, not by display name. The UUID is parsed
+    strictly (32 hex digits, optional standard dashes) and canonicalised to lowercase,
+    because a lenient parse could map two different accounts onto one key and merge
+    two winners. The nickname is sanitised through `CoreMemorialLayoutPolicy.sanitize`
+    and frozen at the moment of victory; the victory timestamp must be non-negative.
+  - `Ledger.record` is exactly-once per attempt and participant. A replayed write, a
+    double death or a restart that re-reads the same roster returns `DUPLICATE` with
+    the *same* ledger instance, so nothing is appended and the stored nickname and
+    time are never refreshed. The same account winning a second attempt, and a second
+    account in the same attempt, both record normally.
+  - At `MAX_ENTRIES` (4096) the ledger returns `FULL` rather than evicting an older
+    winner: a memorial that silently dropped the first people who beat the encounter
+    would be worse than one that stops accepting new lines.
+  - `sorted` is total and independent of insertion order (victory time, then attempt
+    id, then UUID), and `encode` writes a versioned header plus one tab-separated row
+    per entry, so the same set of victories produces byte-identical files on two
+    servers that accepted them in a different order.
+  - `decode` is fail-closed on meaning. A missing payload is `EMPTY` (the first
+    victory legitimately starts from nothing), but a header that is absent or names a
+    different version is `REJECTED` and contributes no entries, because a foreign
+    format may mean something else by the same columns. Once the header matches, every
+    malformed row, every duplicate key and every row beyond the cap is counted in
+    `Loaded.rejectedRows` and left out, so the operator sees the exact loss instead of
+    discovering a missing name months later.
+- **Wiring**: the real `CoreMemorialService` storage, the `TextDisplay` body and the
+  per-attempt freeze still come from the Paper plugin, which remains unchanged in this
+  batch; this batch lands the pure record/format/uniqueness contract it must satisfy.
+- **Tests**: `tests/CoreMemorialLedgerPolicyTest.java` (registered in `$pureTests`)
+  covers strict UUID canonicalisation, entry validation, exactly-once recording, the
+  frozen nickname and timestamp, refusal to evict at the cap, insertion-order
+  independence of both order and bytes, an encode/decode round-trip, rejection of a
+  foreign and of a future format version, malformed/duplicate/over-cap row accounting,
+  and the bounded display reused from `CoreMemorialLayoutPolicy`.
+- **Re-pin**: this change alters the Gradle `migrationPlugins` candidate, so the
+  pin moved again. Candidate `CopiMineEndEvent-26.3.jar` is now sha256
+  `b577d1f6dcb867e54254e90d213bdc521b1d7a5fcbc6a623f65deb88255e160e`
+  (2 795 026 B, sha512 `6f1b618f…`), built twice from the same source with the
+  CI toolchain (Temurin 25.0.4.1) and byte-identical both times
+  (`ENDEVENT_DETERMINISM=OK`, `ENDEVENT_CHANGED=OK`). The Dungeon candidate stayed
+  byte-for-byte at `33858dfa…`, so its pin is untouched
+  (`DUNGEON_PIN_UNCHANGED=OK`). The displaced `9806720a…` is prepended to
+  `candidate.replaceSha256` (newest first), and the lock, the migration pin test
+  (sequential assertions, the index block and the full-list pin),
+  `OWN_PLUGIN_INVENTORY.json/.md` and the F2 checklist header move together.
+  `install_migration_server_plugins.py --stage-only` re-verifies all 31 candidates
+  and the local 26.3 runtime was reinstalled from the new lock.
+- **Status**: `SOURCE` + `AUTO`. The `javac` + `java` probe passes
+  (`CoreMemorialLedgerPolicyTest OK`). Whether the durable file survives a real
+  restart on the production host, and whether the memorial reads correctly in the real
+  `TextDisplay` from the Core, are `NATIVE_BLOCKED` here: no GUI client, no running
+  Paper, no signed V4 client. No HP, reward or roster-membership semantics changed.

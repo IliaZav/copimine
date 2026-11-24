@@ -515,6 +515,12 @@ $pureTests = @(
   # budget and the truthful shown/overflow split are pure, so a roster that would
   # overflow the display fails here without a server.
   'CoreMemorialLayoutPolicyTest',
+  # V6 OV4.10 (CoreMemorialService): the durable winner ledger behind that
+  # viewport. Exactly-once per attempt and participant, a frozen victory-time
+  # nickname, a strict canonical UUID, a deterministic byte format and a load
+  # that reports every row it could not honour are pure, so a duplicated or
+  # silently dropped winner fails here without a server.
+  'CoreMemorialLedgerPolicyTest',
   'CreativeTestAdmissionPolicyTest',
   'BossAiSimulationTest',
   'BossCastTimelineTest',

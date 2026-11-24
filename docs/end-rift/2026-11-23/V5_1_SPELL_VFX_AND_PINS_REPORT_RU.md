@@ -104,9 +104,9 @@ r+0.35 со сжатием на заряде, поле гравитации по
 
 ### 1.4 Перепин кандидата CopiMineEndEvent (SOURCE + AUTO)
 
-- Кандидат → sha256 `7a6a7d570d396f3b664684ffd8eaed8d86a135caacdebe9e229e393411ea9cc5`,
-  размер 2796480; предыдущий `b577d1f6…` **добавлен в начало** `replaceSha256`
-  (без дедупликации). Обновлены `server-plugins.lock.json`,
+- Кандидат → sha256 `22f511f347bfb3e55b71fd2713be5db71b080a19c8ab6f7f169b2dd0cad30cc5`,
+  размер 2796627; предыдущие кандидаты `7a6a7d57…` и `b577d1f6…` **добавлены в
+  начало** `replaceSha256` (без дедупликации). Обновлены `server-plugins.lock.json`,
   `OWN_PLUGIN_INVENTORY.json`/`.md` и оба литерала в
   `tests/test_minecraft_migration_server_plugins.py`
   (`candidate[...]` + `expected_candidates`).

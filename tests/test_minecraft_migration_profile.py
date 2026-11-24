@@ -254,10 +254,14 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # The lock was repinned from the real build output in
     # build/minecraft-26.3/client/libs (verified here byte for byte: the built
     # jar's size and SHA-512 match the lock), but this literal lagged behind it.
-    assert artifact['size'] == 30_367_332
+    # 24-November: the authored chest-beam family (modelData 830216) and the
+    # cocoon-shatter plate cinematic changed the packaged client resources.
+    # Repinned from a clean `gradle test jar` on the pinned JDK; the Windows CI
+    # build then reproduced these exact bytes.
+    assert artifact['size'] == 30_368_290
     assert artifact['sha512'] == (
-        '5cf53ffe632550d2b145d3f18c76b3d08aec4aeafad98ef2ccd4bb7fe4e91c11'
-        'c1b33b7562521ca32fa380dc37ab4fa70c6e925f6919feb00ce5fe77430709dd'
+        'b6aa678ac587c86c5b2808782bb17c7e44aa7b2027295334663c7a258f1413646'
+        'b8142ec1a71570c9f2e146e155e543a51dde50ed159edcd7ef18b1c6643814b'
     )
 
 

@@ -22,7 +22,8 @@
    выше); прод на момент записи нёс предыдущий jar `084cc0f5…`
    (см. `B10_B11_B12_FIXES_AND_MATRIX_LEDGER.md` §3).
 2. Клиент: ровно `CopiMineClient-0.1.4+26.3.jar`
-   (30 367 332 B, sha512 `5cf53ffe…`, пин `tools/minecraft-26.3/profile.lock.json`).
+   (30 368 290 B, sha512 `b6aa678a…`, пин `tools/minecraft-26.3/profile.lock.json`;
+   перепинен 2026-11-24 после того, как chest beam и cocoon-shatter попали в клиент).
    Сервер требует `required_client_mod_version: 0.1.4+26.3` — пара должна совпасть,
    иначе F2 недействителен (баг B-13: прошлый F2 снимался другим клиентом).
 3. Подпись V4 обязательна и активна (не отключать ключ ради теста).

@@ -182,6 +182,10 @@ public class ConvertedArrowProbe {
     boolean isOfficialCurrentAttempt() { return isOfficialAttempt(); }
     record Config(String environment){}final Config config=new Config("production");
     Logger getLogger(){return Logger.getAnonymousLogger();}
+    // Production helper used by the extracted shoot handler. Throttling only
+    // decides whether a line prints; this probe pins arrow provenance, so the
+    // faithful stub always prints the built line.
+    void logThrottledInfo(String key,java.util.function.Supplier<String> line){getLogger().info(line.get());}
     boolean isLiveOwnedEntity(UUID id){Entity e=ownedEntities.get(id);return e!=null&&e.valid&&!e.dead;}
     boolean ownedBySession(Entity e,String id,long gen){return e!=null&&e.event.equals(id)&&e.generation==gen;}
     boolean isOfficialEntity(Entity e){return e.official;}

@@ -154,6 +154,11 @@ public class WaveFogLifecycleProbe {
  Player priorityCarrier; Player waveOneChargeHolderTarget(Entity e){return e.wave==1?priorityCarrier:null;}
  boolean hasProjectileBlockLineOfSight(Location from,Location to){return true;}
  void rememberWaveTarget(UUID a,UUID b){}Logger getLogger(){return Logger.getAnonymousLogger();}
+ // Production helpers used by the extracted bodies. The bounded key policy only
+ // decides *whether* to print; this lifecycle probe pins combat fencing, so the
+ // faithful stub keeps the historical behavior (print the built line) instead of
+ // silently dropping it.
+ void logThrottledInfo(String key,java.util.function.Supplier<String> line){getLogger().info(line.get());}
  void maintainSkeletonCombatPosture(Skeleton s,Player p,String k,long n){}void maintainWaveMobPath(Mob m,Player p,String k,long n){}
  void watchWaveMobProgress(Mob m,Player p,String k,long n){}int realitySplitChamberId(Entity e){return 0;}
  boolean isOfficialCurrentAttempt(){return officialAttempt;}boolean isCurrentRitualCaster(Entity e){return false;}boolean isCurrentCollapseGuard(Entity e){return false;}

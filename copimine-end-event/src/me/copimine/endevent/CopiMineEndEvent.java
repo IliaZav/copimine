@@ -6779,15 +6779,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
-    /** Warning counterpart of {@link #logThrottledInfo(String, Supplier)}. */
-    private void logThrottledWarning(String key, Supplier<String> line) {
-        BoundedDiagnosticCounterPolicy.Decision decision =
-                diagnosticLogThrottle.decide(key, System.currentTimeMillis());
-        if (decision.emit()) {
-            getLogger().warning(line.get() + decision.suffix());
-        }
-    }
-
     private int activeEventTaskCount() {
         if (taskRegistry == null) {
             return 0;
@@ -13093,10 +13084,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (arrow.isValid() && !arrow.isDead()) {
                 arrow.remove();
             }
-            getLogger().info("SKELETON_ARROW_COOLDOWN_BLOCKED entity=" + skeleton.getUniqueId()
-                    + " variant=" + (miniBoss ? "MINIBOSS" : "COMMON")
-                    + " retry_ms=" + (nextAllowed - now)
-                    + " cooldown_ticks=" + profile.cooldownTicks());
+            logThrottledInfo("SKELETON_ARROW_COOLDOWN_BLOCKED",
+                    () -> "SKELETON_ARROW_COOLDOWN_BLOCKED entity=" + skeleton.getUniqueId()
+                            + " variant=" + (miniBoss ? "MINIBOSS" : "COMMON")
+                            + " retry_ms=" + (nextAllowed - now)
+                            + " cooldown_ticks=" + profile.cooldownTicks());
             return;
         }
         int wave = readInt(skeleton, keyWave, activeWave);

@@ -270,10 +270,17 @@ Evidence tiers: `SOURCE` / `AUTO` / `NATIVE_BLOCKED`, as in section 1.
 
 - **Where**: new pure policy
   `copimine-end-event/src/me/copimine/endevent/domain/BoundedDiagnosticCounterPolicy.java`
-  plus the three hot per-event INFO sites in `CopiMineEndEvent`
+  plus four hot per-event INFO sites in `CopiMineEndEvent`
   (`WAVE_MOB_ENVIRONMENT_DAMAGE_BLOCKED`, `ELITE_DRAGON_BREATH_CLOUD_DAMAGE_REJECTED`,
-  `ELITE_DRAGON_BREATH_CLOUD_DAMAGE`) now routed through
+  `ELITE_DRAGON_BREATH_CLOUD_DAMAGE`, `SKELETON_ARROW_COOLDOWN_BLOCKED` — the
+  last one fires on every shot attempt a skeleton makes while its volley
+  cooldown runs, so it was the highest-volume line of all) now routed through
   `logThrottledInfo(...)`.
+- **Note on warnings**: the remaining `WARN` sites in this plugin are one-shot
+  lifecycle/exception reports (`*_REJECTED`, `*_REPAIRED`, rebuild deferred), not
+  per-tick repeats, so they are deliberately left unbatched — suppressing those
+  would hide exactly the evidence the spec asks to collect. Only demonstrably hot
+  repeats are bounded.
 - **Fix**: one line per key per 30 s window; the reopening line carries the exact
   suppressed total (`suppressed=N`). The key set is bounded (budget + one
   `DIAGNOSTIC_KEY_OVERFLOW` bucket), so an unknown/hostile key cannot grow the
@@ -283,6 +290,13 @@ Evidence tiers: `SOURCE` / `AUTO` / `NATIVE_BLOCKED`, as in section 1.
   batching, exact suppressed totals, per-key independence, key-budget bound,
   null/blank fail-closed, clock-rewind reopen), registered in
   `RunEndRiftEventChecks.ps1` `$pureTests`.
+- **Probe-harness parity**: `tests/test_wave_coordinator_fog_lifecycle.py` and
+  `tests/test_wave6_converted_arrow_runtime.py` compile *extracted production
+  method bodies* into stub classes, so each stub now declares a faithful
+  `logThrottledInfo` (always prints the built line). The first full gate run for
+  this change failed exactly there, which is what proved the probe coverage is
+  real; the fix keeps the probe's combat-fencing contract intact instead of
+  weakening the assertion.
 - **RCON async-dispatch warnings**: NOT reproduced and NOT attributable here.
   The only asynchronous scheduler task in `CopiMineEndEvent` is
   `checkMainThreadHeartbeat` (reads a heartbeat timestamp; no world access), and

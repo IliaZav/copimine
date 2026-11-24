@@ -488,6 +488,7 @@ $pureTests = @(
   'LastSealArenaRitualPolicyTest',
   'BossAnimationIdTest',
   'BossAnimationPosePolicyTest',
+  'BossPhaseTransitionCinematicPolicyTest',
   'CreativeTestAdmissionPolicyTest',
   'BossAiSimulationTest',
   'BossCastTimelineTest',

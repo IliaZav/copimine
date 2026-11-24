@@ -72,6 +72,57 @@ final class BossPresentationEffects {
         register.accept(task);
     }
 
+    /**
+     * N23-P1-11: one authored transition rig per Guardian phase.
+     *
+     * <p>Unlike {@link #play}, which draws one shared geometry for every caller,
+     * this reads the per-phase shape named by
+     * {@code BossPhaseTransitionCinematicPolicy} and frames it over the phase's
+     * own presentation window in the phase's own accent colour. The hitbox,
+     * damage and timing authorities are untouched; this only draws.</p>
+     */
+    static void playPhaseTransition(JavaPlugin plugin, LivingEntity boss, String signature,
+            Location origin, double radius, int rgb, long durationMillis,
+            BooleanSupplier stillOwned, Supplier<List<Player>> audience,
+            BiPredicate<Player, Location> viewerAllowed, Consumer<BukkitTask> register) {
+        if (boss == null || signature == null || signature.isBlank()
+                || origin == null || origin.getWorld() == null) return;
+        Location anchor = origin.clone();
+        int frames = (int) Math.max(4L, Math.min(8L, Math.round(durationMillis / 400.0)));
+        Particle.DustOptions primary = new Particle.DustOptions(Color.fromRGB(rgb), 1.2F);
+        Color color = Color.fromRGB(rgb);
+        Particle.DustOptions accent = new Particle.DustOptions(Color.fromRGB(
+                (color.getRed() + 240) / 2, (color.getGreen() + 224) / 2,
+                (color.getBlue() + 255) / 2), 0.9F);
+        BukkitTask task = new BukkitRunnable() {
+            int frame;
+            @Override public void run() {
+                if (!plugin.isEnabled() || !stillOwned.getAsBoolean() || !boss.isValid() || boss.isDead()
+                        || !boss.getWorld().equals(anchor.getWorld()) || frame >= frames) { cancel(); return; }
+                var points = BossImpactGeometryPolicy.phaseTransition(signature, radius,
+                        frame / (double) Math.max(1, frames - 1));
+                int roarFrame = Math.max(1, frames / 2);
+                for (Player viewer : audience.get().stream().limit(32).toList()) {
+                    if (viewer == null || !viewer.isOnline() || !viewer.getWorld().equals(anchor.getWorld())
+                            || viewer.getLocation().distanceSquared(anchor) > 48 * 48
+                            || !viewerAllowed.test(viewer, anchor)) continue;
+                    if (frame == 0) viewer.playSound(anchor, Sound.BLOCK_END_PORTAL_SPAWN,
+                            SoundCategory.HOSTILE, 0.7F, 0.55F);
+                    if (frame == roarFrame) viewer.playSound(anchor, Sound.ENTITY_WARDEN_ROAR,
+                            SoundCategory.HOSTILE, 0.5F, 0.7F);
+                    for (var point : points) {
+                        Location at = anchor.clone().add(point.x(), point.y(), point.z());
+                        if (point.layer() == 2) viewer.spawnParticle(Particle.END_ROD, at, 1, 0.025, 0.025, 0.025, 0);
+                        else viewer.spawnParticle(Particle.DUST, at, 1, 0.045, 0.03, 0.045, 0,
+                                point.layer() == 0 ? primary : accent);
+                    }
+                }
+                if (++frame >= frames) cancel();
+            }
+        }.runTaskTimer(plugin, 0, 8L);
+        register.accept(task);
+    }
+
     private static Sound soundFor(Kind kind) {
         return switch (kind) {
             case SWIPE -> Sound.ENTITY_PLAYER_ATTACK_SWEEP;

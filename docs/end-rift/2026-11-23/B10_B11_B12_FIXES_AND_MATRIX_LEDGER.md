@@ -305,3 +305,49 @@ Evidence tiers: `SOURCE` / `AUTO` / `NATIVE_BLOCKED`, as in section 1.
   capture and safe reproduction stay `NATIVE_BLOCKED`.
 - **Status**: `SOURCE` + `AUTO`; the RCON investigation is `NATIVE_BLOCKED`.
 
+### N23-P1-11 — six authored phase-transition cinematics
+
+- **Where**: new pure policy
+  `copimine-end-event/src/me/copimine/endevent/domain/BossPhaseTransitionCinematicPolicy.java`,
+  new authored geometry
+  `BossImpactGeometryPolicy.phaseTransition(signature, radius, progress)`, new
+  finite rig `BossPresentationEffects.playPhaseTransition(...)`, and the
+  `synchronizeBossPhase` opener in `CopiMineEndEvent` (plus the two helpers
+  `playBossPhaseTransitionPresentation` / `playBossPhaseTransitionCue`).
+- **Defect**: every Guardian health phase opened the same way — a fixed 2.2 s
+  hold, the banner `«СТРАЖ РАЗЛОМА / Разлом меняет правила боя»`, the
+  `PHASE_SHIFT` pose (which the client has **no clip** for, so it rendered as
+  `identity()`), the same `phase_shift:impact` cue and the same shared
+  `Kind.PHASE` impact ring. Only `LAST_SEAL` had a dedicated intro. Six distinct
+  rules of the fight therefore read as one repeated event.
+- **Fix**: each phase now names its own authored cinematic — distinct wire id,
+  Russian title/subtitle, duration (1600–2600 ms, all distinct), pose clip (all
+  resolvable through `BossAnimationId` and all shipped by the client:
+  `CAST_CHARGE`, `CAST_RELEASE`, `GROUND_SLAM`, `CHEST_STRIKE`, `MELEE_SWIPE`,
+  `LAST_STAND_INTRO`), authored cue (`phase_shift`, `rift_projectile`,
+  `rift_obelisks`, `arena_inferno`, `void_blast`, `final_strike` at RELEASE), a
+  distinct world-space geometry signature (`ascension`, `stalker`, `fracture`,
+  `ember`, `roar`, `last-stand`) and a distinct accent colour. The body is held
+  for the cinematic's own bounded window instead of a hard-coded 2.2 s.
+- **Fail-closed by construction**: `build()` throws if any axis (id, title,
+  subtitle, pose, cue, signature, colour, duration) is duplicated, so a future
+  phase cannot silently reuse another phase's moment; an unknown signature draws
+  nothing rather than reusing a generic ring; `grantsInvulnerability(...)` is
+  `false` for every phase and an unknown phase reuses the authored `AWAKENING`
+  cinematic instead of inventing one.
+- **Preserved contracts**: the `BOSS_STAGE_TRANSITION` line three live scripts
+  wait on (`RunEndRiftAiPhasesLive.ps1`, `RunEndRiftOfficialTwoPlayerLive.ps1`,
+  `RunEndRiftSpellMatrixLive.ps1`) is unchanged; a new additive
+  `BOSS_PHASE_CINEMATIC` line records id/pose/signature/duration. The `LAST_SEAL`
+  block keeps its ascension burst and its 5.2 s last-stand window, and the
+  duplicate pose send there was removed because the generic opener now already
+  sends `LAST_STAND_INTRO`. `playBossImpactPresentation` is untouched, so the
+  existing impact-ownership probes keep their exact contract.
+- **Regression test**: `tests/BossPhaseTransitionCinematicPolicyTest.java`
+  (one cinematic per phase; distinct durations/ids/titles/subtitles/poses/cues/
+  signatures/colours; pose+cue resolvability; six distinct non-empty bounded
+  geometries with unknown/null/NaN fail-closed; never-shields; unknown-phase
+  fallback), registered in `RunEndRiftEventChecks.ps1` `$pureTests`.
+- **Status**: `SOURCE` + `AUTO`. The rendered look of the six rigs and their
+  audio is `NATIVE_BLOCKED` (no GUI client, no signed V4 client, no running
+  server in this environment).

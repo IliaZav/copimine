@@ -98,6 +98,7 @@ import me.copimine.endevent.domain.BossIntent;
 import me.copimine.endevent.domain.BossMovementPolicy;
 import me.copimine.endevent.domain.BossPhase;
 import me.copimine.endevent.domain.BossPhasePolicy;
+import me.copimine.endevent.domain.BossPhaseTransitionCinematicPolicy;
 import me.copimine.endevent.domain.BossPerceptionSnapshot;
 import me.copimine.endevent.domain.BossRepelPolicy;
 import me.copimine.endevent.domain.BossStatsPolicy;
@@ -21822,6 +21823,68 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         && (kind != BossImpactGeometryPolicy.Kind.PHASE || bossPhase == ownerPhase)
                         && (!actionScoped || bossCastSequence == ownerCast),
                 this::eventAudience, this::isEventParticleViewer, this::registerEncounterTask);
+    }
+
+    /**
+     * N23-P1-11: draws the phase's own authored transition rig.
+     *
+     * <p>Kept separate from {@link #playBossImpactPresentation} so the existing
+     * impact-ownership probes keep their exact contract; the guards are the
+     * same generation/session/phase checks. This only draws; it never decides
+     * damage or collision.</p>
+     */
+    private void playBossPhaseTransitionPresentation(LivingEntity boss,
+            BossPhaseTransitionCinematicPolicy.Cinematic cinematic, Location origin) {
+        if (boss == null || origin == null || cinematic == null) return;
+        String ownerEvent = eventId;
+        long ownerGeneration = generation;
+        BossPhase ownerPhase = bossPhase;
+        UUID owner = boss.getUniqueId();
+        BossPresentationEffects.playPhaseTransition(this, boss, cinematic.signature(), origin, 3.8D,
+                cinematic.rgb(), cinematic.durationMillis(),
+                () -> taskRegistry != null && taskRegistry.owns(ownerGeneration)
+                        && generation == ownerGeneration && Objects.equals(eventId, ownerEvent)
+                        && Objects.equals(bossUuid, owner) && ownedBySession(boss, ownerEvent, ownerGeneration)
+                        && bossPhase == ownerPhase,
+                this::eventAudience, this::isEventParticleViewer, this::registerEncounterTask);
+    }
+
+    /**
+     * N23-P1-11: plays the phase's authored transition cue audio.
+     *
+     * <p>The cue authority stays {@link BossVisualCuePolicy}; this only voices
+     * the cue the cinematic names, so a phase can no longer sound like every
+     * other phase. Pose is owned by the caller, which sends it last; this method
+     * deliberately never sends an animation.</p>
+     */
+    private void playBossPhaseTransitionCue(LivingEntity boss,
+            BossPhaseTransitionCinematicPolicy.Cinematic cinematic) {
+        if (boss == null || cinematic == null) return;
+        BossVisualCuePolicy.Cue cue = BossVisualCuePolicy.cue(cinematic.cueBase(), cinematic.cueStage());
+        if (cue == null) return;
+        Location origin = boss.getLocation();
+        if (origin == null || origin.getWorld() == null) return;
+        Sound sound = bossCueSound(cue.soundId());
+        if (sound != null) {
+            for (Player viewer : eventAudience()) {
+                if (viewer == null || !viewer.isOnline()
+                        || !viewer.getWorld().equals(origin.getWorld())
+                        || !isEventParticleViewer(viewer, origin)) {
+                    continue;
+                }
+                viewer.playSound(origin, sound, SoundCategory.HOSTILE, 0.85F, 1.0F);
+            }
+        }
+        String audio = switch (cinematic.cueBase()) {
+            case "void_blast" -> "guardian_void";
+            case "rift_projectile", "chest_strike" -> "guardian_lance";
+            case "rift_arrows" -> "guardian_arrows";
+            case "void_mark" -> "guardian_mark";
+            case "summon_servants" -> "guardian_summon";
+            case "arena_inferno" -> "guardian_inferno";
+            default -> null;
+        };
+        if (audio != null) playEncounterAbilityAudio(boss, audio);
     }
 
     /** One finite cosmetic rig per cast. The real spell/projectile alone owns damage. */
@@ -49219,7 +49282,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         BossPhase previous = bossPhase;
         bossPhase = transition.current();
         cancelBossCastForPhaseChange(boss);
-        bossPhasePresentationUntilMillis = System.currentTimeMillis() + 2_200L;
+        // N23-P1-11: each phase opens with its own authored cinematic instead
+        // of one repeated interruption. The policy is pure and never shields the
+        // boss; it only names the clip, the banner, the cue, the accent colour
+        // and the bounded window the body is held for.
+        BossPhaseTransitionCinematicPolicy.Cinematic cinematic =
+                BossPhaseTransitionCinematicPolicy.forPhase(bossPhase);
+        bossPhasePresentationUntilMillis = System.currentTimeMillis() + cinematic.durationMillis();
         bossCastLockedYaw = boss.getLocation().getYaw();
         boss.getPersistentDataContainer().set(keyBossPhase,
                 PersistentDataType.STRING, bossPhase.name());
@@ -49234,15 +49303,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " boss=" + boss.getUniqueId() + " from=" + previous
                 + " to=" + bossPhase + " crossed=" + transition.entered()
                 + " health=" + health + " max=" + maxHealth);
-        announceEventTitle("§5СТРАЖ РАЗЛОМА",
-                "§fРазлом меняет правила боя", true);
-        sendCurrentBossPhaseVisualUpdate(boss, bossPhase, "PHASE_SHIFT");
-        playBossVisualCue(boss,
-                bossCueId("phase_shift", BossVisualCuePolicy.CueStage.IMPACT),
-                boss.getLocation(), true);
+        getLogger().info("BOSS_PHASE_CINEMATIC event=" + eventId
+                + " boss=" + boss.getUniqueId() + " phase=" + bossPhase
+                + " cinematic=" + cinematic.id() + " pose=" + cinematic.poseAnimation()
+                + " signature=" + cinematic.signature()
+                + " durationMs=" + cinematic.durationMillis());
+        announceEventTitle("§5" + cinematic.title(), "§f" + cinematic.subtitle(), true);
+        playBossPhaseTransitionCue(boss, cinematic);
+        sendCurrentBossPhaseVisualUpdate(boss, bossPhase, cinematic.poseAnimation());
         playEventMusic(musicForPhase());
-        playBossImpactPresentation(boss, BossImpactGeometryPolicy.Kind.PHASE,
-                boss.getLocation(), contactFacing(boss.getLocation()), 3.8D, false, false);
+        playBossPhaseTransitionPresentation(boss, cinematic, boss.getLocation());
         if (bossPhase != BossPhase.RIFT) {
             if (!activeCurrentRiftFractures.isEmpty()) {
                 clearCurrentRiftFractures("Current stage exit from RIFT");
@@ -49277,8 +49347,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             bossPhasePresentationUntilMillis = System.currentTimeMillis()
                     + LAST_STAND_INTRO_MILLIS;
             bossLastStandIntroUntilMillis = bossPhasePresentationUntilMillis;
-            sendCurrentBossPhaseVisualUpdate(boss, bossPhase,
-                    BossAnimationId.LAST_STAND_INTRO.wireId());
         }
     }
 

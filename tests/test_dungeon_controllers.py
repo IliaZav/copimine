@@ -260,3 +260,338 @@ def test_mob_registry_keeps_three_species_with_bounded_abilities(core, tmp_path)
     classes = compile_fixture(tmp_path, core, MOB_SOURCE, "DungeonMobProbe")
     output = run_fixture(classes, "DungeonMobProbe")
     assert "PASS dungeon mobs" in output
+
+
+GATE_TRANSACTION_SOURCE = r'''
+import java.util.*;
+import me.copimine.dungeon.domain.*;
+
+public class DungeonGateTransactionProbe {
+    static void check(boolean ok, String message) {
+        if (!ok) throw new AssertionError(message);
+    }
+
+    static final class FakeWorld implements PhysicalGateTransaction.GateWorld {
+        final Map<String, String> blocks = new HashMap<>();
+        boolean loaded = true;
+        public boolean chunkLoaded(int x, int y, int z) { return loaded; }
+        public String blockKey(int x, int y, int z) {
+            return blocks.getOrDefault(x + "," + y + "," + z, "minecraft:stone");
+        }
+        public void setBlock(int x, int y, int z, String key) {
+            blocks.put(x + "," + y + "," + z, key);
+        }
+        boolean allAir(Cuboid bounds) {
+            for (int x = bounds.minX(); x <= bounds.maxX(); x++)
+                for (int y = bounds.minY(); y <= bounds.maxY(); y++)
+                    for (int z = bounds.minZ(); z <= bounds.maxZ(); z++)
+                        if (!PhysicalGateTransaction.AIR.equals(blocks.get(x + "," + y + "," + z)))
+                            return false;
+            return true;
+        }
+        boolean allStone(Cuboid bounds) {
+            for (int x = bounds.minX(); x <= bounds.maxX(); x++)
+                for (int y = bounds.minY(); y <= bounds.maxY(); y++)
+                    for (int z = bounds.minZ(); z <= bounds.maxZ(); z++)
+                        if (!"minecraft:stone".equals(blocks.get(x + "," + y + "," + z)))
+                            return false;
+            return true;
+        }
+    }
+
+    public static void main(String[] args) {
+        Cuboid bounds = Cuboid.of(10, 64, 10, 10, 66, 11);
+        GateDefinition door = GateDefinition.of("g-main", "room-a", GateStyle.RISING_PORTCULLIS,
+                UnlockMode.ON_ROOM_CLEAR, "world", bounds, "north", false);
+        FakeWorld world = new FakeWorld();
+        PhysicalGateTransaction tx = new PhysicalGateTransaction(door, world);
+        check(tx.state() == GateState.CLOSED, "a gate starts with its declared state");
+        check(tx.blockCount() == 6, "the transaction owns the exact door mask");
+        check(tx.animationId().equals("gate.grille"), "the gate keeps its style animation id");
+
+        // ---- open snapshots every original block, then replaces with air ----
+        check(tx.open() == PhysicalGateTransaction.Result.APPLIED, "open must apply");
+        check(tx.journaled(), "opening keeps a durable journal");
+        check(tx.journalKeys().size() == 6, "journal covers every doorway cell");
+        check(world.allAir(bounds), "the whole doorway becomes air when open");
+        check(tx.state() == GateState.OPEN, "state is OPEN");
+        check(tx.open() == PhysicalGateTransaction.Result.ALREADY_OPEN, "double open is idempotent");
+
+        // ---- a blocked doorway defers closure, never entombs ----
+        List<int[]> occupied = List.of(new int[]{10, 65, 10});
+        check(tx.close(occupied) == PhysicalGateTransaction.Result.BLOCKED_BY_ENTITY,
+                "an occupied doorway defers closure");
+        check(tx.state() == GateState.BLOCKED_BY_ENTITY, "state records the deferral");
+        check(world.allAir(bounds), "a deferred close leaves the doorway open");
+
+        // ---- a clear doorway restores the original builder blocks ----
+        check(tx.close(List.of()) == PhysicalGateTransaction.Result.APPLIED, "an empty doorway closes");
+        check(world.allStone(bounds), "close restores the exact snapshot");
+        check(!tx.journaled(), "a clean close consumes the journal");
+        check(tx.state() == GateState.CLOSED, "state is CLOSED");
+        check(tx.close(List.of()) == PhysicalGateTransaction.Result.ALREADY_CLOSED,
+                "double close is idempotent");
+
+        // ---- restart recovery is journal driven ----
+        check(tx.open() == PhysicalGateTransaction.Result.APPLIED, "reopen applies");
+        check(tx.recover() == PhysicalGateTransaction.Result.APPLIED, "recover restores the journal");
+        check(world.allStone(bounds), "recover restores every original block");
+        check(tx.recover() == PhysicalGateTransaction.Result.ALREADY_CLOSED,
+                "recover without a journal on a closed gate is safe");
+
+        // ---- an unloaded chunk is refused, not written blind ----
+        FakeWorld unloaded = new FakeWorld();
+        unloaded.loaded = false;
+        PhysicalGateTransaction blocked = new PhysicalGateTransaction(door, unloaded);
+        check(blocked.open() == PhysicalGateTransaction.Result.CHUNK_UNLOADED,
+                "an unloaded chunk must not be mutated");
+        check(blocked.state() == GateState.RECOVERY_REQUIRED, "the refusal is explicit");
+
+        // ---- an initially-open gate captured a snapshot at construction ----
+        GateDefinition openGate = GateDefinition.of("g-open", "room-a",
+                GateStyle.ASSEMBLING_SEAL, UnlockMode.ON_ROOM_CLEAR, "world", bounds, "auto", true);
+        FakeWorld openWorld = new FakeWorld();
+        PhysicalGateTransaction alwaysOpen = new PhysicalGateTransaction(openGate, openWorld);
+        check(alwaysOpen.journaled(), "an initially-open gate snapshots immediately");
+        check(alwaysOpen.close(List.of()) == PhysicalGateTransaction.Result.APPLIED,
+                "an initially-open gate can be closed");
+        check(openWorld.allStone(bounds), "closing it restores the captured blocks");
+
+        System.out.println("PASS dungeon gate transaction");
+    }
+}
+'''
+
+
+def test_gate_transaction_snapshots_defers_and_restores(core, tmp_path):
+    classes = compile_fixture(tmp_path, core, GATE_TRANSACTION_SOURCE, "DungeonGateTransactionProbe")
+    output = run_fixture(classes, "DungeonGateTransactionProbe")
+    assert "PASS dungeon gate transaction" in output
+
+
+ENCOUNTER_PLAN_SOURCE = r'''
+import java.util.*;
+import me.copimine.dungeon.domain.*;
+
+public class DungeonEncounterPlanProbe {
+    static void check(boolean ok, String message) {
+        if (!ok) throw new AssertionError(message);
+    }
+
+    static SpawnAnchor anchor(String id, String room, int x, int y, int z) {
+        return SpawnAnchor.of(id, room, "world", x, y, z, 1.0D);
+    }
+
+    public static void main(String[] args) {
+        DungeonRoomDefinition room = DungeonRoomDefinition.builder("room-a")
+                .world("world")
+                .scalingMode(ScalingMode.PER_PLAYER)
+                .maxConcurrentEnemies(6)
+                .addWave(WaveSpec.of(0,
+                        EnemyGroup.of("rift_silverfish", 2),
+                        EnemyGroup.of("rift_breeze", 1)))
+                .addWave(WaveSpec.of(20, EnemyGroup.of("rift_bogged", 2)))
+                .build();
+        List<SpawnAnchor> anchors = List.of(
+                anchor("s-b", "room-a", 3, 64, 3),
+                anchor("s-a", "room-a", 1, 64, 1),
+                anchor("s-foreign", "room-b", 9, 64, 9));
+
+        DungeonEncounterPlanPolicy.Plan plan =
+                DungeonEncounterPlanPolicy.plan(room, anchors, 3);
+        check(plan.viable(), "a fully configured room is viable: " + plan.reason());
+        check(plan.waveCount() == 2, "both waves are planned");
+        check(plan.liveCap() == 6, "the live cap is honoured");
+        check(plan.eligibleParticipants() == 3, "the roster is recorded");
+        check(plan.truncated(), "a capped wave reports truncation");
+        check(plan.totalAssignments() == 12,
+                "assignments match the bounded schedule: " + plan.totalAssignments());
+
+        // The clamped wave keeps the configured 2:1 proportion (4 + 2), and the
+        // foreign-room anchor is never used.
+        List<DungeonEncounterPlanPolicy.Assignment> first = plan.wave(0);
+        check(first.size() == 6, "wave 0 holds six bounded enemies");
+        int silver = 0;
+        int breeze = 0;
+        for (DungeonEncounterPlanPolicy.Assignment a : first) {
+            if (a.template() == MobTemplate.RIFT_SILVERFISH) silver++;
+            if (a.template() == MobTemplate.RIFT_BREEZE) breeze++;
+            check(!a.anchorId().equals("s-foreign"), "a foreign-room anchor is ignored");
+        }
+        check(silver == 4 && breeze == 2, "the clamped wave preserves 2:1 proportion");
+        check(first.get(0).ordinalInWave() == 0, "ordinals start at zero");
+        check(first.get(0).anchorId().equals("s-a"), "anchors are used in stable id order");
+
+        // Determinism: same inputs, same plan.
+        check(plan.equals(DungeonEncounterPlanPolicy.plan(room, anchors, 3)),
+                "a replayed activation computes exactly the same plan");
+
+        // Fail closed without anchors or waves.
+        DungeonEncounterPlanPolicy.Plan noAnchors =
+                DungeonEncounterPlanPolicy.plan(room, List.of(), 3);
+        check(!noAnchors.viable(), "a room without anchors is not viable");
+        check(noAnchors.totalAssignments() == 0, "an unviable plan assigns nothing");
+
+        DungeonRoomDefinition empty = DungeonRoomDefinition.builder("room-empty")
+                .world("world").build();
+        check(!DungeonEncounterPlanPolicy.plan(empty, anchors, 3).viable(),
+                "a room without waves is not viable");
+
+        // FIXED scaling ignores the roster.
+        DungeonRoomDefinition fixed = DungeonRoomDefinition.builder("room-a")
+                .world("world").scalingMode(ScalingMode.FIXED)
+                .addWave(WaveSpec.of(0, EnemyGroup.of("rift_silverfish", 2)))
+                .build();
+        DungeonEncounterPlanPolicy.Plan fixedPlan =
+                DungeonEncounterPlanPolicy.plan(fixed, anchors, 20);
+        check(fixedPlan.totalAssignments() == 2, "fixed scaling ignores the roster");
+
+        System.out.println("PASS dungeon encounter plan");
+    }
+}
+'''
+
+
+def test_encounter_plan_is_deterministic_bounded_and_fails_closed(core, tmp_path):
+    classes = compile_fixture(tmp_path, core, ENCOUNTER_PLAN_SOURCE, "DungeonEncounterPlanProbe")
+    output = run_fixture(classes, "DungeonEncounterPlanProbe")
+    assert "PASS dungeon encounter plan" in output
+
+
+LIFECYCLE_SOURCE = r'''
+import java.util.*;
+import me.copimine.dungeon.domain.*;
+
+public class DungeonLifecycleProbe {
+    static void check(boolean ok, String message) {
+        if (!ok) throw new AssertionError(message);
+    }
+
+    static final class FakePorts implements DungeonRoomLifecycle.Ports {
+        int live;
+        boolean sealOk = true;
+        boolean openOk = true;
+        boolean rewardOk = true;
+        boolean sealed;
+        boolean opened;
+        int spawnCalls;
+        int rewardCalls;
+        final List<Integer> spawnedWaves = new ArrayList<>();
+
+        public boolean sealEntrance() { sealed = true; return sealOk; }
+        public boolean openExit() { opened = true; return openOk; }
+        public int spawnWave(int index, List<DungeonEncounterPlanPolicy.Assignment> assignments) {
+            spawnCalls++;
+            spawnedWaves.add(index);
+            live += assignments.size();
+            return assignments.size();
+        }
+        public int liveEnemies() { return live; }
+        public boolean grantReward() { rewardCalls++; return rewardOk; }
+        public void report(String message) { }
+    }
+
+    static DungeonRoomDefinition room() {
+        return DungeonRoomDefinition.builder("room-a").world("world")
+                .addWave(WaveSpec.of(20, EnemyGroup.of("rift_silverfish", 1)))
+                .addWave(WaveSpec.of(0, EnemyGroup.of("rift_breeze", 1)))
+                .build();
+    }
+
+    static DungeonRoomLifecycle lifecycle(FakePorts ports) {
+        DungeonRoomDefinition room = room();
+        List<SpawnAnchor> anchors =
+                List.of(SpawnAnchor.of("s-a", "room-a", "world", 1, 64, 1, 1.0D));
+        DungeonEncounterPlanPolicy.Plan plan =
+                DungeonEncounterPlanPolicy.plan(room, anchors, 1);
+        check(plan.viable(), "test room must be viable");
+        return new DungeonRoomLifecycle(room, plan, ports);
+    }
+
+    public static void main(String[] args) {
+        FakePorts ports = new FakePorts();
+        DungeonRoomLifecycle life = lifecycle(ports);
+        check(life.state() == RoomState.PUBLISHED_IDLE, "a room starts idle");
+
+        // ---- activation seals, bumps generation and spawns the first wave ----
+        check(life.tryActivate(1, 0) == DungeonRoomLifecycle.Signal.FIGHTING,
+                "a valid activation fights");
+        check(life.state() == RoomState.FIGHTING, "state is FIGHTING");
+        check(ports.sealed, "activation seals the entrance");
+        check(life.generation() == 1, "a fresh generation starts");
+        check(ports.spawnCalls == 1, "wave 0 spawns immediately");
+        check(ports.live == 1, "one live enemy");
+
+        // ---- a simultaneous second trigger is rejected ----
+        check(life.tryActivate(5, 1) == DungeonRoomLifecycle.Signal.REJECTED,
+                "a duplicate trigger cannot stand up a second controller");
+        check(life.generation() == 1, "the rejected trigger does not bump generation");
+
+        // ---- do not clear while a later wave is still pending ----
+        ports.live = 0;
+        check(life.advance(5) == DungeonRoomLifecycle.Signal.FIGHTING,
+                "no clear while wave 1 is pending");
+        check(life.state() == RoomState.FIGHTING, "still fighting");
+
+        // ---- the delayed wave spawns on schedule ----
+        check(life.advance(20) == DungeonRoomLifecycle.Signal.FIGHTING, "wave 1 spawns at tick 20");
+        check(ports.spawnCalls == 2, "exactly two waves spawned");
+        check(ports.spawnedWaves.equals(List.of(0, 1)), "waves spawn in order");
+        check(ports.live == 1, "wave 1 is live");
+
+        // ---- a real clear commits, opens the exit and requests reward ----
+        ports.live = 0;
+        check(life.advance(21) == DungeonRoomLifecycle.Signal.OPENED, "a real clear opens the exit");
+        check(life.state() == RoomState.REWARD_READY, "state is REWARD_READY");
+        check(ports.opened, "the exit gate really opened");
+        check(ports.rewardCalls == 0, "the reward is not requested before REWARD_READY advance");
+
+        // ---- reward once, then reset to idle ----
+        check(life.advance(22) == DungeonRoomLifecycle.Signal.REWARDED, "reward then reset");
+        check(ports.rewardCalls == 1, "reward requested exactly once");
+        check(life.state() == RoomState.PUBLISHED_IDLE, "room is idle again");
+        check(life.advance(23) == DungeonRoomLifecycle.Signal.IDLE, "idle advance does nothing");
+        check(ports.rewardCalls == 1, "idle advance never re-requests the reward");
+
+        // ---- re-arm with a new generation ----
+        check(life.tryActivate(1, 30) == DungeonRoomLifecycle.Signal.FIGHTING, "re-arm works");
+        check(life.generation() == 2, "re-arm uses a new generation");
+
+        // ---- a failed seal aborts safely and never fights ----
+        FakePorts failed = new FakePorts();
+        failed.sealOk = false;
+        DungeonRoomLifecycle aborted = lifecycle(failed);
+        check(aborted.tryActivate(1, 0) == DungeonRoomLifecycle.Signal.ABORTED,
+                "a failed seal aborts");
+        check(aborted.state() == RoomState.PUBLISHED_IDLE, "an aborted room returns to idle");
+
+        // ---- aborting an in-flight room opens the exit and cleans up ----
+        FakePorts midRun = new FakePorts();
+        DungeonRoomLifecycle running = lifecycle(midRun);
+        running.tryActivate(1, 0);
+        check(running.abort() == DungeonRoomLifecycle.Signal.ABORTED, "abort works");
+        check(midRun.opened, "aborting opens the exit so nobody is trapped");
+        check(running.state() == RoomState.PUBLISHED_IDLE, "aborted room is idle");
+        check(running.abort() == DungeonRoomLifecycle.Signal.REJECTED,
+                "aborting an idle room is a safe rejection");
+
+        // ---- an unviable room never starts ----
+        FakePorts noSpawn = new FakePorts();
+        DungeonRoomDefinition bare = DungeonRoomDefinition.builder("room-a").world("world")
+                .addWave(WaveSpec.of(0, EnemyGroup.of("rift_silverfish", 1))).build();
+        DungeonEncounterPlanPolicy.Plan unviable =
+                DungeonEncounterPlanPolicy.plan(bare, List.of(), 1);
+        DungeonRoomLifecycle never = new DungeonRoomLifecycle(bare, unviable, noSpawn);
+        check(never.tryActivate(1, 0) == DungeonRoomLifecycle.Signal.REJECTED,
+                "a room without anchors must not start");
+
+        System.out.println("PASS dungeon room lifecycle");
+    }
+}
+'''
+
+
+def test_room_lifecycle_is_generation_fenced_and_reward_once(core, tmp_path):
+    classes = compile_fixture(tmp_path, core, LIFECYCLE_SOURCE, "DungeonLifecycleProbe")
+    output = run_fixture(classes, "DungeonLifecycleProbe")
+    assert "PASS dungeon room lifecycle" in output

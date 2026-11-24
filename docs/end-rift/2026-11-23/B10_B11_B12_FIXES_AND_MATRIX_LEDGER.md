@@ -766,7 +766,10 @@ capabilities.
   `33858dfa1a8dfeec699cfc7d3d8517f8cf4c7d0318a1bd32179644145dfeb5a2`, built
   twice with the CI toolchain and byte-identical both times; `2c1a65ec…` and
   `998f3c2e…` now head `replaceSha256`. `--stage-only` re-verifies all 31
-  candidates and the local 26.3 runtime was reinstalled from the new lock.
+  candidates and the local 26.3 runtime was reinstalled from the new lock. (This
+  pin was later superseded by the room/gate runtime increment at the end of this
+  ledger: 176 452 B, sha256
+  `416e40917e08e956230e2e602dbb51233986174f7988ac4d62bf857185d73e61`.)
 - **Status**: `SOURCE` + `AUTO`. Whether the six doors look distinct in-game
   (G01-G09), the six templates' real open/close timing, the live wave population,
   real reward delivery and the real Paper mob behaviour (R05) are
@@ -898,3 +901,68 @@ was no way to tell a genuine repeat victory from a replayed write.
   restart on the production host, and whether the memorial reads correctly in the real
   `TextDisplay` from the Core, are `NATIVE_BLOCKED` here: no GUI client, no running
   Paper, no signed V4 client. No HP, reward or roster-membership semantics changed.
+
+### V6 OV4.10 - the dungeon room/gate runtime (Bukkit-free controllers + opt-in adapter)
+
+The dungeon shipped only as pure, Bukkit-free domain cores plus the editor,
+command and store layers; the actual room/gate runtime named by V6 OV4.10
+(`DungeonRoomController`, `PhysicalGateController`) did not exist anywhere, so
+nothing actually sealed a doorway, spawned a bounded wave, committed a clear or
+paid a reward. This increment lands that runtime, split so every rule stays
+testable off a live server.
+
+- **`DungeonEncounterPlanPolicy`** (`copimine-dungeon/.../domain`) turns the
+  bounded `RoomWaveSchedulePolicy` schedule into concrete, deterministic spawn
+  assignments against the room's validated anchors: only anchors of the same room
+  and world are eligible (stable id order, foreign rooms ignored), the same room,
+  anchors and roster always produce the same plan, and a room with no waves or no
+  usable anchor is `viable == false` and must not start (fail closed, no invented
+  spawn position).
+- **`PhysicalGateTransaction`** (`domain`) is the real block-mask transaction the
+  gate controller needs: `open` snapshots every doorway cell and writes air,
+  `close` restores the exact snapshot and refuses to entomb an occupant
+  (`BLOCKED_BY_ENTITY`), a missing journal is `RECOVERY_REQUIRED` instead of a
+  guess, and an unloaded chunk is `CHUNK_UNLOADED` instead of a blind write. The
+  block storage is an injected `GateWorld`, so the whole transaction is unit
+  tested without a running server.
+- **`DungeonRoomLifecycle`** (`domain`) is the authorised room state machine
+  (`PUBLISHED_IDLE -> ARMING -> SEALING -> FIGHTING -> CLEAR_COMMITTED -> OPENING
+  -> REWARD_READY -> RESETTING -> PUBLISHED_IDLE`): activation is only possible
+  from idle and bumps a generation, so a simultaneous or duplicated trigger
+  cannot stand up a second controller; waves spawn on the plan's cumulative
+  schedule; the exit opens only after a genuine clear (all waves spawned and zero
+  live enemies); the reward is requested exactly once per generation; and an
+  abort or failed seal opens the exit so nobody is trapped. Every side effect is
+  an injected `Ports`.
+- **`DungeonRuntime`** (`copimine-dungeon/.../runtime`) is the only dungeon class
+  that touches the live world; `BukkitGateWorld` is the only one that reads/writes
+  blocks. It registers a `PlayerMoveEvent` activation trigger, drives
+  `DungeonRoomLifecycle.advance` from a one-second tick task, materialises spawns
+  from the plan and reuses the pure `DungeonRewardLedger` for once-only reward
+  receipts. It is disabled by default via a new `dungeons.runtime.enabled: false`
+  config key, starts only enabled rooms in loaded worlds with anchors, and logs a
+  diagnostic snapshot; item delivery stays a configured follow-up and is never
+  fabricated.
+- **Tests**: `tests/test_dungeon_controllers.py` now also compiles and runs
+  `DungeonEncounterPlanProbe` (deterministic, proportional, anchor-bounded,
+  fail-closed plan), `DungeonGateTransactionProbe` (snapshot/open, occupied-door
+  deferral, exact restore, restart recovery, unloaded-chunk refusal) and
+  `DungeonLifecycleProbe` (generation fence, scheduled waves, real clear, exit
+  open, once-only reward, safe abort/failed-seal).
+- **Re-pin**: the new sources change the Gradle `migrationPlugins` candidate
+  `CopiMineDungeon-26.3.jar`. It is now sha256
+  `416e40917e08e956230e2e602dbb51233986174f7988ac4d62bf857185d73e61`
+  (176 452 B, sha512 `a2d0916a...`), built twice from the same source with the CI
+  toolchain (Temurin 25.0.4.1) and byte-identical both times
+  (`DUNGEON_DETERMINISM=True`). The displaced `33858dfa...` is prepended to
+  `candidate.replaceSha256` (newest first). The EndEvent candidate stayed
+  byte-for-byte at `b577d1f6...`, so its pin is untouched. The lock,
+  `OWN_PLUGIN_INVENTORY.json/.md` and the local 26.3 runtime receipt move
+  together; `install_migration_server_plugins.py --stage-only` re-verified all 29
+  runtime candidates and the runtime was reinstalled from the new lock (receipt
+  now records `416e4091...` in both `installed` and `pluginInventory`).
+- **Status**: `SOURCE` + `AUTO`. Real Paper behaviour - a door that actually
+  blocks and restores, the six gate styles' timing, the live wave population,
+  real reward delivery and the trigger volume - is `NATIVE_BLOCKED` here: no GUI
+  client, no running Paper, no signed V4 client. The runtime is off by default and
+  no world block, player or reward state was changed by this batch.

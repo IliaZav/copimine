@@ -120,17 +120,18 @@
         "tests/dungeon_probe.py"
       ],
       "installedJar": "local-runtime/end-rift-server-26.3/plugins/CopiMineDungeon.jar",
-      "candidateSha256": "33858dfa1a8dfeec699cfc7d3d8517f8cf4c7d0318a1bd32179644145dfeb5a2",
-      "sha256": "33858dfa1a8dfeec699cfc7d3d8517f8cf4c7d0318a1bd32179644145dfeb5a2",
+      "candidateSha256": "416e40917e08e956230e2e602dbb51233986174f7988ac4d62bf857185d73e61",
+      "sha256": "416e40917e08e956230e2e602dbb51233986174f7988ac4d62bf857185d73e61",
       "sourceBuild": "PASS",
       "unitContract": "PASS",
       "realServerEnable": "BLOCKED",
       "negativeCoverage": "PARTIAL",
       "knownGaps": [
         "No live Paper session ran /cmdungeon editor, publish or world-mutation routes.",
-        "The builder wand and gate/room previews were never exercised against a real world."
+        "The builder wand and gate/room previews were never exercised against a real world.",
+        "The optional OV4.10 room/gate runtime (DungeonRuntime, DungeonRoomLifecycle, DungeonEncounterPlanPolicy, PhysicalGateTransaction) is disabled by default and was never started on a live Paper server: real gate masks, spawn timing, clear commits and reward receipts are unverified in-game."
       ],
-      "blockedReason": "Local Paper and PostgreSQL are stopped; no native dungeon editing session was performed."
+      "blockedReason": "Local Paper and PostgreSQL are stopped; no native dungeon editing or runtime session was performed."
     },
     {
       "name": "CopiMineEconomyCore",

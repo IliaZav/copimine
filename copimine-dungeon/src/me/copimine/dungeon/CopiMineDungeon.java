@@ -10,6 +10,7 @@ import me.copimine.dungeon.editor.EditorSessionListener;
 import me.copimine.dungeon.editor.EditorSessionManager;
 import me.copimine.dungeon.store.AuditLog;
 import me.copimine.dungeon.store.DungeonDefinitionStore;
+import me.copimine.dungeon.runtime.DungeonRuntime;
 
 import org.bukkit.Material;
 import org.bukkit.command.PluginCommand;
@@ -29,11 +30,12 @@ import java.util.logging.Level;
 /**
  * CopiMine Dungeon — first-party dungeon builder/editor plugin (spec OV4.3-OV4.5).
  *
- * <p>The plugin is deliberately inert with respect to live worlds: every
- * published/validated/previewed operation works on the durable definition store
- * and produces a dry-run receipt. No block is ever mutated by this plugin, so a
- * builder can never accidentally reshape production terrain (that remains a
- * separate, explicitly approved process).</p>
+ * <p>The editor is deliberately inert with respect to live worlds: every
+ * published/validated/previewed editor operation works on the durable definition
+ * store and produces a dry-run receipt. The optional room/gate runtime (spec
+ * OV4.10) is disabled by default and only runs when
+ * {@code dungeons.runtime.enabled} is explicitly true; enabling it starts only
+ * configured, enabled rooms in loaded worlds.</p>
  */
 public final class CopiMineDungeon extends JavaPlugin {
 
@@ -42,6 +44,7 @@ public final class CopiMineDungeon extends JavaPlugin {
     private AuditLog audit;
     private DungeonCommandDispatcher dispatcher;
     private DungeonBuilderWand wand;
+    private DungeonRuntime runtime;
 
     @Override
     public void onEnable() {
@@ -77,12 +80,18 @@ public final class CopiMineDungeon extends JavaPlugin {
             getLogger().warning("Command /cmdungeon is not declared in plugin.yml; editor disabled.");
         }
         getServer().getPluginManager().registerEvents(new EditorSessionListener(sessions), this);
+        runtime = new DungeonRuntime(this, getConfig().getBoolean("dungeons.runtime.enabled", false));
+        runtime.start(store);
         getLogger().info("CopiMineDungeon enabled: schema v" + store.schemaVersion()
                 + ", " + store.catalog().totalDefinitions() + " definitions loaded.");
     }
 
     @Override
     public void onDisable() {
+        if (runtime != null) {
+            runtime.stop();
+            runtime = null;
+        }
         if (store == null) {
             return;
         }

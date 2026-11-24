@@ -1,0 +1,156 @@
+package me.copimine.dungeon;
+
+import me.copimine.dungeon.command.CommandActor;
+import me.copimine.dungeon.command.DungeonCommand;
+import me.copimine.dungeon.command.DungeonCommandDispatcher;
+import me.copimine.dungeon.editor.DungeonBuilderWand;
+import me.copimine.dungeon.editor.EditorPermissions;
+import me.copimine.dungeon.editor.EditorSessionListener;
+import me.copimine.dungeon.editor.EditorSessionManager;
+import me.copimine.dungeon.store.AuditLog;
+import me.copimine.dungeon.store.DungeonDefinitionStore;
+
+import org.bukkit.Material;
+import org.bukkit.command.PluginCommand;
+import org.bukkit.plugin.java.JavaPlugin;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.SecureRandom;
+import java.util.HexFormat;
+import java.util.List;
+import java.util.logging.Level;
+
+/**
+ * CopiMine Dungeon — first-party dungeon builder/editor plugin (spec OV4.3-OV4.5).
+ *
+ * <p>The plugin is deliberately inert with respect to live worlds: every
+ * published/validated/previewed operation works on the durable definition store
+ * and produces a dry-run receipt. No block is ever mutated by this plugin, so a
+ * builder can never accidentally reshape production terrain (that remains a
+ * separate, explicitly approved process).</p>
+ */
+public final class CopiMineDungeon extends JavaPlugin {
+
+    private DungeonDefinitionStore store;
+    private EditorSessionManager sessions;
+    private AuditLog audit;
+    private DungeonCommandDispatcher dispatcher;
+    private DungeonBuilderWand wand;
+
+    @Override
+    public void onEnable() {
+        saveDefaultConfig();
+        Path dataFolder = getDataFolder().toPath();
+        try {
+            Files.createDirectories(dataFolder);
+        } catch (IOException error) {
+            getLogger().log(Level.SEVERE, "Unable to create plugin data folder", error);
+        }
+
+        String secret = ensureWandSecret();
+        Material wandMaterial = Material.matchMaterial(getConfig().getString("editor.wand.material", "BLAZE_ROD"));
+        if (wandMaterial == null || !wandMaterial.isItem()) {
+            wandMaterial = Material.BLAZE_ROD;
+        }
+        int customModelData = getConfig().getInt("editor.wand.custom_model_data", 830100);
+
+        sessions = new EditorSessionManager();
+        audit = new AuditLog();
+        Path definitions = dataFolder.resolve(getConfig().getString("dungeons.definitions_file", "dungeons.tsv"));
+        store = loadStore(definitions);
+        dispatcher = new DungeonCommandDispatcher(store, sessions, audit);
+        wand = new DungeonBuilderWand(this, secret, wandMaterial, customModelData);
+
+        PluginCommand command = getCommand("cmdungeon");
+        if (command != null) {
+            DungeonCommand executor = new DungeonCommand(dispatcher);
+            command.setExecutor(executor);
+            command.setTabCompleter(executor);
+        } else {
+            getLogger().warning("Command /cmdungeon is not declared in plugin.yml; editor disabled.");
+        }
+        getServer().getPluginManager().registerEvents(new EditorSessionListener(sessions), this);
+        getLogger().info("CopiMineDungeon enabled: schema v" + store.schemaVersion()
+                + ", " + store.catalog().totalDefinitions() + " definitions loaded.");
+    }
+
+    @Override
+    public void onDisable() {
+        if (store == null) {
+            return;
+        }
+        try {
+            Path definitions = getDataFolder().toPath()
+                    .resolve(getConfig().getString("dungeons.definitions_file", "dungeons.tsv"));
+            store.save(definitions);
+        } catch (IOException error) {
+            getLogger().log(Level.SEVERE, "Failed to persist dungeon definitions", error);
+        } finally {
+            if (sessions != null) {
+                sessions.closeAll();
+            }
+        }
+    }
+
+    private DungeonDefinitionStore loadStore(Path definitions) {
+        if (Files.isRegularFile(definitions)) {
+            try {
+                DungeonDefinitionStore loaded = DungeonDefinitionStore.load(definitions);
+                if (!loaded.loadProblems().isEmpty()) {
+                    getLogger().warning("Loaded definitions with " + loaded.loadProblems().size() + " problem(s):");
+                    for (String problem : loaded.loadProblems()) {
+                        getLogger().warning("  " + problem);
+                    }
+                }
+                return loaded;
+            } catch (IOException | RuntimeException error) {
+                getLogger().log(Level.SEVERE,
+                        "Definitions file is unreadable; starting from an empty store (no data overwritten).",
+                        error);
+            }
+        }
+        return DungeonDefinitionStore.empty();
+    }
+
+    private String ensureWandSecret() {
+        String secret = getConfig().getString("security.wand_secret", "");
+        if (secret == null || secret.isBlank()) {
+            byte[] random = new byte[32];
+            new SecureRandom().nextBytes(random);
+            secret = HexFormat.of().formatHex(random);
+            getConfig().set("security.wand_secret", secret);
+            saveConfig();
+            getLogger().info("Generated a new server-only wand secret.");
+        }
+        return secret;
+    }
+
+    public DungeonCommandDispatcher dispatcher() {
+        return dispatcher;
+    }
+
+    public EditorSessionManager sessions() {
+        return sessions;
+    }
+
+    public DungeonBuilderWand wand() {
+        return wand;
+    }
+
+    public DungeonDefinitionStore store() {
+        return store;
+    }
+
+    /** Test/administration helper: dispatch as a fully-trusted console actor. */
+    public List<String> dispatchAsConsole(String... args) {
+        return dispatcher.execute(CommandActor.consoleActor(), List.of(args)).lines();
+    }
+
+    /** Exposed for documentation: the required permission nodes. */
+    public static List<String> permissionNodes() {
+        return List.of(EditorPermissions.ADMIN, EditorPermissions.BUILDER);
+    }
+}

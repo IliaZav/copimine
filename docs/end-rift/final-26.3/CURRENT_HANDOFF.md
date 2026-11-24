@@ -84,7 +84,7 @@ The previous installed EndEvent artifacts `07a5b6ecd77077061b3cee57082e9d9cfe840
 
 - `REQUIREMENT_TEST_MATRIX.json/.md`: exactly 168 registry IDs, tests and honest statuses.
 - `SOUND_CUE_MATRIX.json/.md`: 37 server cues, all Waves 1-7, both anvil volleys and four Wave 7 trials; `nativeAudioVerified=false`.
-- `OWN_PLUGIN_INVENTORY.json/.md`: eight first-party manifests/builds/installed hashes and known gaps.
+- `OWN_PLUGIN_INVENTORY.json/.md`: nine first-party manifests/builds/installed hashes and known gaps.
 - `BOT_ACCEPTANCE.json/.md` and `PERFORMANCE_REPORT.md`: blocked, with no fake PASS.
 - New tests: sound cue matrix, requirement matrix, own-plugin inventory contract, acceptance reports, Wave 7 named-trial completion audio, and the Wave 1 canonical holder regression in `EndRiftEncounterCoordinatorTest`.
 

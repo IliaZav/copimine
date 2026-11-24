@@ -11,6 +11,7 @@ PLUGIN_LOCK = ROOT / "tools" / "minecraft-26.3" / "server-plugins.lock.json"
 EXPECTED_DIRECTORIES = {
     "copimine-admin-plugin",
     "copimine-artifacts",
+    "copimine-dungeon",
     "copimine-economy-core",
     "copimine-election-core",
     "copimine-end-event",
@@ -41,9 +42,9 @@ def sha256(path: Path) -> str:
 
 def test_inventory_covers_every_first_party_plugin() -> None:
     plugins = load_inventory()["plugins"]
-    assert len(plugins) == 8
+    assert len(plugins) == 9
     assert {entry["directory"] for entry in plugins} == EXPECTED_DIRECTORIES
-    assert len({entry["name"] for entry in plugins}) == 8
+    assert len({entry["name"] for entry in plugins}) == 9
 
 
 def test_inventory_matches_manifests_commands_and_permissions() -> None:

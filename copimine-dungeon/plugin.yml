@@ -1,0 +1,21 @@
+name: CopiMineDungeon
+version: '1.0.0'
+main: me.copimine.dungeon.CopiMineDungeon
+api-version: '1.21'
+author: CopiMine
+description: Редактор и контроллер подземелий CopiMine (строитель + шлюзы + комнаты)
+load: POSTWORLD
+commands:
+  cmdungeon:
+    description: Редактор подземелий CopiMine
+    usage: /cmdungeon help | room | gate | secret | spawn | mobs | wave | reward | overlay | editor | wand | audit
+    aliases: [dun]
+permissions:
+  copimine.dungeon.admin:
+    description: Публикация подземелий, выдача жезла и одобрение изменений живого мира
+    default: op
+    children:
+      copimine.dungeon.builder: true
+  copimine.dungeon.builder:
+    description: Редактирование черновиков подземелий и использование жезла строителя
+    default: op

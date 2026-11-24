@@ -43,6 +43,7 @@ def modules = [
     electionCore: ['copimine-election-core', 'CopiMineElectionCore'],
     narcotics: ['copimine-narcotics', 'CopiMineNarcotics'],
     endEvent: ['copimine-end-event', 'CopiMineEndEvent'],
+    dungeon: ['copimine-dungeon', 'CopiMineDungeon'],
     authEffects: ['minecraft/server/plugins/AuthEffects', 'AuthEffects']
 ]
 
@@ -54,6 +55,7 @@ def moduleRuntimeResources = [
     electionCore: ['plugin.yml', 'config.yml'],
     narcotics: ['plugin.yml', 'config.yml'],
     endEvent: ['plugin.yml', 'config.yml', 'me/copimine/protocol/EncounterGenerationPolicy.class'],
+    dungeon: ['plugin.yml', 'config.yml'],
     authEffects: ['plugin.yml']
 ]
 
@@ -158,7 +160,7 @@ tasks.withType(JavaCompile).configureEach {
 
 tasks.register('migrationPlugins') {
     group = 'build'
-    description = 'Compile all eight first-party plugins against the pinned 26.3 API in isolated output directories.'
+    description = 'Compile all nine first-party plugins against the pinned 26.3 API in isolated output directories.'
     dependsOn(modules.keySet().collect { "${it}Jar" })
 }
 

@@ -101,6 +101,37 @@
       "blockedReason": "No live authenticated purchase/refund run was performed."
     },
     {
+      "name": "CopiMineDungeon",
+      "directory": "copimine-dungeon",
+      "version": "1.0.0",
+      "main": "me.copimine.dungeon.CopiMineDungeon",
+      "dependencies": [],
+      "softDependencies": [],
+      "commands": [
+        "cmdungeon"
+      ],
+      "permissions": 2,
+      "database": "No direct JDBC; dungeon definitions, gates, rooms and audit trail live in flat-file journals owned by the plugin data directory.",
+      "tests": [
+        "tests/test_dungeon_command.py",
+        "tests/test_dungeon_domain.py",
+        "tests/test_dungeon_store.py",
+        "tests/dungeon_probe.py"
+      ],
+      "installedJar": "local-runtime/end-rift-server-26.3/plugins/CopiMineDungeon.jar",
+      "candidateSha256": "356577f8062917bd75709d9da71fcd4ef2193d81a19a5f99e3664bdc7cc63b7b",
+      "sha256": "356577f8062917bd75709d9da71fcd4ef2193d81a19a5f99e3664bdc7cc63b7b",
+      "sourceBuild": "PASS",
+      "unitContract": "PASS",
+      "realServerEnable": "BLOCKED",
+      "negativeCoverage": "PARTIAL",
+      "knownGaps": [
+        "No live Paper session ran /cmdungeon editor, publish or world-mutation routes.",
+        "The builder wand and gate/room previews were never exercised against a real world."
+      ],
+      "blockedReason": "Local Paper and PostgreSQL are stopped; no native dungeon editing session was performed."
+    },
+    {
       "name": "CopiMineEconomyCore",
       "directory": "copimine-economy-core",
       "version": "1.0.0",
@@ -314,7 +345,7 @@
     "measuredAt": "2026-10-30T11:06:39.014789+00:00",
     "runtime": "isolated local Paper 26.3",
     "installedReceiptSha256": "d7004021a527d1c1695d60504a69225f58a1f58ed635687b08a097d82ea42ffc",
-    "installedPluginCount": 30,
+    "installedPluginCount": 31,
     "audit": "docs/end-rift/final-26.3/AUDIT_2026-10-30_EVENT_COMPLETION.md",
     "nativeVerified": false
   }

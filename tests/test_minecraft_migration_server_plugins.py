@@ -1031,7 +1031,7 @@ def test_every_pinned_first_party_build_artifact_present_on_disk_matches_its_loc
         )
         assert artifact.stat().st_size == candidate['size'], item['pluginName']
     # CI always has these built, so a silently-empty loop would be a green no-op.
-    assert checked == 8, checked
+    assert checked == 9, checked
 
 
 def test_migration_lock_loader_includes_each_built_first_party_plugin():
@@ -1045,7 +1045,7 @@ def test_migration_lock_loader_includes_each_built_first_party_plugin():
     ]
     build_candidates=[item for item in baseline_candidates if item.get('candidate',{}).get('buildArtifact')]
     remote_candidates=[item for item in baseline_candidates if item.get('candidate',{}).get('url')]
-    assert len(build_candidates)==8
+    assert len(build_candidates)==9
     assert len(remote_candidates)==2
     missing=[item['candidate']['buildArtifact'] for item in build_candidates
              if not (ROOT/item['candidate']['buildArtifact']).is_file()]
@@ -1053,8 +1053,8 @@ def test_migration_lock_loader_includes_each_built_first_party_plugin():
 
     records=load().load_install_records(ROOT,lock)
 
-    assert len(records)==len(lock['modules'])+len(build_candidates)+len(remote_candidates)==30
-    assert len({record['pluginName'] for record in records})==30
+    assert len(records)==len(lock['modules'])+len(build_candidates)+len(remote_candidates)==31
+    assert len({record['pluginName'] for record in records})==31
     assert {'FarmControl','SeeMore'}.isdisjoint({record['pluginName'] for record in records})
     assert next(row for row in lock['unchangedBaseline'] if row['pluginName']=='FarmControl')['candidate']['runtimeEligible'] is False
     assert next(row for row in lock['unchangedBaseline'] if row['pluginName']=='SeeMore')['candidate']['runtimeEligible'] is False
@@ -1320,6 +1320,7 @@ def test_all_remaining_first_party_26_3_plugins_track_their_build_and_runtime_up
     expected_builds={
         'AuthEffects':'AuthEffects-26.3.jar',
         'CopiMineArtifacts':'CopiMineArtifacts-26.3.jar',
+        'CopiMineDungeon':'CopiMineDungeon-26.3.jar',
         'CopiMineEconomyCore':'CopiMineEconomyCore-26.3.jar',
         'CopiMineElectionCore':'CopiMineElectionCore-26.3.jar',
         'CopiMineNarcotics':'CopiMineNarcotics-26.3.jar',
@@ -1777,7 +1778,7 @@ def test_active_26_3_plugin_directory_matches_the_unique_locked_inventory():
     assert len({entry['filename'] for entry in expected.values()})==len(expected), 'plugin lock must not assign one runtime filename to multiple plugins'
     runtime=MIGRATION_RUNTIME/'plugins'
     if not runtime.is_dir():pytest.skip('isolated 26.3 runtime is not installed in this checkout')
-    assert len(expected)==30, 'runtime-eligible candidates must collapse to one entry per installed plugin'
+    assert len(expected)==31, 'runtime-eligible candidates must collapse to one entry per installed plugin'
     server=runtime.parent
     receipt=json.loads((server/'migration-plugin-receipt.json').read_text(encoding='utf-8'))
     if receipt.get('authenticationMode')=='disabled-for-local-testing':

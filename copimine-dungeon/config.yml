@@ -1,0 +1,48 @@
+# CopiMineDungeon — конфигурация редактора/контроллера подземелий (spec OV4.3-OV4.5).
+# Определения комнат/шлюзов/секретов/спавнов хранятся отдельно (см. dungeons.definitions_file)
+# и редактируются только через /cmdungeon и GUI, без ручного YAML.
+schema_version: 1
+
+editor:
+  # Предмет-жезл строителя (custom-model-data + серверная метка PDC).
+  wand:
+    material: BLAZE_ROD
+    custom_model_data: 830100
+  # Клиентский оверлей: рёбра кубоида, столбы, осевые направляющие.
+  overlay:
+    default_range: 32
+    min_range: 16
+    max_range: 96
+    point_budget: 512
+    occlusion: true
+  # Разрешать аим-выбор ближайшего объёма/маркера.
+  aim_select: true
+
+dungeons:
+  # Версионированный файл определений (заголовок CMDUNGEON<таб>1).
+  definitions_file: dungeons.tsv
+  # Резервные копии перед публикацией.
+  backup_directory: backups
+  # Автосохранение черновиков, секунды (0 = только при выключении).
+  autosave_seconds: 300
+  # Жёсткие границы для валидации комнат.
+  max_bounds_blocks: 200000
+
+# Безопасность: серверная метка жезла. Пустое значение => сгенерировать один раз
+# и сохранить сюда. Никогда не публикуйте реальное значение.
+security:
+  wand_secret: ""
+
+# Значения по умолчанию для новых комнат (можно менять в GUI/командах).
+defaults:
+  participation:
+    policy: JOIN_SAFE
+    max_players: null
+  scaling:
+    mode: ADAPTIVE
+    max_concurrent_enemies: 12
+  reward:
+    mode: PERSONAL
+  reset:
+    mode: ADMIN_OR_COOLDOWN
+    cooldown_seconds: 600

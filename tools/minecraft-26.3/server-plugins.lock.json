@@ -886,6 +886,27 @@
       ]
     },
     {
+      "pluginName": "CopiMineDungeon",
+      "filename": "CopiMineDungeon.jar",
+      "version": "1.0.0",
+      "sha256": "356577f8062917bd75709d9da71fcd4ef2193d81a19a5f99e3664bdc7cc63b7b",
+      "candidate": {
+        "filename": "CopiMineDungeon-26.3.jar",
+        "runtimeFilename": "CopiMineDungeon.jar",
+        "sha256": "356577f8062917bd75709d9da71fcd4ef2193d81a19a5f99e3664bdc7cc63b7b",
+        "apiVersion": "26.3",
+        "buildArtifact": "build/minecraft-26.3/plugins/jars/CopiMineDungeon-26.3.jar",
+        "compatibilityStatus": "requires-runtime-validation",
+        "nativeVerified": false,
+        "sha512": "edada925aabeebd5d0de5b66b828cc1e29867d1f50d5f97eabdea9e7f436fda58934f6737a1b10702789f50d7ffa50a1aca3f708c4265bb1af699571965a6056",
+        "size": 130095,
+        "runtimeEligible": true,
+        "replaceSha256": []
+      },
+      "nativeVerified": false,
+      "replaceSha256": []
+    },
+    {
       "pluginName": "CopiMineEconomyCore",
       "filename": "CopiMineEconomyCore.jar",
       "version": "1.0.0",

@@ -2,7 +2,7 @@
 
 Current artifact snapshot: **2026-10-30**, from [OWN_PLUGIN_INVENTORY.json](OWN_PLUGIN_INVENTORY.json). The [completion audit](AUDIT_2026-10-30_EVENT_COMPLETION.md) records the final build, installation, startup/restart and verification evidence. Automated identity check: tests/test_own_plugin_inventory_contract.py.
 
-This table covers all **eight installed first-party plugins** in the isolated local **30-plugin** runtime. Third-party artifacts are pinned in tools/minecraft-26.3/server-plugins.lock.json; no ownership of third-party code is claimed.
+This table covers all **nine installed first-party plugins** in the isolated local **31-plugin** runtime. Third-party artifacts are pinned in tools/minecraft-26.3/server-plugins.lock.json; no ownership of third-party code is claimed.
 
 | Plugin | Version | Required dependencies | Commands / permissions | Installed SHA-256 | Local startup and restart |
 |---|---|---|---|---|---|
@@ -10,6 +10,7 @@ This table covers all **eight installed first-party plugins** in the isolated lo
 | CopiMineArtifacts | 1.1.0-shops-blocks-prices | CopiMineEconomyCore | 2 / 8 | `a5e0420d503850cb604445c52705f5af71fdc65770a78b943c5d2bc252fabcc5` | observed enabled |
 | CopiMineEconomyCore | 1.0.0 | none | 0 / 0 | `d4051688d7a56e1c59b8b31023783d054724be6fac3554611ed6bf65d8568e89` | observed enabled |
 | CopiMineElectionCore | 9.2.0-postgres-v4-balance-credit | CopiMineEconomyCore | 2 / 5 | `ce4749dc346134680366fdccd044cfb0d61cb8fcbf7c8ee1a90e69917a4a4182` | observed enabled |
+| CopiMineDungeon | 1.0.0 | none | 1 / 2 | `356577f8062917bd75709d9da71fcd4ef2193d81a19a5f99e3664bdc7cc63b7b` | NATIVE_BLOCKED |
 | CopiMineEndEvent | 0.1.0 | CopiMineWorldCore, CopiMineArtifacts | 1 / 2 | `c32924bcf3283606a15b233d91214edbafcc986bb593ad7b198224107686fe7d` | observed enabled |
 | CopiMineNarcotics | 2.1.0-client-bridge | none | 2 / 8 | `bea72432491f7afa0a0cbd23b608654b56899b8e463720f98dbfef0f39f2ef0d` | observed enabled |
 | CopiMineWorldCore | 1.0.0 | none | 1 / 1 | `e6a2703e8091053f2d7e4fb53fb9b278a8d1ad62956250c64da334c780a742bc` | observed enabled |
@@ -20,8 +21,8 @@ AuthEffects is installed and enabled with AuthMe present. AuthMe is a soft depen
 ## What was actually checked
 
 - The inventory's manifest identity, version, entry point, dependency sets, command sets and permission counts were checked against source manifests.
-- All eight installed first-party JARs match their candidate hashes, the official migration receipt and the pinned plugin lock.
-- The supported installer installed and verified 30 selected plugins. All 30 enabled on both the first updated startup and a subsequent cold startup, with zero startup ERROR/SEVERE entries.
+- All nine installed first-party JARs match their candidate hashes, the official migration receipt and the pinned plugin lock.
+- The supported installer installed and verified 31 selected plugins. CopiMineDungeon joined the pinned inventory without a native editing session; the runtime enablement observation below predates it and remains NATIVE_BLOCKED for the dungeon.
 - EndEvent restored the same COLLECTING event identity and reported zero invariant failures. The actual runtime max-health cap is 20000.0.
 - The complete Python run passed 2909 tests with 9 disclosed skips; the complete Java release gate and its 666-validator block passed. Detailed scope and warnings are in the completion audit.
 

@@ -50,7 +50,7 @@ def runtime_body(start, end):
 
 
 def test_the_impacts_are_banked_before_any_effect_runs():
-    impact = runtime_body("private void impact()", "private void stomp(")
+    impact = runtime_body("private void impact()", "private void trample(")
     assert impact.index("banked=true; impacts++;") < impact.index("clearPillar()")
 
 

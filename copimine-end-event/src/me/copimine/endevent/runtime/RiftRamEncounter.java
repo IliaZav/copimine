@@ -1,6 +1,7 @@
 package me.copimine.endevent.runtime;
 
 import me.copimine.endevent.domain.RiftRamPolicy;
+import me.copimine.endevent.domain.RamMovingEarthquakePolicy;
 import me.copimine.endevent.domain.RiftRamRecoveryPolicy;
 import me.copimine.endevent.domain.WaveSixPillarSkeletonPolicy;
 import org.bukkit.*;
@@ -70,7 +71,7 @@ public final class RiftRamEncounter {
         void visualsChanged();
         boolean checkpoint();
     }
-    private enum Action { CHASE, CHARGE_WARNING, CHARGE, STUN, STOMP_WARNING, STOMP, RECOVER, DEAD }
+    private enum Action { CHASE, CHARGE_WARNING, CHARGE, STUN, TRAMPLE_WARN, TRAMPLE, RECOVER, DEAD }
     private record Piece(BlockDisplay display, Vector offset, Vector3f size, int section) {}
     private record Debris(BlockDisplay display, Location start, Vector velocity, int born) {}
     private record SpireCast(WaveSixPillarSkeletonPolicy.Ability ability, UUID target,
@@ -92,16 +93,18 @@ public final class RiftRamEncounter {
     private boolean completed, closed, banked;
     private UUID target;
     private Vector direction;
-    private Location pillar, stompOrigin, chargeAim;
+    private Location pillar, trampleOrigin, chargeAim;
     private UUID chaseFocus;
     private int chaseFocusUntil;
     private UUID pillarId;
-    private double lastRadius;
+    private double trampleRadius;
     private final List<BlockDisplay> pillarDisplays = new ArrayList<>();
     private final Map<UUID,Location> pillarRestPositions = new HashMap<>();
     private final List<Piece> armor = new ArrayList<>();
     private final List<Debris> debris = new ArrayList<>();
-    private final Set<UUID> chargeHits = new HashSet<>(), stompHits = new HashSet<>(), stompRoster = new HashSet<>(), stompResolved = new HashSet<>();
+    private final Set<UUID> chargeHits = new HashSet<>(), trampleHits = new HashSet<>(), trampleRoster = new HashSet<>(), trampleBeatResolved = new HashSet<>();
+    /** Bounded multi-footfall state for the N23-P1-10 moving earthquake. */
+    private int trampleBeats, trampleBeat = -1, trampleWarnedBeat = -1;
     private final Set<Endermite> mites = new HashSet<>();
     /**
      * The elite marksman that holds the final pillar.
@@ -461,7 +464,7 @@ public final class RiftRamEncounter {
                 // committed charge or hit a party still reading the charge line.
                 if(RiftRamPolicy.mayStartStomp(RiftRamPolicy.State.CHASING, (long)tick*50L,
                         (long)lastStomp*50L, RiftRamPolicy.stompCooldownTicks(players.size()))) {
-                    begin(Action.STOMP_WARNING); hold();
+                    begin(Action.TRAMPLE_WARN); hold();
                     ram.getWorld().playSound(ram.getLocation(),Sound.ENTITY_RAVAGER_STUNNED,1.6f,.6f);
                 } else if(pillarId!=null && tick-nextPillarTick>=20
                         && tick-lastCharge>=RiftRamPolicy.chargeCooldownTicks(players.size())) {
@@ -489,18 +492,25 @@ public final class RiftRamEncounter {
             case CHARGE -> charge(players);
             case STUN -> { hold(); if(tick-actionTick>=RiftRamPolicy.IMPACT_STUN_TICKS) begin(Action.CHASE); }
             case RECOVER -> { hold(); if(tick-actionTick>=30) begin(Action.CHASE); }
-            case STOMP_WARNING -> {
+            case TRAMPLE_WARN -> {
                 hold(); dust(ram.getLocation(),18,.8,.15);
                 if(tick-actionTick>=RiftRamPolicy.STOMP_WARNING_TICKS) {
-                    stompOrigin=ram.getLocation().clone(); lastRadius=0; stompHits.clear(); stompResolved.clear(); stompRoster.clear();
-                    for(Player p:players) stompRoster.add(p.getUniqueId());
-                    lastStomp=tick; begin(Action.STOMP);
-                    dust(stompOrigin,120,1.7,.25);
-                    ram.getWorld().playSound(stompOrigin,Sound.ENTITY_RAVAGER_STEP,2.4f,.5f);
-                    ram.getWorld().playSound(stompOrigin,Sound.BLOCK_ANVIL_LAND,1.5f,.55f);
+                    // Bounded multitbeat opening: the party size picks 5 or 6
+                    // footfalls, the roster is frozen now so a late arrival cannot
+                    // be hit by a front it never saw, and every per-beat set is
+                    // reset before the first foot lands.
+                    trampleBeats=RamMovingEarthquakePolicy.beatsFor(players.size());
+                    trampleOrigin=ram.getLocation().clone(); trampleRadius=0;
+                    trampleHits.clear(); trampleBeatResolved.clear(); trampleRoster.clear();
+                    trampleBeat=-1; trampleWarnedBeat=-1;
+                    for(Player p:players) trampleRoster.add(p.getUniqueId());
+                    lastStomp=tick; begin(Action.TRAMPLE);
+                    dust(trampleOrigin,120,1.7,.25);
+                    ram.getWorld().playSound(trampleOrigin,Sound.ENTITY_RAVAGER_STEP,2.4f,.5f);
+                    ram.getWorld().playSound(trampleOrigin,Sound.BLOCK_ANVIL_LAND,1.5f,.55f);
                 }
             }
-            case STOMP -> stomp(players);
+            case TRAMPLE -> trample(players);
             case DEAD -> { }
         }
     }
@@ -508,7 +518,7 @@ public final class RiftRamEncounter {
     private void begin(Action next) {
         action=next; actionTick=tick;
         publishPose();
-        String cue=next == Action.CHARGE_WARNING ? "ram_charge" : next == Action.STOMP ? "ram_stomp"
+        String cue=next == Action.CHARGE_WARNING ? "ram_charge" : next == Action.TRAMPLE ? "ram_stomp"
                 : next == Action.STUN ? "ram_impact" : null;
         if(cue!=null && ram!=null && ram.isValid()) host.abilitySound(ram,cue);
     }
@@ -517,8 +527,8 @@ public final class RiftRamEncounter {
         if(ram==null || !ram.isValid()) return;
         String pose=switch(action) {
             case CHARGE_WARNING -> "WAVE_WINDUP";
-            case STOMP_WARNING -> "WAVE_FROZEN";
-            case STOMP -> "WAVE_RELEASE";
+            case TRAMPLE_WARN -> "WAVE_FROZEN";
+            case TRAMPLE -> "WAVE_RELEASE";
             case CHARGE -> "WAVE_COMBAT";
             case STUN -> "WAVE_HIT";
             case RECOVER -> "WAVE_RECOVER";
@@ -527,9 +537,9 @@ public final class RiftRamEncounter {
         };
         int duration=switch(action) {
             case CHARGE_WARNING -> RiftRamPolicy.CHARGE_WINDUP_TICKS;
-            case STOMP_WARNING -> RiftRamPolicy.STOMP_WARNING_TICKS;
+            case TRAMPLE_WARN -> RiftRamPolicy.STOMP_WARNING_TICKS;
             case CHARGE -> RiftRamPolicy.CHARGE_TIMEOUT_TICKS;
-            case STOMP -> RiftRamPolicy.STOMP_EXPANSION_TICKS;
+            case TRAMPLE -> RamMovingEarthquakePolicy.totalTicks(trampleBeats);
             case STUN -> RiftRamPolicy.IMPACT_STUN_TICKS;
             default -> 30;
         };
@@ -559,6 +569,11 @@ public final class RiftRamEncounter {
         Vector away=ram.getLocation().toVector().subtract(pillar.toVector()).setY(0);
         if(away.lengthSquared()<.01) away=new Vector(1,0,0);
         Vector tangent=new Vector(-away.getZ(),0,away.getX()).normalize().multiply(.25);
+        // N23-P1-10: the body must point along its actual translation. The old
+        // code wrote a tangent velocity without reorienting, so the Ram slid
+        // sideways. Rotate into the tangent first (the spec's simpler robust
+        // option) using the same yaw convention as face(), then accelerate.
+        ram.setRotation(RamMovingEarthquakePolicy.gaitYaw(tangent.getX(), tangent.getZ()), 0);
         ram.setVelocity(tangent.setY(ram.getVelocity().getY()));
     }
     /**
@@ -715,67 +730,114 @@ public final class RiftRamEncounter {
         hold(); host.visualsChanged();
     }
 
-    private void stomp(List<Player> players) {
-        hold();
+    /**
+     * The N23-P1-10 moving arena-wide earthquake.
+     *
+     * <p>Replaces the old single stationary radius-12 seam. The Ram stampedes
+     * while making a bounded 5..6 footfalls; each deliberate foot contact owns
+     * exactly one expanding front that travels out to the arena edge. A grounded
+     * player who does not jump is hit once per front that sweeps them; a timed
+     * jump (or a raised block) clears it. The per-beat resolved set is reset at
+     * each footfall so a player can be caught by more than one front, which is
+     * what makes the sustained stampede dangerous, but the whole cast can never
+     * exceed {@link RamMovingEarthquakePolicy#BEATS_MAX} hits and each front only
+     * claims a body it actually reached.</p>
+     */
+    private void trample(List<Player> players) {
+        if (ram == null || !ram.isValid()) { begin(Action.RECOVER); return; }
         int elapsed=tick-actionTick;
-        double radius=Math.min(RiftRamPolicy.STOMP_RADIUS, RiftRamPolicy.STOMP_RADIUS*elapsed/RiftRamPolicy.STOMP_EXPANSION_TICKS);
-        // 192 samples/update maximum, independent of roster size; nearby viewers only.
-        int samples=Math.max(32,Math.min(Math.min(96,host.particleBudget()/3),(int)Math.ceil(2*Math.PI*radius/.65)));
-        // W6-02: the stomp was a flat dust ring that read as a texture on the
-        // floor. Three channels now share one fast-moving front so the party can
-        // read where it is and when to jump: the ground ring, a lifted lip of
-        // debris above it, and a thin obsidian seam at the leading edge.
-        double lipY = host.floorY() + 1.35D;
-        for(Player viewer:players) {
-            if(!viewer.getWorld().equals(stompOrigin.getWorld()) || viewer.getLocation().distanceSquared(stompOrigin)>48*48) continue;
+        if(elapsed>=RamMovingEarthquakePolicy.totalTicks(trampleBeats)) {
+            trampleRoster.clear(); trampleHits.clear(); trampleBeatResolved.clear();
+            begin(Action.RECOVER); return;
+        }
+        // Keep the Ram genuinely moving: native AI hunts the nearest body, which
+        // is what makes each footfall origin advance across the arena instead of
+        // pulsing from one spot.
+        ram.setAI(true);
+        ram.setTarget(nearest(ram.getLocation(),players));
+        int beat=RamMovingEarthquakePolicy.beatIndex(trampleBeats,elapsed);
+        int within=RamMovingEarthquakePolicy.withinBeat(elapsed);
+        RamMovingEarthquakePolicy.BeatPhase phase=RamMovingEarthquakePolicy.phaseWithin(within);
+        if(phase==RamMovingEarthquakePolicy.BeatPhase.WARNING) {
+            if(beat!=trampleWarnedBeat) {
+                trampleWarnedBeat=beat;
+                // A readable ground tell under the approaching foot, so the party
+                // can see where the next front starts and time the jump.
+                dust(ram.getLocation(),32,1.3,.12);
+                ram.getWorld().playSound(ram.getLocation(),Sound.ENTITY_RAVAGER_STEP,1.5f,.7f);
+            }
+            return;
+        }
+        if(phase==RamMovingEarthquakePolicy.BeatPhase.GAP) return;
+        if(beat!=trampleBeat) {
+            // One owned front per foot contact, released from where the foot fell.
+            trampleBeat=beat; trampleOrigin=ram.getLocation().clone(); trampleRadius=0;
+            trampleBeatResolved.clear();
+            dust(trampleOrigin,90,1.5,.3);
+            ram.getWorld().playSound(trampleOrigin,Sound.ENTITY_RAVAGER_STEP,2.1f,.5f);
+            ram.getWorld().playSound(trampleOrigin,Sound.BLOCK_ANVIL_LAND,1.4f,.55f);
+        }
+        int intoFront=within-RamMovingEarthquakePolicy.BEAT_WARNING_TICKS+1;
+        double radius=RamMovingEarthquakePolicy.frontRadius(intoFront);
+        drawTrampleFront(players,radius);
+        double damage=RamMovingEarthquakePolicy.damageFor(beat,trampleBeats);
+        Set<UUID> eligible=new HashSet<>();
+        for(Player p:players) {
+            eligible.add(p.getUniqueId());
+            if(!trampleRoster.contains(p.getUniqueId()) || !p.getWorld().equals(trampleOrigin.getWorld())) continue;
+            double distance=Math.hypot(p.getX()-trampleOrigin.getX(),p.getZ()-trampleOrigin.getZ());
+            if(RamMovingEarthquakePolicy.frontHits(distance,p.getY()-host.floorY()-1,p.isOnGround(),
+                    trampleRadius,radius,trampleBeatResolved.contains(p.getUniqueId()))) {
+                // Resolve once per front, but only an ACCEPTED damage application
+                // becomes a hit: a protected or otherwise refused body must not be
+                // recorded as struck nor receive the secondary slow, so the shown
+                // front can never disagree with an accepted receipt.
+                trampleBeatResolved.add(p.getUniqueId());
+                if(!host.damage(ram,p,damage)) continue;
+                trampleHits.add(p.getUniqueId());
+                p.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS,
+                        RamMovingEarthquakePolicy.BEAT_SLOW_TICKS,
+                        RamMovingEarthquakePolicy.BEAT_SLOW_AMPLIFIER));
+                p.getWorld().playSound(p.getLocation(),Sound.BLOCK_ANVIL_LAND,0.9F,0.55F);
+            }
+        }
+        trampleRoster.retainAll(eligible);
+        trampleRadius=radius;
+    }
+
+    /**
+     * The bounded particle front for one footfall.
+     *
+     * <p>A ground seam, a lifted lip and a sparse debris lift share the one fast
+     * moving edge so the party can read where the front is and when to jump. The
+     * sample count is capped by the host's particle budget and drawn only for
+     * nearby viewers, so a large party cannot multiply the cost.</p>
+     */
+    private void drawTrampleFront(List<Player> viewers, double radius) {
+        if(trampleOrigin==null) return;
+        int samples=Math.max(16,Math.min(Math.min(96,host.particleBudget()/3),
+                (int)Math.ceil(2*Math.PI*Math.max(1.0D,radius)/.65)));
+        double lipY=host.floorY()+1.35D;
+        for(Player viewer:viewers) {
+            if(!viewer.getWorld().equals(trampleOrigin.getWorld())
+                    || viewer.getLocation().distanceSquared(trampleOrigin)>48*48) continue;
             for(int i=0;i<samples;i++) {
                 double angle=2*Math.PI*i/samples;
                 double cos=Math.cos(angle), sin=Math.sin(angle);
-                double x=stompOrigin.getX()+cos*radius, z=stompOrigin.getZ()+sin*radius;
+                double x=trampleOrigin.getX()+cos*radius, z=trampleOrigin.getZ()+sin*radius;
                 viewer.spawnParticle(Particle.BLOCK,x,host.floorY()+1.12,z,2,.25,.1,.25,0,Material.DEEPSLATE.createBlockData());
                 if((i&1)==0) viewer.spawnParticle(Particle.BLOCK,x,host.floorY()+1.5,z,1,.3,.2,.3,0,Material.OBSIDIAN.createBlockData());
-                // Leading edge: a single lit seam per sample, so the front has a
-                // crisp boundary instead of a soft haze.
+                // A single lit seam per sample gives the front a crisp boundary
+                // instead of a soft haze.
                 viewer.spawnParticle(Particle.BLOCK,x,lipY,z,1,.12,.16,.12,0,Material.CRYING_OBSIDIAN.createBlockData());
-                // Every eighth sample throws real debris upward. Sparse enough
-                // that it never becomes confetti, dense enough to sell weight.
+                // Every eighth sample throws real debris upward: sparse enough to
+                // never read as confetti, dense enough to sell weight.
                 if((i&7)==0) {
                     viewer.spawnParticle(Particle.BLOCK,x,host.floorY()+1.05D,z,1,.2,.5,.2,0.06,
                             Material.DEEPSLATE.createBlockData());
                 }
             }
         }
-        // A slow, heavy thud on every fifth tick keeps the stomp audible for the
-        // whole expansion instead of one opening hit.
-        if(elapsed % 5 == 0) {
-            float pitch = 0.55F + Math.min(0.35F, elapsed * 0.012F);
-            ram.getWorld().playSound(stompOrigin, Sound.ENTITY_RAVAGER_STEP, 1.9F, pitch);
-        }
-        Set<UUID> eligible=new HashSet<>();
-        for(Player p:players) {
-            eligible.add(p.getUniqueId());
-            if(!stompRoster.contains(p.getUniqueId()) || !p.getWorld().equals(stompOrigin.getWorld())) continue;
-            double distance=Math.hypot(p.getX()-stompOrigin.getX(),p.getZ()-stompOrigin.getZ());
-            if(RiftRamPolicy.stompHits(distance,p.getY()-host.floorY()-1,p.isOnGround(),lastRadius,radius,stompResolved.contains(p.getUniqueId()))) {
-                // Every target is resolved exactly once per cast, but only an
-                // ACCEPTED damage application becomes a hit. A protected,
-                // invulnerable or otherwise refused player must not be recorded
-                // as struck and must not receive the secondary slow/impact
-                // feedback, or the ledger would permanently claim a hit that
-                // never happened and the visible ring would disagree with it.
-                stompResolved.add(p.getUniqueId());
-                if (!host.damage(ram, p, RiftRamPolicy.STOMP_DAMAGE)) continue;
-                stompHits.add(p.getUniqueId());
-                p.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS,
-                        RiftRamPolicy.stompSlowTicks(),RiftRamPolicy.STOMP_SLOW_AMPLIFIER));
-                // The hit is the moment the player needs feedback: impact sound at
-                // their feet, not at the Ram. Distance already limited the ring.
-                p.getWorld().playSound(p.getLocation(), Sound.BLOCK_ANVIL_LAND, 0.9F, 0.55F);
-            }
-        }
-        stompRoster.retainAll(eligible);
-        lastRadius=radius;
-        if(elapsed>=RiftRamPolicy.STOMP_EXPANSION_TICKS) { stompRoster.clear(); stompHits.clear(); stompResolved.clear(); begin(Action.RECOVER); }
     }
     private void dust(Location at,int count,double spread,double height) {
         for(Player viewer:host.players()) if(viewer.getWorld().equals(at.getWorld()) && viewer.getLocation().distanceSquared(at)<48*48)
@@ -1045,8 +1107,11 @@ public final class RiftRamEncounter {
                     standingPillarPlatformHeight(), offset[1] * patrolScale);
             host.move(pillarSkeleton, next);
         }
+        // N23-P1-10: the marksman keeps firing through the Ram's moving quake, so
+        // the Trample window is a genuinely coordinated dangerous window instead
+        // of a quiet gap in the pressure. Only a committed charge pauses it.
         if (tick < skeletonNextCastTick || action == Action.CHARGE || action == Action.CHARGE_WARNING
-                || action == Action.STOMP || action == Action.STOMP_WARNING || target == null) return;
+                || target == null) return;
         double range = pillarSkeleton.getLocation().distance(target.getLocation());
         WaveSixPillarSkeletonPolicy.Ability ability = WaveSixPillarSkeletonPolicy.nextAbility(
                 tick, skeletonLastTriple, skeletonLastBone, skeletonLastLance, hasTarget, range);
@@ -1068,8 +1133,8 @@ public final class RiftRamEncounter {
 
     private void tickSpireCast(List<Player> players) {
         SpireCast cast = skeletonCast;
-        if (action == Action.CHARGE || action == Action.CHARGE_WARNING || action == Action.STOMP
-                || action == Action.STOMP_WARNING || !host.active() || !host.owns(pillarSkeleton)) {
+        if (action == Action.CHARGE || action == Action.CHARGE_WARNING
+                || !host.active() || !host.owns(pillarSkeleton)) {
             skeletonCast = null;
             skeletonNextCastTick = tick + 20;
             host.pose(pillarSkeleton, "WAVE_RECOVER", 10);
@@ -1259,7 +1324,7 @@ public final class RiftRamEncounter {
             // The actor is gone; its UUID remains the durable death identity.
             pillarSkeleton = null;
         }
-        stompHits.clear(); stompRoster.clear(); stompResolved.clear(); chargeHits.clear();
+        trampleHits.clear(); trampleRoster.clear(); trampleBeatResolved.clear(); chargeHits.clear();
     }
     public void close() {
         if(closed) return;

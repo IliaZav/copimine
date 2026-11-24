@@ -21,7 +21,7 @@ import me.copimine.endevent.domain.RiftRamPolicy;
 import me.copimine.endevent.domain.RiftRamRecoveryPolicy;
 import me.copimine.endevent.domain.WaveSixPillarSkeletonPolicy;
 public class RamRuntimeProbe {
-  enum Action { CHARGE, CHASE, STUN, DEAD, RECOVER, STOMP, STOMP_WARNING, CHARGE_WARNING }
+  enum Action { CHARGE, CHASE, STUN, DEAD, RECOVER, TRAMPLE, TRAMPLE_WARN, CHARGE_WARNING }
   enum Sound { BLOCK_DEEPSLATE_BREAK, BLOCK_ANVIL_BREAK, BLOCK_DEEPSLATE_HIT, ENTITY_IRON_GOLEM_HURT }
   enum Material { NETHERITE_BLOCK }
   static class Entity { boolean valid=true; boolean isValid(){return valid;}boolean isDead(){return !valid;} }
@@ -99,7 +99,7 @@ public class RamRuntimeProbe {
   // Cleanup restores armour plates to where they stood; the probe keeps the same
   // rest ledger so the real cleanupDisplays() body compiles unmodified.
   Map<UUID,Location> pillarRestPositions=new HashMap<>();
-  Set<UUID> stompHits=new HashSet<>(),stompRoster=new HashSet<>(),stompResolved=new HashSet<>(),chargeHits=new HashSet<>();
+  Set<UUID> trampleHits=new HashSet<>(),trampleRoster=new HashSet<>(),trampleBeatResolved=new HashSet<>(),chargeHits=new HashSet<>();
   UUID id(){return ram==null?persistentId:ram.uuid;}
   static class Bukkit { static Entity loaded;static Map<UUID,Entity> guards=new HashMap<>();
     static Entity getEntity(UUID id){return loaded instanceof Ravager r && r.uuid.equals(id)?loaded:guards.get(id);} }

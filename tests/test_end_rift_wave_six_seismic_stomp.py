@@ -1,11 +1,15 @@
-"""Wave 6 seismic stomp: a real travelling particle wave, not an instant debuff.
+"""Wave 6 moving arena-wide earthquake: a bounded multi-front Trample, not one ring.
 
-The specification is explicit that the stomp must be a genuine expanding ground
-ring made only of vanilla particles, that a grounded player inside the annulus is
-slowed and nobody else is, and that no player can be hit twice by one cast. The
-encounter controller only drew the particles; the geometry that decides who is
-hit lives in RiftRamPolicy.stompHits, so that is what these tests compile and
-exercise directly.
+The owner-approved design (N23-P1-10) replaces the single stationary radius-12
+seam with a favourite "Trample": the Ram roars, then stampedes across the arena
+for 5-7 seconds and each deliberate foot contact emits ONE expanding front that
+travels outward. The pure rules live in
+``me.copimine.endevent.domain.RamMovingEarthquakePolicy``, so that is what these
+tests compile and exercise directly. The guarantees the old seam had are kept per
+front: a grounded player is hit once while the front sweeps past them, a player
+already behind it is safe, a fast tick cannot tunnel, and a player who jumps is
+safe. The moving front adds the bounded beat count, the owned per-beat timeline
+and the heavier-but-bounded final footfall.
 """
 import subprocess
 import textwrap
@@ -15,9 +19,10 @@ ROOT = Path(__file__).resolve().parents[1]
 DOMAIN = ROOT / "copimine-end-event/src/me/copimine/endevent/domain"
 
 PROBE = textwrap.dedent("""
-    import me.copimine.endevent.domain.RiftRamPolicy;
+    import me.copimine.endevent.domain.RamMovingEarthquakePolicy;
+    import me.copimine.endevent.domain.RamMovingEarthquakePolicy.BeatPhase;
 
-    public final class StompProbe {
+    public final class TrampleProbe {
         private static int checks = 0;
 
         private static void check(String label, boolean value) {
@@ -26,104 +31,111 @@ PROBE = textwrap.dedent("""
         }
 
         public static void main(String[] args) {
-            // --- dimensions match the approved design ---------------------------
-            check("radius is in the 10-12 band", RiftRamPolicy.STOMP_RADIUS >= 10.0D
-                    && RiftRamPolicy.STOMP_RADIUS <= 12.0D);
-            check("slowness lasts three seconds", RiftRamPolicy.stompSlowTicks() == 60);
-            check("slowness is level two", RiftRamPolicy.STOMP_SLOW_AMPLIFIER == 1);
-            check("the wave takes over a second to expand",
-                    RiftRamPolicy.STOMP_EXPANSION_TICKS >= 24
-                            && RiftRamPolicy.STOMP_EXPANSION_TICKS <= 30);
-            check("the warning precedes the wave",
-                    RiftRamPolicy.STOMP_WARNING_TICKS >= 15
-                            && RiftRamPolicy.STOMP_WARNING_TICKS <= 20);
-            check("the cooldown is 18-22 seconds",
-                    RiftRamPolicy.STOMP_COOLDOWN_TICKS >= 360
-                            && RiftRamPolicy.STOMP_COOLDOWN_TICKS <= 440);
+            // --- the Trample is bounded to 5..6 footfalls -----------------------
+            check("a small party gets the minimum bounded beat count",
+                    RamMovingEarthquakePolicy.beatsFor(2) == RamMovingEarthquakePolicy.BEATS_MIN);
+            check("a large party gets exactly one extra footfall",
+                    RamMovingEarthquakePolicy.beatsFor(20) == RamMovingEarthquakePolicy.BEATS_MAX);
+            check("the footfall band is 5..6",
+                    RamMovingEarthquakePolicy.BEATS_MIN >= 5
+                            && RamMovingEarthquakePolicy.BEATS_MAX <= 6);
 
-            // --- the wave is a travelling annulus, not an instant radius --------
-            // A player at 4 blocks is NOT hit while the ring has only reached 2.
-            check("not hit before the ring arrives",
-                    !RiftRamPolicy.stompHits(4.0D, 0.0D, true, 1.5D, 2.0D, false));
-            // The same player IS hit once the ring sweeps past them.
-            check("hit when the ring reaches them",
-                    RiftRamPolicy.stompHits(4.0D, 0.0D, true, 3.5D, 4.2D, false));
-            // A player the ring has ALREADY swept past must never be hit on a
-            // later frame. This is the case that proves the wave travels
-            // outward instead of being an instant radius: the player is well
-            // INSIDE the current ring, so only the lower bound of the annulus
-            // can protect them.
-            check("a player already behind the ring is safe",
-                    !RiftRamPolicy.stompHits(0.5D, 0.0D, true, 4.0D, 5.0D, false));
-            // And they are still safe many frames later, near the maximum radius.
-            check("a player behind the ring stays safe at full radius",
-                    !RiftRamPolicy.stompHits(1.0D, 0.0D, true, 10.0D, 11.5D, false));
+            // --- one owned timeline per footfall -------------------------------
+            int period = RamMovingEarthquakePolicy.BEAT_PERIOD_TICKS;
+            check("a footfall is tell + owned window + planted gap",
+                    period == RamMovingEarthquakePolicy.BEAT_WARNING_TICKS
+                            + RamMovingEarthquakePolicy.BEAT_FRONT_TICKS
+                            + RamMovingEarthquakePolicy.BEAT_GAP_TICKS);
+            check("the whole Trample is bounded",
+                    RamMovingEarthquakePolicy.totalTicks(RamMovingEarthquakePolicy.BEATS_MAX)
+                            == period * RamMovingEarthquakePolicy.BEATS_MAX);
+            check("the tell starts at zero",
+                    RamMovingEarthquakePolicy.phaseWithin(0) == BeatPhase.WARNING);
+            check("the release begins the front",
+                    RamMovingEarthquakePolicy.phaseWithin(RamMovingEarthquakePolicy.BEAT_WARNING_TICKS)
+                            == BeatPhase.FRONT);
+            check("the gap follows the front",
+                    RamMovingEarthquakePolicy.phaseWithin(RamMovingEarthquakePolicy.BEAT_WARNING_TICKS
+                            + RamMovingEarthquakePolicy.BEAT_FRONT_TICKS) == BeatPhase.GAP);
+            check("the beat index is monotonic per period",
+                    RamMovingEarthquakePolicy.beatIndex(5, period) == 1
+                            && RamMovingEarthquakePolicy.beatIndex(5, period * 4) == 4);
 
-            // The swept band keeps a fast tick from tunnelling through a player.
+            // --- the front is a travelling annulus, not an instant radius -------
+            check("not hit before the front arrives",
+                    !RamMovingEarthquakePolicy.frontHits(6.0D, 0.0D, true, 2.5D, 3.0D, false));
+            check("hit when the front reaches them",
+                    RamMovingEarthquakePolicy.frontHits(6.0D, 0.0D, true, 5.5D, 6.4D, false));
+            check("a player already behind the front is safe",
+                    !RamMovingEarthquakePolicy.frontHits(0.5D, 0.0D, true, 8.0D, 9.0D, false));
             check("a fast tick cannot tunnel past a player",
-                    RiftRamPolicy.stompHits(4.0D, 0.0D, true, 3.0D, 6.0D, false));
-
-            // --- the same cast never hits one player twice ---------------------
+                    RamMovingEarthquakePolicy.frontHits(6.0D, 0.0D, true, 4.0D, 9.0D, false));
             check("a recorded hit is never repeated",
-                    !RiftRamPolicy.stompHits(4.0D, 0.0D, true, 3.5D, 4.2D, true));
+                    !RamMovingEarthquakePolicy.frontHits(6.0D, 0.0D, true, 5.5D, 6.4D, true));
 
-            // --- jumping clears the wave ---------------------------------------
+            // --- jumping and elevation clear the front --------------------------
             check("a player well above the floor is safe",
-                    !RiftRamPolicy.stompHits(4.0D, 1.6D, true, 3.5D, 4.2D, false));
-            check("an airborne player is safe", 
-                    !RiftRamPolicy.stompHits(4.0D, 0.0D, false, 3.5D, 4.2D, false));
-            // Standing exactly on the floor is inside the band.
+                    !RamMovingEarthquakePolicy.frontHits(6.0D, 1.6D, true, 5.5D, 6.4D, false));
+            check("an airborne player is safe",
+                    !RamMovingEarthquakePolicy.frontHits(6.0D, 0.0D, false, 5.5D, 6.4D, false));
             check("standing on the floor is hittable",
-                    RiftRamPolicy.stompHits(4.0D, 0.0D, true, 3.5D, 4.2D, false));
+                    RamMovingEarthquakePolicy.frontHits(6.0D, 0.0D, true, 5.5D, 6.4D, false));
 
-            // --- range limits ---------------------------------------------------
+            // --- the front never reaches past its own maximum -------------------
+            check("the front crosses the arena (bigger than the old radius-12 seam)",
+                    RamMovingEarthquakePolicy.FRONT_MAX_RADIUS > 12.0D);
             check("beyond the maximum radius is safe",
-                    !RiftRamPolicy.stompHits(RiftRamPolicy.STOMP_RADIUS + 1.0D, 0.0D, true,
-                            RiftRamPolicy.STOMP_RADIUS - 1.0D, RiftRamPolicy.STOMP_RADIUS, false));
-            // A player standing exactly at the outer rim is caught by the final frame.
-            check("the outer rim is caught",
-                    RiftRamPolicy.stompHits(RiftRamPolicy.STOMP_RADIUS, 0.0D, true,
-                            RiftRamPolicy.STOMP_RADIUS - 1.0D, RiftRamPolicy.STOMP_RADIUS, false));
+                    !RamMovingEarthquakePolicy.frontHits(
+                            RamMovingEarthquakePolicy.FRONT_MAX_RADIUS + 1.0D, 0.0D, true,
+                            RamMovingEarthquakePolicy.FRONT_MAX_RADIUS - 1.0D,
+                            RamMovingEarthquakePolicy.FRONT_MAX_RADIUS, false));
+            check("a radius past the maximum is refused",
+                    !RamMovingEarthquakePolicy.frontHits(4.0D, 0.0D, true, 1.0D,
+                            RamMovingEarthquakePolicy.FRONT_MAX_RADIUS * 2.0D, false));
 
             // --- degenerate input is fail-closed --------------------------------
-            check("NaN distance is refused", !RiftRamPolicy.stompHits(Double.NaN, 0.0D, true, 1.0D, 2.0D, false));
+            check("NaN distance is refused",
+                    !RamMovingEarthquakePolicy.frontHits(Double.NaN, 0.0D, true, 1.0D, 2.0D, false));
             check("infinite radius is refused",
-                    !RiftRamPolicy.stompHits(4.0D, 0.0D, true, 1.0D, Double.POSITIVE_INFINITY, false));
-            check("a shrinking ring is refused",
-                    !RiftRamPolicy.stompHits(4.0D, 0.0D, true, 5.0D, 3.0D, false));
+                    !RamMovingEarthquakePolicy.frontHits(4.0D, 0.0D, true, 1.0D,
+                            Double.POSITIVE_INFINITY, false));
+            check("a shrinking front is refused",
+                    !RamMovingEarthquakePolicy.frontHits(4.0D, 0.0D, true, 5.0D, 3.0D, false));
             check("a negative previous radius is refused",
-                    !RiftRamPolicy.stompHits(4.0D, 0.0D, true, -1.0D, 3.0D, false));
+                    !RamMovingEarthquakePolicy.frontHits(4.0D, 0.0D, true, -1.0D, 3.0D, false));
 
-            // --- the stomp really damages, through the shared ability path ------
-            // The travelling wave front is the damage radius. The policy publishes
-            // the amount, the encounter applies it through host.damage, and the
-            // same per-cast hit set that stops a double debuff also stops a double
-            // hit, so one cast can never damage a player twice.
-            check("the stomp publishes a real damage amount",
-                    RiftRamPolicy.STOMP_DAMAGE > 0.0D
-                            && Double.isFinite(RiftRamPolicy.STOMP_DAMAGE));
-            check("the stomp damage is bounded like a heavy melee hit",
-                    RiftRamPolicy.STOMP_DAMAGE >= RiftRamPolicy.MELEE_DAMAGE
-                            && RiftRamPolicy.STOMP_DAMAGE <= 2.0D * RiftRamPolicy.MELEE_DAMAGE);
-            check("a recorded hit is already immune to repeat damage",
-                    !RiftRamPolicy.stompHits(4.0D, 0.0D, true, 3.5D, 4.2D, true));
+            // --- the footfall really damages, and the last is heavier ------------
+            check("the footfall publishes a real damage amount",
+                    RamMovingEarthquakePolicy.BEAT_DAMAGE > 0.0D
+                            && Double.isFinite(RamMovingEarthquakePolicy.BEAT_DAMAGE));
+            check("the final footfall is visibly heavier",
+                    RamMovingEarthquakePolicy.FINAL_BEAT_DAMAGE
+                            > RamMovingEarthquakePolicy.BEAT_DAMAGE);
+            check("even the final footfall stays bounded",
+                    RamMovingEarthquakePolicy.FINAL_BEAT_DAMAGE <= 2.0D * 6.0D);
+            check("only the last beat is heavier",
+                    RamMovingEarthquakePolicy.damageFor(0, 5) == RamMovingEarthquakePolicy.BEAT_DAMAGE
+                            && RamMovingEarthquakePolicy.damageFor(4, 5)
+                                    == RamMovingEarthquakePolicy.FINAL_BEAT_DAMAGE);
 
-            System.out.println("STOMP_CHECKS " + checks);
+            System.out.println("TRAMPLE_CHECKS " + checks);
         }
     }
 """)
 
 
-def test_seismic_stomp_is_a_travelling_particle_wave() -> None:
-    work = ROOT / "build" / "stomp-probe"
+def test_the_moving_earthquake_is_a_bounded_multibeat_trample() -> None:
+    work = ROOT / "build" / "trample-probe"
     work.mkdir(parents=True, exist_ok=True)
-    source = work / "StompProbe.java"
+    source = work / "TrampleProbe.java"
     source.write_text(PROBE, encoding="utf-8")
     compile_result = subprocess.run(
-        ["javac", "-d", str(work), str(source), str(DOMAIN / "RiftRamPolicy.java")],
+        ["javac", "-d", str(work), str(source),
+         str(DOMAIN / "RamMovingEarthquakePolicy.java")],
         capture_output=True, text=True,
     )
     assert compile_result.returncode == 0, compile_result.stderr
-    run = subprocess.run(["java", "-cp", str(work), "StompProbe"], capture_output=True, text=True)
+    run = subprocess.run(["java", "-cp", str(work), "TrampleProbe"],
+                         capture_output=True, text=True)
     assert run.returncode == 0, run.stdout + run.stderr
-    assert "STOMP_CHECKS" in run.stdout
+    assert "TRAMPLE_CHECKS" in run.stdout

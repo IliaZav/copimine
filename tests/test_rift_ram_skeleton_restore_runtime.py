@@ -21,7 +21,7 @@ def restore_probe(tmp_path_factory):
 import java.util.*;
 import me.copimine.endevent.domain.*;
 public class RamSkeletonRestoreProbe {
-    enum Action {CHASE,CHARGE,CHARGE_WARNING,STUN,STOMP_WARNING,STOMP,RECOVER,DEAD}
+    enum Action {CHASE,CHARGE,CHARGE_WARNING,STUN,TRAMPLE_WARN,TRAMPLE,RECOVER,DEAD}
     enum Material {OBSIDIAN,CRYING_OBSIDIAN,MAGMA_BLOCK}
     enum Sound {BLOCK_DEEPSLATE_PLACE}
     record Vector3f(float x,float y,float z){}

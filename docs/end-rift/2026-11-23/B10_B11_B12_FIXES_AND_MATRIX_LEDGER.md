@@ -436,3 +436,75 @@ Evidence tiers: `SOURCE` / `AUTO` / `NATIVE_BLOCKED`, as in section 1.
 - **Status**: `SOURCE` + `AUTO`. Whether torso-sampled cover reads fairly from all
   angles, and the real protected-hit rate, is `NATIVE_BLOCKED` here (no GUI
   client, no running Paper, no signed V4 client).
+
+### N23-P1-10 - the moving arena-wide earthquake (Trample)
+
+- **Where**: new pure policy
+  `copimine-end-event/src/me/copimine/endevent/domain/RamMovingEarthquakePolicy.java`;
+  the `TRAMPLE_WARN`/`TRAMPLE` states and `trample(...)`/`drawTrampleFront(...)`
+  methods in `RiftRamEncounter`, replacing the single stationary radius-12 seam.
+- **Defect**: the penultimate circle was one snapshot origin with one radius-12
+  expansion. The owner read it as "stationary circle spam": the Ram planted its
+  feet and pulsed a flat ring from one spot, the body never visibly charged
+  across the arena, the tell and the hit shared one origin so a player could not
+  tell where the next edge would open, and `avoidPillar` wrote a tangent velocity
+  without reorienting the body, so the Ram slid sideways near the active pillar.
+- **Fix (bounded multitbeat)**: `beatsFor(livingPlayers)` picks **5 footfalls**
+  normally and **6** at `LARGE_PARTY`; each footfall owns a fixed timeline
+  (`BEAT_WARNING_TICKS=16` tell, `BEAT_FRONT_TICKS=24` one damage window,
+  `BEAT_GAP_TICKS=8` planted gap), so the whole Trample is bounded to
+  `totalTicks(6)=288` ticks. `beatIndex`/`withinBeat`/`phaseWithin` are pure, so
+  the tell, the live front and the planted gap can never overlap.
+- **Fix (a moving front, not one ring)**: each foot contact releases **one owned
+  front** from where the foot fell; `frontRadius` grows it to
+  `FRONT_MAX_RADIUS=26` (deliberately larger than the old radius-12 seam) across
+  the window. `frontHits` is a swept annulus, so a grounded player is hit **once
+  per front that passes them**, a player already behind the edge is safe, a fast
+  tick cannot tunnel, and a player who jumps (or stands on a raised block) is
+  safe. The Ram keeps its AI on during the cast and re-targets the nearest body,
+  so the footfall origins genuinely advance.
+- **Fix (honesty)**: `trampleBeatResolved` is reset each footfall, but a body is
+  only recorded in `trampleHits` **and** given the secondary slow after
+  `host.damage(...)` returns `true`. A refused (protected) application is
+  resolved once for that front and never counted or slowed, so the shown front can
+  never disagree with an accepted receipt (same rule as N23-P1-04).
+- **Fix (gait)**: `avoidPillar` now rotates the body into the tangent with
+  `RamMovingEarthquakePolicy.gaitYaw(dx,dz)` (the one yaw convention `face(...)`
+  already uses) before accelerating, so the near-pillar sidestep no longer slides
+  sideways. A turn-in-place of a few ticks is the spec's accepted compromise.
+- **Fix (coordination)**: the pillar marksman no longer refuses to cast during
+  the Trample (only a committed charge pauses it), so the quake window is a real
+  coordinated dangerous window instead of a quiet gap in the pressure. The swarm
+  release on each destroyed pillar is untouched, including the last pillar.
+- **Bounded and preserved**: `BEAT_DAMAGE=5`, `FINAL_BEAT_DAMAGE=6.5` (heavier on
+  the visibly final footfall, still under two melee hits), slowness refresh-only
+  at `BEAT_SLOW_TICKS=40`/amplifier 0, so repeated fronts cannot stack. The 4+1
+  pillar roster, seven impacts and journal semantics are unchanged; the 5-mage
+  sphere is not resurrected.
+- **Regression test**: `tests/RamMovingEarthquakePolicyTest.java` (beat band
+  5..6; per-beat timeline; monotonic beat index; the front is a travelling
+  annulus, not an instant radius; tunneling refused; once-per-front; jump and
+  elevation clear; past-maximum and fail-closed degenerate input; the final
+  footfall is heavier but bounded), registered in `RunEndRiftEventChecks.ps1`
+  `$pureTests`. The rewritten `tests/test_end_rift_wave_six_seismic_stomp.py`
+  drives the same rules, and the new
+  `tests/test_rift_ram_trample_runtime.py` compiles the production
+  `trample`/`drawTrampleFront` body against a Paper stub (travel, once per front,
+  jump clears, beyond-maximum is safe, late join takes nothing, a refused hit is
+  never recorded, the cast cleans up its bounded sets). The old
+  `tests/test_rift_ram_stomp_runtime.py` was removed with the replaced seam.
+- **Gate-caught defect (honest record)**: the first full gate run **failed** on
+  `RamMovingEarthquakePolicyTest.gaitYawPointsAlongTranslation` with
+  `-Z is yaw 180`. Java's `Math.atan2(-0.0D, -1.0D)` returns `-180`, not `180`,
+  so the documented "yaw 180 faces -Z" convention did not hold for the straight
+  backward case and the body would have faced a half-turn wrong when retreating
+  along -Z. `gaitYaw` now canonicalises exactly that boundary
+  (`if (yaw == -180.0D) yaw = 180.0D;`) instead of loosening the test; the
+  assertion stays strict. This is why the candidate was rebuilt: the pinned
+  Gradle artifact moved from `622db6b5...` (2723629 B) to
+  `8cb640050942a157d79a9edf6c6a5e8b39f87cf54372da18e3fb29365c3198e4`
+  (2723673 B), and `622db6b5...` is prepended to `replaceSha256`.
+- **Status**: `SOURCE` + `AUTO`. Whether the stampede reads as a genuine moving
+  quake at 2/5/10/11/20 real players, and whether the jump timing feels fair, is
+  `NATIVE_BLOCKED` here (no GUI client, no running Paper, no signed V4 client).
+  Camera shake is a client-bound concern (N23-P1-07), not faked server-side.

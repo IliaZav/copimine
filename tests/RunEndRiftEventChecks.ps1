@@ -472,6 +472,10 @@ $pureTests = @(
   # regression in the roster could not fail the End Rift gate.
   'RiftRamPillarRosterPolicyTest',
   'WaveSixPillarSkeletonPolicyTest',
+  # N23-P1-10: the owner-approved moving arena-wide earthquake (Trample). The
+  # beat count, per-beat timeline, owned front, jump counterplay and gait yaw are
+  # pure, so a regression in the multibeat quake fails here without a server.
+  'RamMovingEarthquakePolicyTest',
   'BossEdgeVolleyPolicyTest',
   'GuardianRegenerationPolicyTest',
   'Wave4ObeliskRecoverySnapshotTest',

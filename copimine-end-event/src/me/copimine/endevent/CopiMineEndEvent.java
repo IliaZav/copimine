@@ -59,6 +59,7 @@ import me.copimine.endevent.domain.GuardianV5MeleePolicy;
 import me.copimine.endevent.domain.CrushingGravityPolicy;
 import me.copimine.endevent.domain.BossAbilityState;
 import me.copimine.endevent.domain.BossAbilityId;
+import me.copimine.endevent.domain.BossCastAvailabilityPolicy;
 import me.copimine.endevent.domain.SmallKagunePolicy;
 import me.copimine.endevent.domain.SmallKaguneSpawnPolicy;
 import me.copimine.endevent.domain.GuardianDeathLedger;
@@ -48974,7 +48975,19 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // through to the ordinary cast flow whenever melee cannot act, so it is
         // still "melee between casts", never a second damage source.
         if (tickGuardianPhysicalMelee(boss, now, finalSealPinned)) return;
-        if (isKaguneRingCastActive()) return;
+        // N23-P1-11: this used to `return` outright while a Last Seal ring was
+        // live, so a multi-row ring timeline left the phase with no ranged
+        // pressure at all even though melee already runs above this line. A
+        // live ring owns its own floor presentation, not the Guardian's pose,
+        // so one light, telegraphed, dodgeable projectile may continue; an
+        // ambush grab still pauses every major cast. `castCurrentBossSpell`
+        // applies the matching pool filter, and a refusal is receipted below
+        // instead of being silently consumed.
+        BossCastAvailabilityPolicy.BusySlot castSlot = bossAmbushOwnsMajorCast()
+                ? BossCastAvailabilityPolicy.BusySlot.AMBUSH
+                : isKaguneRingCastActive() ? BossCastAvailabilityPolicy.BusySlot.RING
+                : BossCastAvailabilityPolicy.BusySlot.NONE;
+        if (BossCastAvailabilityPolicy.blocksAllCasts(castSlot)) return;
         if (now >= bossSpellPauseUntilMillis && nextSpellMillis <= now
                 && bossSpellRetryAtMillis <= now && !crushingGravityLive()
                 && !activeBossParticipants().isEmpty()) {
@@ -48991,6 +49004,19 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 // The retry is a separate clock so it does not also silence
                 // melee: only the *spell* rolls back, not the whole attack loop.
                 bossSpellRetryAtMillis = now + 1_000L;
+                // N23-P1-11: while a ring owns the major slot, a refusal is the
+                // measurable starvation signal rather than an invisible return.
+                // Bounded per key, so a ring repeated across an encounter cannot
+                // turn this probe into production log noise.
+                if (castSlot == BossCastAvailabilityPolicy.BusySlot.RING) {
+                    logThrottledInfo("BOSS_CAST_REFUSED_RING", () -> "BOSS_CAST_REFUSED_RING event="
+                            + eventId + " generation=" + generation + " phase=" + bossPhase
+                            + " reason=no-ring-compatible-spell");
+                } else if (castSlot == BossCastAvailabilityPolicy.BusySlot.NONE) {
+                    logThrottledInfo("BOSS_CAST_REFUSED", () -> "BOSS_CAST_REFUSED event="
+                            + eventId + " generation=" + generation + " phase=" + bossPhase
+                            + " reason=admission");
+                }
                 getLogger().fine("BOSS_SPELL_RETRY event=" + eventId
                         + " generation=" + generation + " phase=" + bossPhase
                         + " retry_ms=1000");
@@ -51462,6 +51488,19 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || EchoDecoyPolicy.maySummonTo(echoDecoyIds.size()) == 0))
             available.remove(EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS);
         available.removeIf(spell -> !bossActionAvailable(spell));
+        // N23-P1-11: while the Last Seal ring owns the major slot, only the one
+        // light, telegraphed, dodgeable spell may overlap it. Every body- or
+        // floor-owning cast defers here rather than at the tick level, so a
+        // ring can never become a second major-cast owner and a compatible
+        // projectile still keeps the phase's ranged pressure alive. This is
+        // inlined from the already-present ring/ambush predicates so the
+        // extracted probe harness keeps seeing the same two stubs.
+        BossCastAvailabilityPolicy.BusySlot castSlot = bossAmbushOwnsMajorCast()
+                ? BossCastAvailabilityPolicy.BusySlot.AMBUSH
+                : isKaguneRingCastActive() ? BossCastAvailabilityPolicy.BusySlot.RING
+                : BossCastAvailabilityPolicy.BusySlot.NONE;
+        available = new ArrayList<>(BossCastAvailabilityPolicy.filter(available, castSlot));
+        if (available.isEmpty()) return false;
         long ownerGeneration = generation;
         BossPhase ownerPhase = bossPhase;
         for (int attempt = 0; attempt < 2 && !available.isEmpty(); attempt++) {

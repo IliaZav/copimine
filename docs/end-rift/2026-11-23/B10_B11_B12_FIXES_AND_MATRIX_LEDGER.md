@@ -351,3 +351,41 @@ Evidence tiers: `SOURCE` / `AUTO` / `NATIVE_BLOCKED`, as in section 1.
 - **Status**: `SOURCE` + `AUTO`. The rendered look of the six rigs and their
   audio is `NATIVE_BLOCKED` (no GUI client, no signed V4 client, no running
   server in this environment).
+
+### N23-P1-11 — attack-starvation instrumentation and a compatible alternative
+
+- **Where**: new pure policy
+  `copimine-end-event/src/me/copimine/endevent/domain/BossCastAvailabilityPolicy.java`,
+  the `tickCurrentBoss` spell-scheduler guard and refusal receipt, and the
+  pool filter in `CopiMineEndEvent.castCurrentBossSpell(LivingEntity, boolean)`.
+- **Defect**: `tickCurrentBoss` did `if (isKaguneRingCastActive()) return;`
+  immediately after the melee scheduler, so a multi-row Last Seal ring timeline
+  produced a long stretch of **zero ranged pressure** even though ordinary melee
+  already overlaps the ring (the melee call is one line above). The starvation
+  was invisible: nothing recorded that the scheduler had been skipped.
+- **Fix**: the ring gate is now an explicit slot. `BusySlot.RING` keeps exactly
+  one light, telegraphed, dodgeable spell (`RIFT_PROJECTILE`) and defers every
+  body- or floor-owning cast; `BusySlot.AMBUSH` still pauses **all** major casts,
+  matching the original overlap-safety rule; `BusySlot.NONE` is unchanged.
+  `castCurrentBossSpell` applies the same filter to its dispatchable pool
+  (after `bossActionAvailable`), so no second major-cast owner can run under a
+  ring. A refusal now emits a bounded `BOSS_CAST_REFUSED_RING` (or
+  `BOSS_CAST_REFUSED` when idle) receipt via the existing key-based
+  `logThrottledInfo`, so starvation is measurable instead of silent. The
+  `BOSS_SPELL_RETRY` FINE line and the "only an accepted cast consumes the major
+  cooldown" contract are untouched.
+- **Fail-closed by construction**: an unknown/null slot keeps the whole pool
+  (never blocks a legal cast); the filter returns an immutable copy; the
+  ambush grab still returns before the scheduler; the ring cannot admit a second
+  body- or floor-owner because `compatibleWhileRing` is exactly one spell.
+- **Regression test**: `tests/BossCastAvailabilityPolicyTest.java` (exactly one
+  ring-compatible spell; ambush blocks all, ring does not; NONE/null keep the
+  pool in order; RING keeps only the compatible spell; AMBUSH yields nothing;
+  null/empty pools; immutable results; no body/floor owner ever leaks through a
+  ring), registered in `RunEndRiftEventChecks.ps1` `$pureTests`. The existing
+  behavioural probe `tests/test_boss_spell_availability_adapter.py` still
+  compiles the real `castCurrentBossSpell` body and passes unchanged.
+- **Status**: `SOURCE` + `AUTO`. Whether one overlapping projectile feels fair at
+  2/5/10/11/20 real players, and the exact phase pressure curve, is a measured
+  `NATIVE_BLOCKED` question (no GUI client, no running Paper in this
+  environment).

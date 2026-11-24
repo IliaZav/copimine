@@ -8,6 +8,9 @@ test - only the artifact check that the class ships in the jar.
 
 The class is plain Java except for three types, which the probe supplies as stubs:
 EndEventWorldVfxManager.BeamSnapshot, PrisonerHudLayout.Rect and WaveCombatPresentationPolicy.
+It also reads the V5.1 authored-cast cue through SpellVisualGeometry; that class is pure Java
+(JDK only), so the probe compiles the real source rather than a stub and the SPELL dispatch is
+exercised for real.
 """
 from __future__ import annotations
 
@@ -20,6 +23,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 CLIENT_SRC = ROOT / "tools/minecraft-26.3/client/src/main/java"
 POLICY = CLIENT_SRC / "me/copimine/client/RitualSpellPresentationPolicy.java"
+SPELL_GEOMETRY = CLIENT_SRC / "me/copimine/client/SpellVisualGeometry.java"
 
 STUB_VEC3 = "package me.copimine.client;\n\npublic record Vec3(double x, double y, double z) { }\n"
 
@@ -260,6 +264,48 @@ PROBE = textwrap.dedent(
             check("malformed core-outline key is not the core outline", garbled.stream().noneMatch(
                     p -> p.kind() == RitualSpellPresentationPolicy.PassKind.CORE_OUTLINE));
 
+            // --- Authored V5.1 cast cues become reconstructed spell meshes ------------------
+            // The cue is exactly v51-<token>-<seed>; the client rebuilds the mesh locally, so the
+            // policy only has to route the beam to ONE spell layer and never to a fallback ribbon.
+            List<EndEventWorldVfxManager.BeamSnapshot> authored = List.of(
+                    new EndEventWorldVfxManager.BeamSnapshot(
+                            instance("v51-crown-4242"), "minecraft:the_end",
+                            null, null, 0, 1.0F, 1000, 5000),
+                    new EndEventWorldVfxManager.BeamSnapshot(
+                            instance("v51-gravity-77"), "minecraft:the_end",
+                            null, null, 0, 1.0F, 1000, 5000));
+            List<RitualSpellPresentationPolicy.WorldPass> spellPasses = new ArrayList<>();
+            RitualSpellPresentationPolicy.drawWorldPasses(authored, "minecraft:the_end", 2000,
+                    pass -> { spellPasses.add(pass); return snapshot -> { }; });
+            check("two authored casts share one spell layer",
+                    spellPasses.size() == 1
+                            && spellPasses.get(0).kind() == RitualSpellPresentationPolicy.PassKind.SPELL);
+            check("an authored cast is never a glyph",
+                    spellPasses.stream().noneMatch(
+                            p -> p.kind() == RitualSpellPresentationPolicy.PassKind.GLYPH));
+
+            // A key that is not exactly v51-<token>-<seed> must not conjure a mesh: prepared
+            // casts, missing seeds and unknown tokens stay plain ribbons.
+            List<EndEventWorldVfxManager.BeamSnapshot> notSpells = List.of(
+                    new EndEventWorldVfxManager.BeamSnapshot(
+                            instance("v51-crown"), "minecraft:the_end",
+                            null, null, 0, 1.0F, 1000, 5000),
+                    new EndEventWorldVfxManager.BeamSnapshot(
+                            instance("v51-nope-7"), "minecraft:the_end",
+                            null, null, 0, 1.0F, 1000, 5000),
+                    new EndEventWorldVfxManager.BeamSnapshot(
+                            instance("v51-crown-12x"), "minecraft:the_end",
+                            null, null, 0, 1.0F, 1000, 5000));
+            List<RitualSpellPresentationPolicy.WorldPass> fellThrough = new ArrayList<>();
+            RitualSpellPresentationPolicy.drawWorldPasses(notSpells, "minecraft:the_end", 2000,
+                    pass -> { fellThrough.add(pass); return snapshot -> { }; });
+            check("a malformed v51 cue is not a spell mesh",
+                    fellThrough.stream().noneMatch(
+                            p -> p.kind() == RitualSpellPresentationPolicy.PassKind.SPELL));
+            check("a malformed v51 cue is still just a ribbon",
+                    fellThrough.stream().anyMatch(
+                            p -> p.kind() == RitualSpellPresentationPolicy.PassKind.RIBBON));
+
             // --- Screen cue selection --------------------------------------------------
             List<EndEventWorldVfxManager.BeamSnapshot> screens = List.of(
                     new EndEventWorldVfxManager.BeamSnapshot(
@@ -334,6 +380,7 @@ def _javac() -> Path:
 
 def test_spell_presentation_is_allowlisted_and_keeps_the_hud_clear(tmp_path: Path) -> None:
     assert POLICY.is_file(), f"spell presentation source is missing: {POLICY}"
+    assert SPELL_GEOMETRY.is_file(), f"spell geometry source is missing: {SPELL_GEOMETRY}"
     javac = _javac()
     java = javac.with_name("java.exe")
 
@@ -347,7 +394,7 @@ def test_spell_presentation_is_allowlisted_and_keeps_the_hud_clear(tmp_path: Pat
     probe = package_dir / "SpellPresentationProbe.java"
     probe.write_text(PROBE, encoding="utf-8")
 
-    sources = [str(p) for p in sorted(package_dir.glob("*.java"))] + [str(POLICY)]
+    sources = [str(p) for p in sorted(package_dir.glob("*.java"))] + [str(POLICY), str(SPELL_GEOMETRY)]
     compile_result = subprocess.run(
         [str(javac), "-proc:none", "-encoding", "UTF-8", "-d", str(tmp_path / "out")] + sources,
         capture_output=True, text=True, timeout=300,

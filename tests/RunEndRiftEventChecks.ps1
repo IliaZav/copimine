@@ -510,6 +510,11 @@ $pureTests = @(
   # cancel). The round-trip, the hard byte ceiling and the hostile-input
   # rejection are pure, so a malformed cast packet fails here without a client.
   'SpellCastPacketCodecTest',
+  # V6 Phase 4 (CoreMemorialService): the victory memorial viewport for a large
+  # winner roster. Sanitising, exact-dedupe, deterministic order, the line/char
+  # budget and the truthful shown/overflow split are pure, so a roster that would
+  # overflow the display fails here without a server.
+  'CoreMemorialLayoutPolicyTest',
   'CreativeTestAdmissionPolicyTest',
   'BossAiSimulationTest',
   'BossCastTimelineTest',

@@ -622,3 +622,56 @@ consumer is still open.
   then verified "31 pinned plugin candidates". One pre-existing duplicate
   (`f12397d3…`, indices 68 and 244) was left untouched, because the documented
   convention is to never dedupe this list.
+
+### V6 section 9E Phase 4 - the Core memorial survives a full raid roster
+
+V6 asks for `CoreMemorialService`: "persistent names and clean large-roster
+viewport/interaction; must not own gameplay HP". The memorial existed only as a
+single `TextDisplay` whose body was one unbounded join
+(`names.sorted().reduce((l, r) -> l + ", " + r)`) under `setLineWidth(240)`, so
+the body grew linearly with the roster and had to be wrapped or clipped by the
+client. There was no cap, no overflow statement and no protection against a
+corrupt name.
+
+- **Policy**: `domain/CoreMemorialLayoutPolicy.java` is state-free and owns no
+  HP, reward or gameplay value.
+  - `sanitize` strips `§` formatting codes and control characters, collapses
+    whitespace and caps a name at 16 characters, so a corrupt or hostile profile
+    cannot push the viewport off screen.
+  - `canonicalNames` collapses *exact* duplicates only and sorts
+    case-insensitively with a natural tie-break. Two accounts that differ only by
+    case both stay: merging `Ann` and `ann` would silently delete a real winner
+    from the record.
+  - `layout` packs three names per line, closes a line early past 48 characters,
+    caps the block at five lines, and gives the last line to `…и ещё N` when the
+    roster does not fit. `shown + overflow == total` always holds, **and**
+    `shown` equals the number of names actually rendered. The first draft
+    replaced the final line with the summary while still counting the displaced
+    names as shown, which would have overstated the memorial; the test now pins
+    `renderedNameCount(view) == view.shown()` (40 names -> 12 rendered + 28
+    hidden, five lines).
+- **Wiring**: `spawnVictoryMemorialVisuals` renders
+  `String.join("\n§f", memorial.lines())` instead of one joined line, and
+  `END_EVENT_VICTORY_MEMORIAL` now logs `winners=<shown>/<total>` plus
+  `hidden=<overflow>` when truncated, so a large roster is diagnosable without
+  dumping every name into the log. `victoryMemorialNames()` keeps its signature
+  for existing callers and now returns the canonical, deduped join.
+- **Tests**: `tests/CoreMemorialLayoutPolicyTest.java` (registered in
+  `$pureTests`) covers sanitising, exact-only dedupe, join-order independence, a
+  three-player roster, a 40-player truncation with a truthful count, the
+  per-line character budget, empty and null rosters, and canonicalisation
+  stability.
+- **Status**: `SOURCE` + `AUTO`. How a large memorial actually reads in the real
+  `TextDisplay` (font metrics, client wrapping, visibility from the Core) is
+  `NATIVE_BLOCKED` here - no GUI client, no running Paper, no signed V4 client.
+  No HP, reward or roster-membership semantics changed.
+- **Re-pin**: this change alters the Gradle `migrationPlugins` candidate, so the
+  pin moved again. Candidate `CopiMineEndEvent-26.3.jar` is now
+  sha256 `958130c959cc5fd4458b6c4d3613bdd57aa656673be49d1c272862c1576bba6c`
+  (2 751 628 B, sha512 `c14357d3…`), built twice from the same source with the
+  CI toolchain (Temurin 25.0.4.1) and byte-identical both times. The displaced
+  `1cac8e0d…` is prepended to `candidate.replaceSha256` (newest first), and the
+  lock, the migration pin test (both the sequential assertions and the
+  full-list pin), `OWN_PLUGIN_INVENTORY.json/.md` and the F2 checklist header
+  move together. `install_migration_server_plugins.py --stage-only` verifies all
+  31 candidates, and the local 26.3 runtime was reinstalled from the new lock.

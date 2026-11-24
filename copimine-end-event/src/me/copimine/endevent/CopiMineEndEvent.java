@@ -49,6 +49,7 @@ import me.copimine.artifacts.api.EventArtifactRewardRequest;
 import me.copimine.artifacts.api.EventArtifactRewardService;
 import me.copimine.artifacts.api.RewardIssueResult;
 import me.copimine.endevent.domain.ArenaInfernoPolicy;
+import me.copimine.endevent.domain.CoreMemorialLayoutPolicy;
 import me.copimine.endevent.domain.InfernoArenaLifecyclePolicy;
 import me.copimine.endevent.domain.InfernoMobWindowPolicy;
 import me.copimine.endevent.domain.InfernoSceneryPolicy;
@@ -63753,15 +63754,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 && !officialRewardRoster.isEmpty();
     }
 
-    private String victoryMemorialNames() {
+    private List<String> victoryMemorialNameList() {
         Set<UUID> namesSource = officialRewardRoster.isEmpty()
                 ? participantUuids : officialRewardRoster;
         return namesSource.stream()
                 .map(this::offlineName)
                 .filter(name -> name != null && !name.isBlank())
-                .sorted(String.CASE_INSENSITIVE_ORDER)
-                .reduce((left, right) -> left + ", " + right)
-                .orElse("участники");
+                .collect(Collectors.toList());
+    }
+
+    private String victoryMemorialNames() {
+        return String.join(", ", CoreMemorialLayoutPolicy.canonicalNames(victoryMemorialNameList()));
     }
 
     private void spawnVictoryMemorialVisuals(World world) {
@@ -63777,14 +63780,22 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Location location = new Location(world, coreX + 0.5D, coreY + 2.25D, coreZ + 0.5D);
         TextDisplay display = world.spawn(location, TextDisplay.class);
         tag(display, EVENT_KIND_MEMORIAL, 0, false);
+        // V6 Phase 4 (CoreMemorialService): a raid roster is bounded instead of
+        // joined into one ever-growing line. The viewport packs names three per
+        // line, caps the block, and replaces the last line with "…и ещё N" when
+        // the roster does not fit, so the block never leaves the 240 px display.
+        CoreMemorialLayoutPolicy.View memorial =
+                CoreMemorialLayoutPolicy.layout(victoryMemorialNameList());
         display.setText("§5РАЗЛОМ ПОБЕЖДЁН\n§dХранитель повержен\n§7Победители: §f"
-                + victoryMemorialNames());
+                + String.join("\n§f", memorial.lines()));
         display.setBillboard(TextDisplay.Billboard.CENTER);
         display.setLineWidth(240);
         display.setTransformation(new Transformation(
                 new Vector3f(), new AxisAngle4f(), new Vector3f(0.45F, 0.45F, 0.45F), new AxisAngle4f()));
         getLogger().info("END_EVENT_VICTORY_MEMORIAL event=" + eventId
-                + " core=" + coreLocationText() + " winners=" + victoryMemorialNames());
+                + " core=" + coreLocationText()
+                + " winners=" + memorial.shown() + "/" + memorial.total()
+                + (memorial.truncated() ? " hidden=" + memorial.overflow() : ""));
     }
 
     private void announceVictory() {

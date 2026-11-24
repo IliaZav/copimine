@@ -100,6 +100,9 @@ public class CocoonFallAdapterProbe {
     String locationText(Location l){return "location";}
     void tickKaguneRingCast(LivingEntity b){} void tickEchoAttackReplicas(LivingEntity b){}
     void renderCocoonLanding(Location l){impacts++;}
+    // 9G.07: the authored shell split plays before the descent. The probe
+    // stubs it so the fall clock assertions stay about the fall, not the VFX.
+    void playCocoonShatter(LivingEntity b,Location floor){}
     boolean teleportCombatEntity(LivingEntity b,Location l){moves++;if(rejectMove)return false;b.y=l.y+(redirectMove?1.0:0.0);return true;}
     void forcePhase(EventPhase p,String reason){recoveryReason=reason;}
     boolean saveStateSync(){return true;}

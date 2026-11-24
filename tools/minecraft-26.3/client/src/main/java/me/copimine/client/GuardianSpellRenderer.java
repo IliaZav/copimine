@@ -59,6 +59,7 @@ public final class GuardianSpellRenderer {
             case 830213 -> "snare_chains";
             case 830214 -> "echo_bloom";
             case 830215 -> "euphoria_helix";
+            case 830216 -> "chest_beam";
             default -> "";
         };
         if (mesh.isEmpty() || GuardianSpellMesh.vertices(mesh).isEmpty()) return null;
@@ -69,7 +70,9 @@ public final class GuardianSpellRenderer {
         if (model == 830213) scale *= 1F - .15F*Math.min(1F, age/30F);
         // A floor rune spins around its vertical normal, never through the floor.
         // Arches and arrow racks remain upright and keep their committed facing.
-        float yaw = -entity.getYRot() + (model == 830208 ? age * 1.8F : model == 830215 ? age * 3F : 0F);
+        float yaw = -entity.getYRot() + (model == 830208 ? age * 1.8F
+                : model == 830215 ? age * 3F
+                : model == 830216 ? age * 5F : 0F);
         float roll = model == 830204 || model >= 830208 ? 0F : age * 4F;
         float size = switch (model) {
             case 830208 -> 2.6F;
@@ -81,6 +84,7 @@ public final class GuardianSpellRenderer {
             case 830213 -> 1.5F;
             case 830214 -> 1.4F;
             case 830215 -> 1.3F;
+            case 830216 -> 1.15F;
             default -> 1F;
         };
         return new Pose(mesh, yaw, entity.getXRot(), roll, scale * size, age);
@@ -123,6 +127,12 @@ public final class GuardianSpellRenderer {
                     1F + .13F * release, -.34F, release, 0xC5F2FF);
             case "euphoria_helix" -> new Motion(1F + .08F * heartbeat, .85F + .18F * charge,
                     1F + .08F * heartbeat, .38F, heartbeat, 0xFAABFF);
+            // The chest socket compresses inward as it charges, then the gyro
+            // rings snap outward on release. A strong twist keeps the nested
+            // rings counter-rotating so the body never reads as a static cube.
+            case "chest_beam" -> new Motion(1F - .16F * charge + .10F * release,
+                    1F - .16F * charge + .10F * release,
+                    1F + .20F * release, .46F, release + .25F * charge, 0xF3C6FF);
             default -> new Motion(1F, 1F, 1F, 0F, 0F, 0xFFFFFF);
         };
     }

@@ -16,7 +16,9 @@ public final class GuardianSpellMesh {
             "final_seal", "chest_iris", "kagune_splinter", "fault_fragment",
             "void_rune", "inferno_crown", "summon_arch", "arrow_rack",
             // The four miniboss signatures: door, chains, bloom and helix.
-            "rift_gate", "snare_chains", "echo_bloom", "euphoria_helix"};
+            "rift_gate", "snare_chains", "echo_bloom", "euphoria_helix",
+            // The signature chest beam's own exposed-socket body.
+            "chest_beam"};
     private static final Map<String, List<Vertex>> MESHES = loadAll();
     public record Vertex(float x, float y, float z, float u, float v, float nx, float ny, float nz) { }
     private GuardianSpellMesh() { }

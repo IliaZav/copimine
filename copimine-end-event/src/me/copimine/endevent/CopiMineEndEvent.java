@@ -64,6 +64,7 @@ import me.copimine.endevent.domain.GuardianDeathLedger;
 import me.copimine.endevent.domain.KaguneCocoonGuardianPolicy;
 import me.copimine.endevent.domain.EchoDecoyPolicy;
 import me.copimine.endevent.domain.CocoonFallPolicy;
+import me.copimine.endevent.domain.CocoonShatterPolicy;
 import me.copimine.endevent.domain.BossSummonAdmissionPolicy;
 import me.copimine.endevent.domain.EchoAttackReplicaPolicy;
 import me.copimine.endevent.domain.EchoReplicaPresentationPolicy;
@@ -53774,6 +53775,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         playBossVisualCue(boss, bossCueId(EndRiftAiPolicy.BossSpell.CHEST_BEAM.id(),
                 BossVisualCuePolicy.CueStage.RELEASE), chest, false);
         world.playSound(chest, Sound.ENTITY_ENDER_DRAGON_GROWL, SoundCategory.HOSTILE, 1.0F, 0.9F);
+        // 9H.01/9H.02 shot 4: the opened chest socket must stay visible while
+        // the shaft is live, not vanish the instant the telegraph model expires.
+        playBossSpellModel(boss, EndRiftAiPolicy.BossSpell.CHEST_BEAM.id(), chest,
+                ChestBeamPolicy.FIRE_TICKS + ChestBeamPolicy.AFTERMATH_TICKS, false);
         getLogger().info("BOSS_CHEST_BEAM_FIRE event=" + eventId + " boss=" + bossId
                 + " lanes=" + aims.size() + " targets=" + participants.size()
                 + " phase=" + bossPhase + " generation=" + callbackGeneration);
@@ -53794,6 +53799,25 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 return;
             }
             int tick = elapsed[0];
+            // Shot 4/5 beats: the crown detonates at the real collision end of
+            // every locked lane, then the fracturing shell spits its recoil.
+            if (tick == ChestBeamPolicy.CHARGE_TICKS) {
+                for (ChestBeamPolicy.Aim aim : aims) {
+                    Location end = new Location(world, aim.tipX(), aim.tipY(), aim.tipZ());
+                    world.playSound(end, Sound.ENTITY_WARDEN_SONIC_BOOM,
+                            SoundCategory.HOSTILE, 1.6F, 1.1F);
+                    spawnEventParticle(end, Particle.EXPLOSION_EMITTER, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+                    spawnEventParticle(end, Particle.END_ROD, 12, 1.1D, 0.7D, 1.1D, 0.03D);
+                }
+            }
+            if (tick == ChestBeamPolicy.CHARGE_TICKS + ChestBeamPolicy.FIRE_TICKS) {
+                for (ChestBeamPolicy.Aim aim : aims) {
+                    Location end = new Location(world, aim.tipX(), aim.tipY(), aim.tipZ());
+                    spawnEventParticle(end, Particle.SQUID_INK, 8, 0.7D, 0.5D, 0.7D, 0.02D);
+                    world.playSound(end, Sound.BLOCK_RESPAWN_ANCHOR_DEPLETE,
+                            SoundCategory.HOSTILE, 1.2F, 1.4F);
+                }
+            }
             if (ChestBeamPolicy.chargingAt(tick)) {
                 renderChestBeamCharge(chest, aims, tick);
             } else if (ChestBeamPolicy.damagesAt(tick)) {
@@ -53866,7 +53890,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 : 1.0D;
         var beat = firing ? BossSpellGeometryPolicy.Beat.RELEASE
                 : BossSpellGeometryPolicy.Beat.IMPACT;
-        var points = BossSpellGeometryPolicy.sample(BossSpellGeometryPolicy.Shape.RIFT_LANCE,
+        var points = BossSpellGeometryPolicy.sample(BossSpellGeometryPolicy.Shape.CHEST_BEAM,
                 beat, progress, ChestBeamPolicy.BEAM_RADIUS);
         int hue = firing ? composition.impactHue() : composition.telegraphHue();
         // Keep the lane edges marked through the whole ultimate. During the
@@ -53887,16 +53911,63 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             Location tip = new Location(chest.getWorld(), aim.tipX(), aim.tipY(), aim.tipZ());
             String key = CHEST_BEAM_VFX_PREFIX + lane;
+            // The wire protocol caps one beam at 0.45 blocks, but the real
+            // swept capsule is BEAM_RADIUS = 1.7 either side. Draw a bounded
+            // cross-section instead of a hairline: a hot core, a vertical pair
+            // and a horizontal pair of shells, all derived from the same locked
+            // Aim. The bright core and the rails still mark the true hit
+            // corridor; the shells only give the shaft believable volume.
+            int core = hue & 0xFFFFFF;
+            int shell = scaleRgb(core, 0.66D);
+            ChestBeamPolicy.Aim up = ChestBeamPolicy.rail(aim, 0.0D, 0.28D);
+            ChestBeamPolicy.Aim down = ChestBeamPolicy.rail(aim, 0.0D, -0.28D);
+            ChestBeamPolicy.Aim left = ChestBeamPolicy.rail(aim, 0.28D, 0.0D);
+            ChestBeamPolicy.Aim right = ChestBeamPolicy.rail(aim, -0.28D, 0.0D);
+            World beamWorld = chest.getWorld();
             for (Player viewer : viewers) {
-                sendWorldBeamPacket(viewer, key, chest, tip, hue, 0.32F);
+                sendWorldBeamPacket(viewer, key, chest, tip, core, 0.45F);
+                sendWorldBeamPacket(viewer, key + "-shell-u", railPoint(chest, up),
+                        railTip(beamWorld, up), shell, 0.45F);
+                sendWorldBeamPacket(viewer, key + "-shell-d", railPoint(chest, down),
+                        railTip(beamWorld, down), shell, 0.45F);
+                sendWorldBeamPacket(viewer, key + "-shell-l", railPoint(chest, left),
+                        railTip(beamWorld, left), shell, 0.45F);
+                sendWorldBeamPacket(viewer, key + "-shell-r", railPoint(chest, right),
+                        railTip(beamWorld, right), shell, 0.45F);
             }
         }
     }
 
     /**
+     * Translate one authored rail back into world space for the wire beam.
+     */
+    private static Location railPoint(Location base, ChestBeamPolicy.Aim aim) {
+        if (base == null || aim == null) {
+            return base;
+        }
+        return new Location(base.getWorld(), aim.ox(), aim.oy(), aim.oz());
+    }
+
+    private static Location railTip(World world, ChestBeamPolicy.Aim aim) {
+        if (world == null || aim == null) {
+            return null;
+        }
+        return new Location(world, aim.tipX(), aim.tipY(), aim.tipZ());
+    }
+
+    /** Scale an RGB triple toward black; presentation-only depth for the shell. */
+    private static int scaleRgb(int rgb, double factor) {
+        double safe = Double.isFinite(factor) ? Math.clamp(factor, 0.0D, 1.0D) : 1.0D;
+        int red = (int) Math.round(((rgb >> 16) & 0xFF) * safe);
+        int green = (int) Math.round(((rgb >> 8) & 0xFF) * safe);
+        int blue = (int) Math.round((rgb & 0xFF) * safe);
+        return (Math.clamp(red, 0, 255) << 16) | (Math.clamp(green, 0, 255) << 8)
+                | Math.clamp(blue, 0, 255);
+    }
+
+    /**
      * Charge / aim-lock beat of the signature ultimate (specification 9H.02,
      * shots 2 and 3).
-     *
      * <p>The authored ultimate spends its first {@link ChestBeamPolicy#CHARGE_TICKS}
      * charging, but that window previously drew nothing: the only beam visuals
      * fired during the damage and aftermath stages. A player therefore had no
@@ -56502,6 +56573,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " stage=" + cocoonFallStage
                 + " fall_ticks=" + CocoonFallPolicy.FALL_TICKS
                 + " landing_ticks=" + CocoonFallPolicy.LANDING_TICKS);
+        // 9G.07: the shell must break before the Guardian descends, not vanish.
+        playCocoonShatter(boss, coreBlockTopLocation());
     }
 
     /**
@@ -56642,6 +56715,166 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " generation=" + generation
                 + " x=" + landing.getBlockX() + " y=" + landing.getBlockY()
                 + " z=" + landing.getBlockZ());
+    }
+
+    /**
+     * Authored cocoon split (9G.07). Purely cosmetic: no block is changed, no
+     * damage is dealt, and the fall clock in {@link CocoonFallPolicy} is never
+     * touched. Plates are real {@link BlockDisplay} actors so the break reads in
+     * vanilla -- a required client is not needed to see it.
+     */
+    private void playCocoonShatter(LivingEntity boss, Location floor) {
+        if (boss == null || floor == null || floor.getWorld() == null
+                || !floor.getWorld().equals(boss.getWorld()) || taskRegistry == null) {
+            return;
+        }
+        final long ownerGeneration = generation;
+        final String ownerEvent = eventId;
+        final World world = floor.getWorld();
+        // The shell is anchored to the boss's real hover pose, not to the floor:
+        // when the descent starts the body leaves the shell behind and the
+        // breaking plates stay where the cocoon actually was. The floor is only
+        // used for the outward dust shock.
+        final Location centre = boss.getLocation().clone().add(0.0D,
+                Math.min(CocoonShatterPolicy.SHELL_HALF_HEIGHT,
+                        Math.max(0.6D, boss.getHeight() * 0.45D)), 0.0D);
+        final double floorY = floor.getY() + 0.12D;
+        final List<CocoonShatterPolicy.Plate> plates = CocoonShatterPolicy.plates();
+        final List<BlockDisplay> displays = new ArrayList<>(plates.size());
+        for (CocoonShatterPolicy.Plate plate : plates) {
+            var resting = CocoonShatterPolicy.offset(plate, 0);
+            Location at = centre.clone().add(resting.x(), resting.y(), resting.z());
+            try {
+                BlockDisplay display = world.spawn(at, BlockDisplay.class, entity -> {
+                    entity.setBlock((plate.index() % 3 == 1
+                            ? Material.CRYING_OBSIDIAN : Material.PURPUR_BLOCK).createBlockData());
+                    entity.setBrightness(new Display.Brightness(15, 15));
+                    entity.setGravity(false);
+                    entity.setInvulnerable(true);
+                    entity.setPersistent(false);
+                    entity.setInterpolationDuration(1);
+                    entity.setTeleportDuration(1);
+                    entity.setTransformation(new Transformation(
+                            new Vector3f(-0.5F, -0.5F, -0.5F), new Quaternionf(),
+                            new Vector3f((float) plate.size(), (float) plate.size() * 0.55F,
+                                    (float) plate.size() * 0.35F),
+                            new Quaternionf()));
+                });
+                tag(display, EVENT_KIND_DISPLAY, 0, true);
+                registerOwnedEntity(display);
+                displays.add(display);
+            } catch (RuntimeException failure) {
+                getLogger().warning("COCOON_SHATTER_PLATE_SPAWN_FAILED event=" + eventId);
+                break;
+            }
+        }
+        if (displays.isEmpty()) {
+            return;
+        }
+        getLogger().info("RIFT_COCOON_SHATTER event=" + eventId + " generation=" + generation
+                + " plates=" + displays.size() + " ticks=" + CocoonShatterPolicy.TOTAL_TICKS);
+        BukkitTask task = new BukkitRunnable() {
+            int tick;
+            @Override public void run() {
+                if (taskRegistry == null || !taskRegistry.owns(ownerGeneration)
+                        || generation != ownerGeneration || !Objects.equals(eventId, ownerEvent)
+                        || !boss.isValid() || !boss.getWorld().equals(world)) {
+                    removeDisplays();
+                    cancel();
+                    return;
+                }
+                if (tick >= CocoonShatterPolicy.TOTAL_TICKS) {
+                    removeDisplays();
+                    cancel();
+                    return;
+                }
+                var stage = CocoonShatterPolicy.stageAt(tick);
+                if (stage == CocoonShatterPolicy.Stage.VEINS_PULSE && tick % 2 == 0) {
+                    double pulse = CocoonShatterPolicy.veinPulse(tick);
+                    double radius = CocoonShatterPolicy.SHELL_RADIUS + 0.06D;
+                    int points = 14;
+                    for (int i = 0; i < points; i++) {
+                        double a = i * Math.PI * 2.0D / points + tick * 0.12D;
+                        world.spawnParticle(Particle.DUST,
+                                centre.clone().add(Math.cos(a) * radius,
+                                        Math.sin(a * 3.0D) * 0.7D, Math.sin(a) * radius),
+                                1, 0, 0, 0, 0,
+                                new Particle.DustOptions(Color.fromRGB(
+                                        (int) (90 + 120 * pulse), 20, (int) (110 + 80 * pulse)), 0.7F));
+                    }
+                    if (tick == 0) playEncounterAbilityAudioAt(centre, "kagune_eruption");
+                }
+                if (stage == CocoonShatterPolicy.Stage.SHELL_CRACK) {
+                    double progress = CocoonShatterPolicy.crackProgress(tick);
+                    int arms = 8;
+                    for (int arm = 0; arm < arms; arm++) {
+                        double a = arm * Math.PI * 2.0D / arms + 0.35D;
+                        double length = CocoonShatterPolicy.SHELL_RADIUS * (0.35D + 0.65D * progress);
+                        for (int s = 0; s <= 3; s++) {
+                            double u = s / 3.0D;
+                            world.spawnParticle(Particle.END_ROD,
+                                    centre.clone().add(Math.cos(a) * length * u,
+                                            Math.sin(arm) * 0.4D, Math.sin(a) * length * u),
+                                    1, 0, 0, 0, 0);
+                        }
+                    }
+                    if (tick % 4 == 0) world.playSound(centre, Sound.BLOCK_DEEPSLATE_BREAK, 1.6F, 0.6F);
+                }
+                if (CocoonShatterPolicy.burstStartsAt(tick)) {
+                    world.playSound(centre, Sound.ENTITY_ENDER_DRAGON_HURT, 2.2F, 0.55F);
+                    world.playSound(centre, Sound.ENTITY_WARDEN_SONIC_BOOM, 1.2F, 0.7F);
+                }
+                if (CocoonShatterPolicy.shockStartsAt(tick)) {
+                    world.playSound(centre, Sound.ENTITY_GENERIC_EXPLODE, 1.8F, 0.7F);
+                }
+                if (stage == CocoonShatterPolicy.Stage.SHOCK_DUST
+                        || stage == CocoonShatterPolicy.Stage.REVEAL) {
+                    double radius = CocoonShatterPolicy.shockRadius(tick);
+                    if (radius > 0.0D && tick % 2 == 0) {
+                        int points = 24;
+                        for (int i = 0; i < points; i++) {
+                            double a = i * Math.PI * 2.0D / points;
+                            world.spawnParticle(Particle.DUST,
+                                    new Location(world, centre.getX() + Math.cos(a) * radius,
+                                            floorY, centre.getZ() + Math.sin(a) * radius),
+                                    1, 0, 0, 0, 0,
+                                    new Particle.DustOptions(Color.fromRGB(70, 55, 92), 0.9F));
+                        }
+                    }
+                }
+                double fade = CocoonShatterPolicy.revealFade(tick);
+                for (int i = 0; i < displays.size(); i++) {
+                    BlockDisplay display = displays.get(i);
+                    if (!display.isValid()) continue;
+                    var plate = plates.get(i);
+                    if (!CocoonShatterPolicy.released(plate, tick)) continue;
+                    var pose = CocoonShatterPolicy.offset(plate, tick);
+                    if (!Float.isFinite((float) pose.x()) || !Float.isFinite((float) pose.y())
+                            || !Float.isFinite((float) pose.z())) continue;
+                    double size = plate.size() * fade;
+                    display.teleport(centre.clone().add(pose.x(), pose.y(), pose.z()));
+                    display.setTransformation(new Transformation(
+                            new Vector3f(-(float) size * 0.5F,
+                                    -(float) size * 0.28F,
+                                    -(float) size * 0.18F),
+                            new AxisAngle4f((float) Math.toRadians(pose.pitchDegrees()), 1F, 0F, 0F),
+                            new Vector3f((float) size, (float) size * 0.55F,
+                                    (float) size * 0.35F),
+                            new AxisAngle4f((float) Math.toRadians(pose.rollDegrees()), 0F, 0F, 1F)));
+                }
+                tick++;
+            }
+            private void removeDisplays() {
+                for (BlockDisplay display : displays) {
+                    UUID id = display.getUniqueId();
+                    Entity removed = unregisterOwnedEntity(id, "cocoon-shatter-expired");
+                    if (removed != null && removed.isValid()) removed.remove();
+                    else if (display.isValid()) display.remove();
+                }
+                displays.clear();
+            }
+        }.runTaskTimer(this, 1L, 1L);
+        registerEncounterTask(task);
     }
 
     private void recordTentacleGuardianSpawnFailure(int slot) {

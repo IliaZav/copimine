@@ -18,7 +18,16 @@ public final class BossSpellGeometryPolicy {
          * player-facing spell. Each now has both a silhouette in sample() and a
          * client mesh in modelData().
          */
-        RIFT_GATE, SNARE_CHAINS, ECHO_BLOOM, EUPHORIA_HELIX
+        RIFT_GATE, SNARE_CHAINS, ECHO_BLOOM, EUPHORIA_HELIX,
+        /*
+         * The owner's signature ultimate: a finite chest ray with an exposed
+         * socket. It used to reuse RIFT_LANCE, which meant the "visual
+         * benchmark" of the whole encounter shared its silhouette with an
+         * ordinary projectile; 9H.02 requires the beam to read as its own
+         * authored family (core, turbulent shell, helices, travelling rings,
+         * impact crown).
+         */
+        CHEST_BEAM
     }
     public enum Anchor { CHEST, FEET, LOCKED_FLOOR }
     public enum Beat { CHARGE, RELEASE, IMPACT }
@@ -54,10 +63,8 @@ public final class BossSpellGeometryPolicy {
             case "defeat_collapse" -> Shape.DEFEAT;
             case "rift_fracture", "inferno_geyser" -> Shape.GEYSER;
             // The owner's approved chest beam: a straight, finite ray leaving the
-            // chest toward a locked lane. It reuses the lance body because that
-            // is already a body and not a flat decal, and because the beam is a
-            // ray rather than a new silhouette family.
-            case "chest_beam" -> Shape.RIFT_LANCE;
+            // chest toward a locked lane, with its own authored body family.
+            case "chest_beam" -> Shape.CHEST_BEAM;
             case "rift_step" -> Shape.RIFT_GATE;
             case "void_snare" -> Shape.SNARE_CHAINS;
             case "echo_pulse" -> Shape.ECHO_BLOOM;
@@ -107,6 +114,9 @@ public final class BossSpellGeometryPolicy {
             case SNARE_CHAINS -> 830213;
             case ECHO_BLOOM -> 830214;
             case EUPHORIA_HELIX -> 830215;
+            // The signature chest beam's own exposed-socket body. A distinct id
+            // is the whole point: the beam must not be the lance mesh.
+            case CHEST_BEAM -> 830216;
             default -> 0;
         };
     }
@@ -116,7 +126,7 @@ public final class BossSpellGeometryPolicy {
         return switch (shape) {
             case VOID_RUNE, FINAL_SEAL, AMBUSH_TALONS, GEYSER, SNARE_CHAINS -> Anchor.LOCKED_FLOOR;
             case VOID_SPHERE -> Anchor.LOCKED_FLOOR;
-            case RIFT_LANCE, ARROW_RACK, FIREBALL_CAGE, CHEST_IRIS -> Anchor.CHEST;
+            case RIFT_LANCE, ARROW_RACK, FIREBALL_CAGE, CHEST_IRIS, CHEST_BEAM -> Anchor.CHEST;
             default -> Anchor.FEET;
         };
     }
@@ -303,6 +313,45 @@ public final class BossSpellGeometryPolicy {
                     add(out, Math.cos(a) * s, u * 2.6 * size, Math.sin(a) * s, strand);
                 }
                 polygon(out, 8, r * 0.45 * size, 0.05, spin * 0.2, 3, 2);
+            }
+            case CHEST_BEAM -> {
+                // 9H.02 shot 4, one authored silhouette: (a) a dense inner core
+                // along the ray, (b) two counter-twisting outer helices giving the
+                // shaft a real cross-section from the side, (c) rings that march
+                // from the chest toward the tip so the shaft reads as travelling
+                // energy rather than a clear rod, and (d) a separate expanding
+                // impact crown at the far end on release/impact. The charge beat
+                // compresses the same axis into a short hot socket, so the tell
+                // and the shot belong to one family without looking identical.
+                //
+                // The shaft must span the real 26-block finite lane. `size` is
+                // the authored unit scale (the same convention RIFT_LANCE uses
+                // for its 2.4-block body), so the release reach is expressed in
+                // blocks and peaks exactly on ChestBeamPolicy.BEAM_RANGE. The
+                // charge beat stays a compressed socket: a short hot core with
+                // the same rings, which is the tell, not the shot.
+                double reach = charge ? 1.6 * size : 26.0 * size;
+                int corePoints = charge ? 12 : 26;
+                for (int i = 0; i < corePoints; i++) {
+                    add(out, 0, 0, 0.12 + (reach - 0.12) * i / (corePoints - 1.0), 2);
+                }
+                for (int strand = 0; strand < 2; strand++) for (int i = 0; i < 14; i++) {
+                    double u = i / 13.0;
+                    double a = u * TAU * 1.35 + spin * (strand == 0 ? 1 : -1) + strand * Math.PI;
+                    double s = (charge ? 0.30 : 0.24 + 0.10 * Math.sin(Math.PI * u)) * size;
+                    add(out, Math.cos(a) * s, Math.sin(a) * s, 0.10 + reach * u, strand);
+                }
+                for (int ring = 0; ring < 3; ring++) for (int i = 0; i < 8; i++) {
+                    double u = Math.min(1.0, (ring + p * 0.9) / 3.0);
+                    double a = i * TAU / 8 + spin * 0.5;
+                    double s = (0.34 + 0.12 * Math.sin(Math.PI * u)) * size;
+                    add(out, Math.cos(a) * s, Math.sin(a) * s, 0.15 + reach * u, 1);
+                }
+                if (!charge) for (int i = 0; i < 12; i++) {
+                    double a = i * TAU / 12;
+                    double s = (0.35 + 0.55 * easeOut(p)) * size;
+                    add(out, Math.cos(a) * s, Math.sin(a) * s, reach, 1);
+                }
             }
         }
         return List.copyOf(out);

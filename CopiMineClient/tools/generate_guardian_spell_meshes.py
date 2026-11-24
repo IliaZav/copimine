@@ -150,6 +150,35 @@ def meshes():
         helix.append(box(8 + math.cos(a) * 3.1, 1.0, 8 + math.sin(a) * 3.1,
                          3.4, .7, 1.0, 12, ('y', 45)))
     result['euphoria_helix'] = helix
+    # The signature chest beam's exposed socket (9H.01): one compressed core,
+    # three counter-rotated gyro rings and four rails along the firing axis. It
+    # is deliberately compact -- the ray itself is drawn from the server's
+    # authored geometry, so this body only has to read as the chest socket.
+    beam = [box(8, 8, 8, 2.8, 2.8, 2.8, 14)]
+    for ring in range(3):
+        radius = 5.0 + ring
+        tile = 12 if ring % 2 == 0 else 13
+        length = radius * 2.1
+        if ring == 0:
+            bars = [box(8, 8 + radius, 8, length, 1.2, 1.2, tile),
+                    box(8, 8 - radius, 8, length, 1.2, 1.2, tile),
+                    box(8 - radius, 8, 8, 1.2, length, 1.2, tile),
+                    box(8 + radius, 8, 8, 1.2, length, 1.2, tile)]
+        elif ring == 1:
+            bars = [box(8, 8, 8 + radius, 1.2, length, 1.2, tile),
+                    box(8, 8, 8 - radius, 1.2, length, 1.2, tile),
+                    box(8, 8 + radius, 8, 1.2, 1.2, length, tile),
+                    box(8, 8 - radius, 8, 1.2, 1.2, length, tile)]
+        else:
+            bars = [box(8, 8, 8 + radius, length, 1.2, 1.2, tile),
+                    box(8, 8, 8 - radius, length, 1.2, 1.2, tile),
+                    box(8 + radius, 8, 8, 1.2, 1.2, length, tile),
+                    box(8 - radius, 8, 8, 1.2, 1.2, length, tile)]
+        beam += bars
+    for dx in (-1.2, 1.2):
+        for dy in (-1.2, 1.2):
+            beam.append(box(8 + dx, 8 + dy, 19, .9, .9, 10, 2))
+    result['chest_beam'] = beam
     return result
 
 

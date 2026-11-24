@@ -72,6 +72,9 @@ public final class EndEventTextureCatalog {
         Map<String, Identifier> textures = new LinkedHashMap<>();
         textures.put("END_RIFT_ENDERMAN_V1", entityTexture("end_rift_user_enderman.png"));
         textures.put("END_RIFT_ELITE_V1", entityTexture("end_rift_elite.png"));
+        textures.put("END_RIFT_INFERNO_MAGMA_V1", entityTexture("end_rift_inferno_magma.png"));
+        textures.put("END_RIFT_INFERNO_BLAZE_V1", entityTexture("end_rift_inferno_blaze.png"));
+        textures.put("END_RIFT_INFERNO_WITHER_V1", entityTexture("end_rift_inferno_wither.png"));
         textures.put("END_RIFT_ZOMBIE_V1", entityTexture("end_rift_zombie.png"));
         textures.put("END_RIFT_ELITE_ZOMBIE_V1", entityTexture("end_rift_elite_zombie.png"));
         textures.put("END_RIFT_WAVE_GUARDIAN_ENDERMAN_V1", entityTexture("end_rift_user_enderman.png"));

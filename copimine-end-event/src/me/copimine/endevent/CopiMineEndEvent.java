@@ -50,6 +50,8 @@ import me.copimine.artifacts.api.EventArtifactRewardService;
 import me.copimine.artifacts.api.RewardIssueResult;
 import me.copimine.endevent.domain.ArenaInfernoPolicy;
 import me.copimine.endevent.domain.InfernoArenaLifecyclePolicy;
+import me.copimine.endevent.domain.InfernoMobWindowPolicy;
+import me.copimine.endevent.domain.InfernoSceneryPolicy;
 import me.copimine.endevent.domain.EndEventDisplayItems;
 import me.copimine.endevent.domain.WaveSixSequencePolicy;
 import me.copimine.endevent.domain.Wave7MarksmanDefenderPolicy;
@@ -388,6 +390,9 @@ import org.bukkit.entity.Skeleton;
 import org.bukkit.entity.Spider;
 import org.bukkit.entity.Snowball;
 import org.bukkit.entity.SmallFireball;
+import org.bukkit.entity.Blaze;
+import org.bukkit.entity.MagmaCube;
+import org.bukkit.entity.WitherSkeleton;
 import org.bukkit.entity.TextDisplay;
 import org.bukkit.entity.Zombie;
 import org.bukkit.event.EventHandler;
@@ -519,12 +524,22 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      */
     private static final String EVENT_KIND_ECHO_DECOY = "ECHO_DECOY";
     /**
+     * N23-P1-09: a Phase 4 infernal summon. Its own kind, so the bounded roster
+     * and the phase-exit cleanup can never confuse it with a wave elite, a boss
+     * servant or an Echo decoy.
+     */
+    private static final String EVENT_KIND_INFERNO_ELITE = "INFERNO_ELITE";
+    /**
      * Contract 15.2 Type A: a delayed attack copy is its own actor kind too. It
      * is a hazard with a lifetime, never a wave mob and never the boss.
      */
     private static final String EVENT_KIND_ECHO_REPLICA = "ECHO_REPLICA";
     private static final String CLIENT_VISUAL_ENDERMAN = "END_RIFT_ENDERMAN_V1";
     private static final String CLIENT_VISUAL_ELITE = "END_RIFT_ELITE_V1";
+    /** N23-P1-09: the three authored Phase 4 infernal summons. */
+    private static final String CLIENT_VISUAL_INFERNO_MAGMA = "END_RIFT_INFERNO_MAGMA_V1";
+    private static final String CLIENT_VISUAL_INFERNO_BLAZE = "END_RIFT_INFERNO_BLAZE_V1";
+    private static final String CLIENT_VISUAL_INFERNO_WITHER = "END_RIFT_INFERNO_WITHER_V1";
     private static final String CLIENT_VISUAL_WAVE_GUARDIAN_ENDERMAN = "END_RIFT_WAVE_GUARDIAN_ENDERMAN_V1";
     private static final String CLIENT_VISUAL_RITUAL_GUARD_ENDERMAN = "END_RIFT_RITUAL_GUARD_ENDERMAN_V1";
     private static final String CLIENT_VISUAL_SPIDER = "END_RIFT_SPIDER_V1";
@@ -975,6 +990,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Map<UUID, Long> arenaInfernoLastDamageTick = new HashMap<>();
     private int arenaInfernoArmorWear;
     private int arenaInfernoVentBudget;
+    /**
+     * N23-P1-09: the owned Phase 4 infernal pack, by entity id.
+     *
+     * <p>One map is the whole roster authority: membership is the alive count the
+     * bounded policy is asked about, so a body can never be spawned outside the
+     * cap or survive the phase by being forgotten here.</p>
+     */
+    private final Map<UUID, InfernoElite> infernoElites = new LinkedHashMap<>();
+    /** A refused placement backs off instead of retrying every tick. */
+    private long infernoPackRetryTick = Long.MIN_VALUE;
+    /** The frame counter the scenery orbits advance on. */
+    private int infernoSceneryFrame;
     private final Set<UUID> lootIssuedEntityUuids = new HashSet<>();
     private final Set<UUID> spellServants = new HashSet<>();
     /** Contract 15.3: living Echo decoys of the real Guardian, this generation. */
@@ -10827,6 +10854,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return switch (visualId) {
             case CLIENT_VISUAL_ENDERMAN -> "assets/copimineclient/textures/entity/end_rift_user_enderman.png";
             case CLIENT_VISUAL_ELITE -> "assets/copimineclient/textures/entity/end_rift_elite.png";
+            case CLIENT_VISUAL_INFERNO_MAGMA ->
+                    "assets/copimineclient/textures/entity/end_rift_inferno_magma.png";
+            case CLIENT_VISUAL_INFERNO_BLAZE ->
+                    "assets/copimineclient/textures/entity/end_rift_inferno_blaze.png";
+            case CLIENT_VISUAL_INFERNO_WITHER ->
+                    "assets/copimineclient/textures/entity/end_rift_inferno_wither.png";
             case CLIENT_VISUAL_WAVE_GUARDIAN_ENDERMAN,
                     CLIENT_VISUAL_RITUAL_GUARD_ENDERMAN, CLIENT_VISUAL_RITUAL_CASTER ->
                     "assets/copimineclient/textures/entity/end_rift_user_enderman.png";
@@ -54790,6 +54823,417 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (!stage.shouldRestore(castTick)) {
             spawnArenaInfernoSteamVents(boss, castTick);
         }
+        // N23-P1-09: the bounded infernal pack and the overhead scenery share
+        // this one cast. The pack is fail-closed by its own window policy, so a
+        // phase change retires every body on the very next tick.
+        tickInfernoPack(boss, castTick);
+    }
+
+    /**
+     * N23-P1-09: one owned Phase 4 infernal summon.
+     *
+     * <p>The map of these IS the roster: membership is the alive count the
+     * bounded policy is asked about, so a body can never be spawned outside the
+     * cap or survive the phase by being forgotten in a second list.</p>
+     */
+    private static final class InfernoElite {
+        final UUID id;
+        final InfernoMobWindowPolicy.Role role;
+        final long castSequence;
+        long nextActionTick;
+        int salvoRemaining;
+        int targetChanges;
+
+        InfernoElite(UUID id, InfernoMobWindowPolicy.Role role, long castSequence) {
+            this.id = id;
+            this.role = role;
+            this.castSequence = castSequence;
+        }
+    }
+
+    /**
+     * The whole Phase 4 pack for one tick: breach tell, spawn to the bounded
+     * cap, drive the three distinct roles, retire anything whose window closed.
+     */
+    private void tickInfernoPack(LivingEntity boss, int castTick) {
+        if (boss == null || boss.getWorld() == null) {
+            return;
+        }
+        renderInfernoScenery(boss, castTick);
+        if (!InfernoMobWindowPolicy.windowActive(bossPhase)) {
+            clearInfernoElites("window-closed");
+            return;
+        }
+        boolean partyActive = phase == EventPhase.BOSS_ACTIVE || isTestBoss(boss);
+        for (InfernoElite elite : new ArrayList<>(infernoElites.values())) {
+            Entity body = ownedEntities.get(elite.id);
+            boolean ownerValid = body != null && body.isValid() && !body.isDead()
+                    && elite.castSequence == arenaInfernoSequence;
+            if (InfernoMobWindowPolicy.shouldRetire(bossPhase, ownerValid, partyActive, false)) {
+                retireInfernoElite(elite.id, "retire");
+            }
+        }
+        int living = Math.max(1, activeLivingPlayers().size());
+        if (castTick < InfernoMobWindowPolicy.SPAWN_BREACH_TICKS) {
+            // The authored 3D breach tell: the party can see where the pack is
+            // about to land before a single body exists.
+            renderInfernoBreach(boss, castTick);
+            return;
+        }
+        if (infernoElites.size() < InfernoMobWindowPolicy.capFor(living)) {
+            maybeSpawnInfernoElite(boss, castTick, living);
+        }
+        for (InfernoElite elite : new ArrayList<>(infernoElites.values())) {
+            tickInfernoElite(boss, elite);
+        }
+    }
+
+    /** Spawn at most one body per call, honouring the role budget and backoff. */
+    private void maybeSpawnInfernoElite(LivingEntity boss, int castTick, int living) {
+        if (eventTickCounter < infernoPackRetryTick) {
+            return;
+        }
+        InfernoMobWindowPolicy.Role wanted = null;
+        for (InfernoMobWindowPolicy.Role role : InfernoMobWindowPolicy.Role.values()) {
+            int budget = InfernoMobWindowPolicy.roleBudget(living, role);
+            long owned = infernoElites.values().stream().filter(e -> e.role == role).count();
+            if (owned < budget) {
+                wanted = role;
+                break;
+            }
+        }
+        if (wanted == null) {
+            return;
+        }
+        if (!InfernoMobWindowPolicy.maySpawn(bossPhase, wanted, living, infernoElites.size(),
+                false, true)) {
+            infernoPackRetryTick = eventTickCounter + InfernoMobWindowPolicy.SPAWN_RETRY_TICKS;
+            return;
+        }
+        Location spot = findInfernoSpawnLocation(boss, castTick);
+        Entity body = spot == null ? null : spawnInfernoElite(boss, wanted, spot);
+        if (body == null) {
+            infernoPackRetryTick = eventTickCounter + InfernoMobWindowPolicy.SPAWN_RETRY_TICKS;
+            return;
+        }
+        infernoElites.put(body.getUniqueId(),
+                new InfernoElite(body.getUniqueId(), wanted, arenaInfernoSequence));
+        getLogger().info("BOSS_INFERNO_SPAWN event=" + eventId + " role=" + wanted
+                + " alive=" + infernoElites.size() + " cap="
+                + InfernoMobWindowPolicy.capFor(living));
+    }
+
+    /** A deterministic, protected-cell-free ring around the combat anchor. */
+    private Location findInfernoSpawnLocation(LivingEntity boss, int castTick) {
+        World world = boss.getWorld();
+        Location anchor = coreCombatAnchorLocation();
+        if (world == null || anchor == null) {
+            return null;
+        }
+        double ringRadius = Math.max(MIN_WAVE_CORE_DISTANCE_BLOCKS + 2.0D,
+                boundedCombatRadius(config.arenaRadius()) * 0.62D);
+        int radius = Math.max(4, (int) Math.round(ringRadius));
+        for (int attempt = 0; attempt < 16; attempt++) {
+            double angle = Math.toRadians((castTick * 37 + attempt * 61) % 360);
+            int x = anchor.getBlockX() + (int) Math.round(Math.cos(angle) * radius);
+            int z = anchor.getBlockZ() + (int) Math.round(Math.sin(angle) * radius);
+            if (isProtectedInfernoCell(x, z)) {
+                continue;
+            }
+            if (arenaInfernoBlocks.stream().anyMatch(block -> block.getX() == x && block.getZ() == z)) {
+                continue;
+            }
+            Location candidate = new Location(world, x + 0.5D, combatLevelY(), z + 0.5D);
+            if (!isArenaLocation(candidate)) {
+                continue;
+            }
+            Block feet = candidate.getBlock();
+            if (!feet.isPassable() || !feet.getRelative(BlockFace.UP).isPassable()
+                    || !feet.getRelative(BlockFace.DOWN).getType().isSolid()) {
+                continue;
+            }
+            return candidate;
+        }
+        return null;
+    }
+
+    /** Create one real, owned, custom-textured infernal vanilla-type body. */
+    private Entity spawnInfernoElite(LivingEntity boss, InfernoMobWindowPolicy.Role role,
+                                     Location spot) {
+        World world = boss.getWorld();
+        if (world == null || spot == null) {
+            return null;
+        }
+        EntityType type = switch (role) {
+            case MAGMA_CUBE -> EntityType.MAGMA_CUBE;
+            case BLAZE -> EntityType.BLAZE;
+            case WITHER_SKELETON -> EntityType.WITHER_SKELETON;
+        };
+        Entity entity = world.spawnEntity(spot, type);
+        if (entity == null) {
+            return null;
+        }
+        tag(entity, EVENT_KIND_INFERNO_ELITE, 0, phase == EventPhase.BOSS_ACTIVE && !isTestBoss(boss));
+        if (entity instanceof Mob body) {
+            body.setPersistent(true);
+            body.setRemoveWhenFarAway(false);
+            body.setCanPickupItems(false);
+            double health = switch (role) {
+                case MAGMA_CUBE -> 24.0D;
+                case BLAZE -> 20.0D;
+                case WITHER_SKELETON -> 26.0D;
+            };
+            AttributeInstance maxHealth = body.getAttribute(Attribute.GENERIC_MAX_HEALTH);
+            if (maxHealth != null) {
+                maxHealth.setBaseValue(health);
+                body.setHealth(health);
+            }
+            // Every point of damage is authored by this pack, so vanilla melee
+            // must be zeroed or a single cleave would land twice.
+            AttributeInstance attack = body.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE);
+            if (attack != null) {
+                attack.setBaseValue(0.0D);
+            }
+            if (entity instanceof MagmaCube cube) {
+                // Size 1 never divides on death; an explicit daughter is the only
+                // way this role ever multiplies, and that is budget-gated.
+                cube.setSize(1);
+                AttributeInstance scale = body.getAttribute(Attribute.GENERIC_SCALE);
+                if (scale != null) {
+                    scale.setBaseValue(2.2D);
+                }
+            }
+            if (entity instanceof WitherSkeleton skeleton) {
+                skeleton.setShouldBurnInDay(false);
+            }
+            body.setAI(true);
+            body.setAware(true);
+        }
+        registerOwnedEntity(entity);
+        bindEventEntityClientForOnlinePlayers(entity);
+        return isLiveOwnedEntity(entity.getUniqueId()) ? entity : null;
+    }
+
+    /** One tick of one infernal body: target, telegraph, bounded authored attack. */
+    private void tickInfernoElite(LivingEntity boss, InfernoElite elite) {
+        Entity raw = ownedEntities.get(elite.id);
+        if (!(raw instanceof Mob body) || !body.isValid() || body.isDead()) {
+            retireInfernoElite(elite.id, "gone");
+            return;
+        }
+        Player target = nearestInfernoTarget(body);
+        switch (elite.role) {
+            case MAGMA_CUBE -> tickInfernoMagma(boss, elite, body, target);
+            case BLAZE -> tickInfernoBlaze(boss, elite, body, target);
+            case WITHER_SKELETON -> tickInfernoWither(boss, elite, body, target);
+        }
+    }
+
+    private Player nearestInfernoTarget(LivingEntity body) {
+        Player best = null;
+        double bestDistance = Double.MAX_VALUE;
+        for (Player player : activeLivingPlayers()) {
+            if (player == null || !player.getWorld().equals(body.getWorld())
+                    || player.isDead() || player.isInvulnerable()) {
+                continue;
+            }
+            double distance = player.getLocation().distanceSquared(body.getLocation());
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                best = player;
+            }
+        }
+        return best;
+    }
+
+    /** Ground jumper: a telegraphed leap, then a bounded heat splash if it lands close. */
+    private void tickInfernoMagma(LivingEntity boss, InfernoElite elite, Mob body,
+                                  Player target) {
+        if (target == null) {
+            return;
+        }
+        body.lookAt(target);
+        if (eventTickCounter < elite.nextActionTick) {
+            return;
+        }
+        elite.nextActionTick = eventTickCounter + InfernoMobWindowPolicy.MAGMA_JUMP_TELEGRAPH_TICKS * 2L;
+        Vector toward = target.getLocation().toVector().subtract(body.getLocation().toVector());
+        if (toward.lengthSquared() > 0.01D) {
+            body.setVelocity(toward.normalize().multiply(0.6D).setY(0.45D));
+        }
+        if (!InfernoMobWindowPolicy.attackAllowed(bossPhase, isProtectedInfernoPlayer(target),
+                body.hasLineOfSight(target))) {
+            return;
+        }
+        double radius = InfernoMobWindowPolicy.MAGMA_LANDING_RADIUS;
+        if (body.getLocation().distanceSquared(target.getLocation()) <= radius * radius
+                && applyBossActorAbilityDamage(boss, body, target,
+                InfernoMobWindowPolicy.MAGMA_LANDING_DAMAGE)) {
+            body.getWorld().spawnParticle(Particle.LAVA, body.getLocation(), 18, 0.5D, 0.1D, 0.5D, 0.0D);
+            recordParticleEmission(18);
+        }
+    }
+
+    /** Airborne caster: a bounded salvo of visible, aimed shots with a short rest. */
+    private void tickInfernoBlaze(LivingEntity boss, InfernoElite elite, Mob body,
+                                  Player target) {
+        if (target == null) {
+            return;
+        }
+        body.lookAt(target);
+        if (eventTickCounter < elite.nextActionTick) {
+            return;
+        }
+        if (elite.salvoRemaining <= 0) {
+            elite.salvoRemaining = InfernoMobWindowPolicy.blazeSalvoSize(2 + Math.floorMod(elite.id.hashCode(), 2));
+            elite.nextActionTick = eventTickCounter + 40L;
+            return;
+        }
+        elite.salvoRemaining--;
+        elite.nextActionTick = eventTickCounter + InfernoMobWindowPolicy.BLAZE_SALVO_GAP_TICKS;
+        if (!InfernoMobWindowPolicy.attackAllowed(bossPhase, isProtectedInfernoPlayer(target),
+                body.hasLineOfSight(target))
+                || body.getLocation().distanceSquared(target.getLocation()) > 24.0D * 24.0D) {
+            return;
+        }
+        Location eye = body.getLocation().add(0.0D, 0.6D, 0.0D);
+        Vector toTarget = target.getLocation().add(0.0D, 1.0D, 0.0D).toVector().subtract(eye.toVector());
+        if (toTarget.lengthSquared() > 0.0001D) {
+            Vector step = toTarget.normalize().multiply(0.4D);
+            for (int i = 1; i <= 5; i++) {
+                Location point = eye.clone().add(step.clone().multiply(i));
+                body.getWorld().spawnParticle(Particle.SOUL_FIRE_FLAME, point, 2, 0.0D, 0.0D, 0.0D, 0.0D);
+            }
+        }
+        if (applyBossActorAbilityDamage(boss, body, target, 3.0D)) {
+            target.setFireTicks(Math.max(target.getFireTicks(), 40));
+            recordParticleEmission(10);
+        }
+    }
+
+    /** Close-range stalker: a quick approach and a periodic heavy cleave. */
+    private void tickInfernoWither(LivingEntity boss, InfernoElite elite, Mob body,
+                                   Player target) {
+        if (target == null) {
+            return;
+        }
+        body.lookAt(target);
+        if (eventTickCounter < elite.nextActionTick) {
+            return;
+        }
+        elite.nextActionTick = eventTickCounter + InfernoMobWindowPolicy.WITHER_CLEAVE_PERIOD_TICKS;
+        if (!InfernoMobWindowPolicy.attackAllowed(bossPhase, isProtectedInfernoPlayer(target),
+                body.hasLineOfSight(target))) {
+            return;
+        }
+        if (body.getLocation().distanceSquared(target.getLocation()) <= 9.0D
+                && applyBossActorAbilityDamage(boss, body, target, 5.0D)) {
+            target.getWorld().spawnParticle(Particle.SOUL, target.getLocation().add(0.0D, 1.0D, 0.0D),
+                    10, 0.3D, 0.4D, 0.3D, 0.01D);
+            recordParticleEmission(10);
+        }
+    }
+
+    /** A protected player is one standing on the Core pad or a cold inferno cell. */
+    private boolean isProtectedInfernoPlayer(Player player) {
+        if (player == null) {
+            return false;
+        }
+        int x = player.getLocation().getBlockX();
+        int z = player.getLocation().getBlockZ();
+        return isProtectedInfernoCell(x, z)
+                || arenaInfernoSafeBlocks.containsKey(new HazardPlanner.Point(x, z));
+    }
+
+    /** Retire one body now: authored ember puff, real removal, ownership freed. */
+    private void retireInfernoElite(UUID id, String reason) {
+        if (id == null) {
+            return;
+        }
+        infernoElites.remove(id);
+        Entity entity = ownedEntities.get(id);
+        if (entity == null) {
+            return;
+        }
+        if (entity.isValid() && !entity.isDead()) {
+            World world = entity.getWorld();
+            if (world != null) {
+                world.spawnParticle(Particle.SOUL_FIRE_FLAME,
+                        entity.getLocation().add(0.0D, 0.6D, 0.0D), 20, 0.4D, 0.5D, 0.4D, 0.05D);
+            }
+        }
+        unregisterOwnedEntity(id, "inferno-" + reason);
+        if (entity.isValid()) {
+            entity.remove();
+        }
+    }
+
+    /** Remove every owned infernal body of this cast. */
+    private void clearInfernoElites(String reason) {
+        for (UUID id : new ArrayList<>(infernoElites.keySet())) {
+            retireInfernoElite(id, reason);
+        }
+        infernoElites.clear();
+    }
+
+    /** The 3D breach ring that announces the pack before it lands. */
+    private void renderInfernoBreach(LivingEntity boss, int castTick) {
+        World world = boss.getWorld();
+        Location anchor = coreCombatAnchorLocation();
+        if (world == null || anchor == null) {
+            return;
+        }
+        double progress = castTick / (double) InfernoMobWindowPolicy.SPAWN_BREACH_TICKS;
+        double radius = 3.0D + progress * 6.0D;
+        int points = 16;
+        for (int i = 0; i < points; i++) {
+            double angle = (2.0D * Math.PI * i / points) + progress * 1.5D;
+            world.spawnParticle(Particle.FLAME, anchor.getX() + Math.cos(angle) * radius,
+                    combatLevelY() + 0.2D, anchor.getZ() + Math.sin(angle) * radius,
+                    1, 0.0D, 0.0D, 0.0D, 0.0D);
+        }
+        if (castTick % 6 == 0) {
+            world.playSound(anchor, Sound.BLOCK_FIRE_AMBIENT, SoundCategory.HOSTILE, 1.2F, 0.7F);
+        }
+        recordParticleEmission(points);
+    }
+
+    /**
+     * The layered overhead scenery, budgeted by the pure policy and rotated one
+     * layer per few ticks so a large party never pays for every layer at once.
+     */
+    private void renderInfernoScenery(LivingEntity boss, int castTick) {
+        World world = boss.getWorld();
+        Location anchor = coreCombatAnchorLocation();
+        if (world == null || anchor == null) {
+            return;
+        }
+        InfernoSceneryPolicy.Layer[] layers = InfernoSceneryPolicy.Layer.values();
+        InfernoSceneryPolicy.Layer layer = layers[Math.floorMod(castTick / 4, layers.length)];
+        int players = Math.max(1, activeLivingPlayers().size());
+        int lod = InfernoSceneryPolicy.LOD_REDUCED;
+        if (!InfernoSceneryPolicy.drawsAt(layer, lod)) {
+            return;
+        }
+        Particle particle = switch (layer) {
+            case SKY_VORTEX -> Particle.SOUL_FIRE_FLAME;
+            case FIRE_FRONT -> Particle.FLAME;
+            case EMBER_STORM_HIGH -> Particle.LAVA;
+            case EMBER_STORM_LOW -> Particle.ASH;
+            case ENERGY_CLOUD -> Particle.END_ROD;
+            case FIRE_ARCH -> Particle.CAMPFIRE_SIGNAL_SMOKE;
+        };
+        List<double[]> points = InfernoSceneryPolicy.layerPoints(layer, players, lod, castTick,
+                anchor.getX(), combatLevelY(), anchor.getZ());
+        int emitted = 0;
+        for (double[] point : points) {
+            world.spawnParticle(particle, point[0], point[1], point[2], 1, 0.0D, 0.0D, 0.0D, 0.0D);
+            emitted++;
+        }
+        if (emitted > 0) {
+            infernoSceneryFrame++;
+            recordParticleEmission(emitted);
+        }
     }
 
     /** The mutated cells this cast owns, in stable order. */
@@ -55011,6 +55455,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         arenaInfernoSequence++;
         arenaInfernoArmorWear = 0;
         arenaInfernoVentBudget = 0;
+        // N23-P1-09: no infernal summon may survive the cast that spawned it.
+        clearInfernoElites("arena-inferno-clear");
         if (arenaInfernoTask != null) {
             arenaInfernoTask.cancel();
             arenaInfernoTask = null;
@@ -62629,6 +63075,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (!ownedEntities.containsKey(entity.getUniqueId())) {
             return;
         }
+        // N23-P1-09: an infernal summon's death is bookkeeping ONLY - no loot,
+        // no XP, no wave progress, no boss-bar effect. Returning here keeps it
+        // out of every progression branch below.
+        if (infernoElites.remove(entity.getUniqueId()) != null) {
+            event.setDroppedExp(0);
+            event.getDrops().clear();
+            getLogger().info("BOSS_INFERNO_DIED event=" + eventId
+                    + " alive=" + infernoElites.size());
+            return;
+        }
         if (isNamedWave7TrialActor(entity)) {
             if (entity instanceof LivingEntity living) preserveTrialDeathVisual(living);
             // The body still exists on the death event, so this is the one
@@ -65566,6 +66022,21 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             // Only the Ram's own adds, never a natural Endermite a player brought in.
             return CLIENT_VISUAL_ENDERMITE;
         }
+        if (EVENT_KIND_INFERNO_ELITE.equals(kind)) {
+            // N23-P1-09: the three Phase 4 infernal summons each wear their own
+            // authored skin. The kind alone is not enough - the mesh differs by
+            // the real vanilla entity type the body was created from.
+            if (entity.getType() == EntityType.MAGMA_CUBE) {
+                return CLIENT_VISUAL_INFERNO_MAGMA;
+            }
+            if (entity.getType() == EntityType.BLAZE) {
+                return CLIENT_VISUAL_INFERNO_BLAZE;
+            }
+            if (entity.getType() == EntityType.WITHER_SKELETON) {
+                return CLIENT_VISUAL_INFERNO_WITHER;
+            }
+            return "";
+        }
         return "";
     }
 
@@ -65577,6 +66048,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return EVENT_KIND_WAVE_MOB.equals(kind) || EVENT_KIND_ELITE.equals(kind)
                 || EVENT_KIND_WAVE_GUARDIAN.equals(kind)
                 || EVENT_KIND_RITUAL_CASTER.equals(kind)
+                || EVENT_KIND_INFERNO_ELITE.equals(kind)
                 || EVENT_KIND_RITUAL_GUARD.equals(kind)
                 || EVENT_KIND_REALITY_SPLIT_TRIAL.equals(kind)
                 && !namedWave7ClientVisualId(entity).isBlank()

@@ -28,6 +28,9 @@
     "SpiderEntityRendererMixin",
     "SkeletonEntityRendererMixin",
     "ZombieEntityRendererMixin",
+    "MagmaCubeEntityRendererMixin",
+    "BlazeEntityRendererMixin",
+    "WitherSkeletonEntityRendererMixin",
     "PlayerListHudMixin",
     "PlayerListHudAccessor"
   ],

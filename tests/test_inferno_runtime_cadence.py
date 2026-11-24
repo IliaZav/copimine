@@ -104,6 +104,11 @@ public class InfernoRuntimeCadenceProbe {
     double arenaRadius(){return 8.0;}
     double boundedCombatRadius(double r){return r;}
     java.util.List<InfernoArenaLifecyclePolicy.Cell> heatedInfernoCells(java.util.Set<InfernoArenaLifecyclePolicy.Cell> cells,double progress){return new java.util.ArrayList<>(cells);}
+    // N23-P1-09 adds a bounded infernal pack that shares this one cast. Its own
+    // window/roster policy is covered by InfernoMobWindowPolicyTest and
+    // InfernoSceneryPolicyTest; this probe pins ONLY the vent cadence, so the
+    // pack tick is a no-op here and cannot alter the eruption receipts below.
+    void tickInfernoPack(LivingEntity boss,int castTick){ }
 ''' + ticker + "\n" + steam + r'''
     static void check(boolean v,String m){if(!v)throw new AssertionError(m);}
     public static void main(String[] args){

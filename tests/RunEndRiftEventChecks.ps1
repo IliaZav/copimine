@@ -495,6 +495,12 @@ $pureTests = @(
   'BossPhaseTransitionCinematicPolicyTest',
   'BossCastAvailabilityPolicyTest',
   'ChestBeamAdmissionPolicyTest',
+  # N23-P1-09: the Phase 4 infernal End mob window and its authored overhead
+  # scenery. The bounded roster, the OVERLOAD-only lifetime, the fail-closed
+  # spawn/attack rules, the budgeted Magma daughter and the scenery budget/LOD
+  # ladder are pure, so a regression fails here without a server.
+  'InfernoMobWindowPolicyTest',
+  'InfernoSceneryPolicyTest',
   'CreativeTestAdmissionPolicyTest',
   'BossAiSimulationTest',
   'BossCastTimelineTest',

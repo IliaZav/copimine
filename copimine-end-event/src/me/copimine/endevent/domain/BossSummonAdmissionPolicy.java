@@ -54,6 +54,35 @@ public final class BossSummonAdmissionPolicy {
         return !isSkeletonLike(entityType);
     }
 
+    /**
+     * The one approved boss-phase skeleton: the Phase 4 End-fire Wither
+     * Skeleton (V6 9E.06).
+     *
+     * <p>The 14.6 ban is about <b>towers, archer turrets and pillar-mounted</b>
+     * skeletons - a skeleton standing on a structure with nothing in the build
+     * to complain. V6 9E.06 separately requires an <b>urgent mobile ground</b>
+     * Wither Skeleton as one of the three Phase 4 infernal summons. Those are
+     * different things, so this is a deliberately separate entry point rather
+     * than a hole in {@link #allowsSummon}: the generic summon adapter keeps
+     * refusing every skeleton, and only the Phase 4 breach spawner may ask
+     * here.</p>
+     *
+     * <p>Fail-closed everywhere else: a null/blank type, any phase other than
+     * OVERLOAD, any other skeleton variant, and every structural archetype are
+     * refused. Nothing here can admit a skeleton onto a pillar, into a tower or
+     * into a turret.</p>
+     */
+    public static boolean allowsInfernalMobileSummon(BossPhase phase, String entityType) {
+        if (phase != BossPhase.OVERLOAD || entityType == null || entityType.isBlank()) {
+            return false;
+        }
+        String key = entityType.trim().toUpperCase(Locale.ROOT);
+        if (FORBIDDEN.contains(key)) {
+            return false;
+        }
+        return key.equals("WITHER_SKELETON");
+    }
+
     /** The general admission rule used by the summon adapter. */
     public static boolean allowsSummon(BossPhase phase, String archetype) {
         if (phase == null || archetype == null || archetype.isBlank()) {

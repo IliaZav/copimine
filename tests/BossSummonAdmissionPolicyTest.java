@@ -79,6 +79,45 @@ public final class BossSummonAdmissionPolicyTest {
         check("the policy names the forbidden archetypes for the log",
                 BossSummonAdmissionPolicy.forbiddenArchetypes().contains("SKELETON_TOWER"));
 
+        // V6 9E.06 asks for ONE mobile ground Wither Skeleton in Phase 4. That is
+        // a different thing from a skeleton on a structure, so it gets its own
+        // entry point - and that entry point must stay exactly as narrow.
+        check("the Phase 4 infernal Wither Skeleton is admitted",
+                BossSummonAdmissionPolicy.allowsInfernalMobileSummon(
+                        BossPhase.OVERLOAD, "WITHER_SKELETON"));
+        check("its padding and case are normalised",
+                BossSummonAdmissionPolicy.allowsInfernalMobileSummon(
+                        BossPhase.OVERLOAD, "  wither_skeleton  "));
+        check("it is refused in every other phase",
+                !BossSummonAdmissionPolicy.allowsInfernalMobileSummon(BossPhase.RAGE, "WITHER_SKELETON")
+                        && !BossSummonAdmissionPolicy.allowsInfernalMobileSummon(
+                        BossPhase.AWAKENING, "WITHER_SKELETON")
+                        && !BossSummonAdmissionPolicy.allowsInfernalMobileSummon(null, "WITHER_SKELETON"));
+        check("it cannot admit any other skeleton variant",
+                !BossSummonAdmissionPolicy.allowsInfernalMobileSummon(BossPhase.OVERLOAD, "SKELETON")
+                        && !BossSummonAdmissionPolicy.allowsInfernalMobileSummon(
+                        BossPhase.OVERLOAD, "STRAY")
+                        && !BossSummonAdmissionPolicy.allowsInfernalMobileSummon(
+                        BossPhase.OVERLOAD, "SKELETON_HORSE")
+                        && !BossSummonAdmissionPolicy.allowsInfernalMobileSummon(
+                        BossPhase.OVERLOAD, "BOGGED"));
+        check("it cannot admit a structural or non-skeleton archetype",
+                !BossSummonAdmissionPolicy.allowsInfernalMobileSummon(
+                        BossPhase.OVERLOAD, "SKELETON_TOWER")
+                        && !BossSummonAdmissionPolicy.allowsInfernalMobileSummon(
+                        BossPhase.OVERLOAD, "PILLAR_SKELETON")
+                        && !BossSummonAdmissionPolicy.allowsInfernalMobileSummon(
+                        BossPhase.OVERLOAD, "MAGMA_CUBE")
+                        && !BossSummonAdmissionPolicy.allowsInfernalMobileSummon(
+                        BossPhase.OVERLOAD, "   ")
+                        && !BossSummonAdmissionPolicy.allowsInfernalMobileSummon(
+                        BossPhase.OVERLOAD, null));
+        // The generic gate is unchanged: the reconciliation is not a hole in it.
+        check("the generic skeleton refusal is untouched by the Phase 4 exception",
+                !BossSummonAdmissionPolicy.allowsSummon(BossPhase.OVERLOAD, "WITHER_SKELETON")
+                        && !BossSummonAdmissionPolicy.allowsSkeletonSummon(
+                        BossPhase.OVERLOAD, "WITHER_SKELETON"));
+
         System.out.println(failures == 0 ? "OK" : "FAILURES " + failures);
         if (failures != 0) System.exit(1);
     }

@@ -240,3 +240,54 @@ visual item and the AAA-visual objective remain **`BLOCKED`**.
 - The chest beam (§7/§9H) aim-lock is already implemented and was live-verified
   in the previous increment; it is not changed here.
 - No 2-/20-player playtest was possible: no players were online.
+
+## 5. N23-P1 increments (2026-11-24)
+
+Evidence tiers: `SOURCE` / `AUTO` / `NATIVE_BLOCKED`, as in section 1.
+
+### N23-P1-03 — chest beam no longer re-selects targets at fire time
+
+- **Where**: `CopiMineEndEvent.startChestBeam` and the new
+  `CopiMineEndEvent.cancelChestBeamWithoutLock`.
+- **Defect**: the fire branch kept a defensive fallback that called
+  `ChestBeamPolicy.selectLaneIndices` whenever the generation-locked lane
+  snapshot was absent, so a cast could fire along a lane the party never watched
+  lock — the exact silent retarget the no-retarget contract forbids. The old
+  contract test explicitly permitted it.
+- **Fix**: fire consumes ONLY the frozen snapshot
+  (`bossChestBeamLockedGeneration == callbackGeneration && chest != null &&
+  !aims.isEmpty()`). Otherwise it fails closed: logs
+  `BOSS_CHEST_BEAM_CANCEL_LOCK_LOST`, drops the stale snapshot, clears any staged
+  stripe (`clearWorldVfxBeamsByPrefix(CHEST_BEAM_VFX_PREFIX)`), returns to a short
+  `RECOVERY`, and refunds the hazard reservation (`chest-beam-lock-lost`).
+- **Regression tests**: `tests/test_end_rift_chest_beam_core_stage_guard.py`
+  (`test_fire_reuses_the_snapshot_and_never_retargets` now asserts fire-time
+  `selectLaneIndices` is absent; new
+  `test_lock_loss_cancels_refunds_and_clears_the_beam`).
+- **Status**: `SOURCE` + `AUTO`.
+
+### N23-P1-14 — proof and production log noise
+
+- **Where**: new pure policy
+  `copimine-end-event/src/me/copimine/endevent/domain/BoundedDiagnosticCounterPolicy.java`
+  plus the three hot per-event INFO sites in `CopiMineEndEvent`
+  (`WAVE_MOB_ENVIRONMENT_DAMAGE_BLOCKED`, `ELITE_DRAGON_BREATH_CLOUD_DAMAGE_REJECTED`,
+  `ELITE_DRAGON_BREATH_CLOUD_DAMAGE`) now routed through
+  `logThrottledInfo(...)`.
+- **Fix**: one line per key per 30 s window; the reopening line carries the exact
+  suppressed total (`suppressed=N`). The key set is bounded (budget + one
+  `DIAGNOSTIC_KEY_OVERFLOW` bucket), so an unknown/hostile key cannot grow the
+  tracker. The first line of a key stays byte-identical to the old output
+  (empty suffix).
+- **Regression test**: `tests/BoundedDiagnosticCounterPolicyTest.java` (window
+  batching, exact suppressed totals, per-key independence, key-budget bound,
+  null/blank fail-closed, clock-rewind reopen), registered in
+  `RunEndRiftEventChecks.ps1` `$pureTests`.
+- **RCON async-dispatch warnings**: NOT reproduced and NOT attributable here.
+  The only asynchronous scheduler task in `CopiMineEndEvent` is
+  `checkMainThreadHeartbeat` (reads a heartbeat timestamp; no world access), and
+  the `cmend` command executor runs on the server thread. The Paper RCON bridge is
+  third-party and cannot be exercised without a running server. Owner/time/stack
+  capture and safe reproduction stay `NATIVE_BLOCKED`.
+- **Status**: `SOURCE` + `AUTO`; the RCON investigation is `NATIVE_BLOCKED`.
+

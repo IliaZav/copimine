@@ -29,6 +29,7 @@ import java.util.Set;
 import java.util.SplittableRandom;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
 import me.copimine.protocol.EncounterGenerationPolicy;
 import me.copimine.endevent.domain.wave7.EchoPresentationEpochPolicy;
 import me.copimine.endevent.domain.wave7.EchoPresentationProbeState;
@@ -79,6 +80,7 @@ import me.copimine.endevent.domain.BossHitboxPose;
 import me.copimine.endevent.domain.BossBrain;
 import me.copimine.endevent.domain.BossImpactGeometryPolicy;
 import me.copimine.endevent.domain.BossSpellGeometryPolicy;
+import me.copimine.endevent.domain.BoundedDiagnosticCounterPolicy;
 import me.copimine.endevent.domain.ChestBeamPolicy;
 import me.copimine.endevent.domain.BossCommandPolicy;
 import me.copimine.endevent.domain.BossAmbushPolicy;
@@ -1953,6 +1955,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private volatile long lastMainThreadGeneration;
     private boolean diagnosticsFailureInjection;
     private volatile long lastDiagnosticsStallReportAtMillis;
+    /**
+     * N23-P1-14 / specification 13: key-based bounded counter for the per-event
+     * INFO/WARN lines that used to flood the production log (one environment-
+     * damage rejection per touched mob, one dragon-breath cloud line per refused
+     * hit). One emitted line per key per window, carrying the exact suppressed
+     * total; the key budget keeps the tracker itself bounded.
+     */
+    private final BoundedDiagnosticCounterPolicy diagnosticLogThrottle =
+            new BoundedDiagnosticCounterPolicy(BoundedDiagnosticCounterPolicy.DEFAULT_WINDOW_MILLIS,
+                    BoundedDiagnosticCounterPolicy.DEFAULT_MAX_KEYS);
     private int waveFrontWave;
     private boolean waveFrontGuardian;
     private int waveFrontElapsedTicks;
@@ -6750,6 +6762,30 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         getLogger().warning("WAVE_MAIN_THREAD_STALL event=" + eventId
                 + " phase=" + lastMainThreadPhase + " wave=" + lastMainThreadWave
                 + " age_ms=" + age + " generation=" + lastMainThreadGeneration);
+    }
+
+    /**
+     * N23-P1-14 / specification 13: emit a hot per-event INFO line through the
+     * bounded key-based counter. The first occurrence of a key in its window
+     * logs verbatim; later occurrences are counted, and the next line for that
+     * key reports how many were batched. The supplier is only invoked when the
+     * line actually emits, so a throttled occurrence costs no string building.
+     */
+    private void logThrottledInfo(String key, Supplier<String> line) {
+        BoundedDiagnosticCounterPolicy.Decision decision =
+                diagnosticLogThrottle.decide(key, System.currentTimeMillis());
+        if (decision.emit()) {
+            getLogger().info(line.get() + decision.suffix());
+        }
+    }
+
+    /** Warning counterpart of {@link #logThrottledInfo(String, Supplier)}. */
+    private void logThrottledWarning(String key, Supplier<String> line) {
+        BoundedDiagnosticCounterPolicy.Decision decision =
+                diagnosticLogThrottle.decide(key, System.currentTimeMillis());
+        if (decision.emit()) {
+            getLogger().warning(line.get() + decision.suffix());
+        }
     }
 
     private int activeEventTaskCount() {
@@ -14226,17 +14262,21 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 EntityDamageEvent damageOutcome = pending.outcome;
                 if (!DragonBreathCloudPolicy.shouldApplyEffects(damageOutcome != null,
                         damageOutcome != null && damageOutcome.isCancelled())) {
-                    getLogger().info("ELITE_DRAGON_BREATH_CLOUD_DAMAGE_REJECTED cloud=" + cloudId
-                            + " owner=" + shooterId + " target=" + playerId
-                            + " damage_event_observed=" + (damageOutcome != null)
-                            + " damage_cancelled=" + (damageOutcome != null && damageOutcome.isCancelled()));
+                    boolean damageEventObserved = damageOutcome != null;
+                    boolean damageCancelled = damageOutcome != null && damageOutcome.isCancelled();
+                    logThrottledInfo("ELITE_DRAGON_BREATH_CLOUD_DAMAGE_REJECTED",
+                            () -> "ELITE_DRAGON_BREATH_CLOUD_DAMAGE_REJECTED cloud=" + cloudId
+                                    + " owner=" + shooterId + " target=" + playerId
+                                    + " damage_event_observed=" + damageEventObserved
+                                    + " damage_cancelled=" + damageCancelled);
                     return;
                 }
                 applySpiderPotionLease(livePlayer, PotionEffectType.BLINDNESS,
                         EliteAbilityPolicy.DRAGON_BLINDNESS_TICKS, 0, effectOwner);
-                getLogger().info("ELITE_DRAGON_BREATH_CLOUD_DAMAGE cloud=" + cloudId
-                        + " owner=" + shooterId + " target=" + playerId
-                        + " damage=" + EliteAbilityPolicy.DRAGON_CLOUD_AREA_DAMAGE);
+                logThrottledInfo("ELITE_DRAGON_BREATH_CLOUD_DAMAGE",
+                        () -> "ELITE_DRAGON_BREATH_CLOUD_DAMAGE cloud=" + cloudId
+                                + " owner=" + shooterId + " target=" + playerId
+                                + " damage=" + EliteAbilityPolicy.DRAGON_CLOUD_AREA_DAMAGE);
             } finally {
                 if (!hitConsumed) {
                     DragonBreathCloudPolicy.releaseHit(
@@ -15303,11 +15343,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (!recovered) {
             mob.getPathfinder().stopPathfinding();
         }
-        getLogger().info("WAVE_MOB_ENVIRONMENT_DAMAGE_BLOCKED event=" + eventId
-                + " mob=" + entity.getUniqueId() + " kind="
-                + readString(entity, keyKind) + " cause=SUFFOCATION"
-                + " recovered=" + recovered
-                + (chamber >= 0 ? " chamber=" + chamber : ""));
+        UUID blockedMobId = entity.getUniqueId();
+        String blockedKind = readString(entity, keyKind);
+        int blockedChamber = chamber;
+        logThrottledInfo("WAVE_MOB_ENVIRONMENT_DAMAGE_BLOCKED",
+                () -> "WAVE_MOB_ENVIRONMENT_DAMAGE_BLOCKED event=" + eventId
+                        + " mob=" + blockedMobId + " kind="
+                        + blockedKind + " cause=SUFFOCATION"
+                        + " recovered=" + recovered
+                        + (blockedChamber >= 0 ? " chamber=" + blockedChamber : ""));
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)

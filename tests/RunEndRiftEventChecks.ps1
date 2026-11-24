@@ -686,6 +686,11 @@ $pureTests = @(
   'EndRiftDiagnosticInvariantMonitorTest',
   'EndRiftDiagnosticSnapshotTest',
   'EndRiftDiagnosticServiceTest',
+  # N23-P1-14: proof/production log noise. The key-based bounded counter that
+  # batches the per-event INFO/WARN flood is pure arithmetic, so the gate drives
+  # its window, batch totals, key budget and clock-rewind behaviour directly
+  # instead of trusting the call sites by inspection.
+  'BoundedDiagnosticCounterPolicyTest',
   'CollapseRingPlayerPairPolicyTest',
   'EchoBehaviorStrategyNormalizationTest',
   'EchoConsumableTimingTest',

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "verifiedAtUtc": "2026-10-22T10:58:23Z",
+  "verifiedAtUtc": "2026-11-24T18:18:42Z",
   "purpose": "Record independent HTTPS retrieval checks for every external artifact checksum in both Minecraft 26.3 Gradle verification manifests.",
   "method": {
     "sidecarMatches": "Fetched the official artifact .sha256 sidecar over HTTPS and compared it with the checksum in Gradle verification metadata.",
@@ -9,9 +9,9 @@
     "trustBoundary": "Sidecars and artifact bytes are served by their respective official repository. This is a separate retrieval from Gradle's isolated caches, but it is not a third-party signature or cross-operator attestation."
   },
   "counts": {
-    "totalExternalArtifacts": 638,
+    "totalExternalArtifacts": 645,
     "publisherSidecarMatches": 545,
-    "directArtifactMatches": 93,
+    "directArtifactMatches": 100,
     "alternateMirrorSidecarMismatches": 6
   },
   "artifacts": [
@@ -4610,6 +4610,90 @@
       "sourceUrl": "https://repo.maven.apache.org/maven2/org/lwjgl/lwjgl-freetype/3.4.3/lwjgl-freetype-3.4.3.pom.sha256",
       "observedSha256": "3b1d0622040b791a2c034b5a078c1ae777ee48b62e08fa34975bb4d65da10ab2",
       "sourceHost": "repo.maven.apache.org"
+    },
+    {
+      "root": "client",
+      "group": "org.lwjgl",
+      "module": "lwjgl-freetype",
+      "version": "3.4.3-mojang-2.15.0",
+      "artifact": "lwjgl-freetype-3.4.3-mojang-2.15.0-natives-linux.jar",
+      "sha256": "d9a30dec04dad96544ce98be8eff1c3887d0e0566abd57cc02e62de115200f74",
+      "verification": "direct_https_artifact_download",
+      "sourceUrl": "https://libraries.minecraft.net/org/lwjgl/lwjgl-freetype/3.4.3-mojang-2.15.0/lwjgl-freetype-3.4.3-mojang-2.15.0-natives-linux.jar",
+      "observedSha256": "d9a30dec04dad96544ce98be8eff1c3887d0e0566abd57cc02e62de115200f74",
+      "sourceHost": "libraries.minecraft.net"
+    },
+    {
+      "root": "client",
+      "group": "org.lwjgl",
+      "module": "lwjgl-freetype",
+      "version": "3.4.3-mojang-2.15.0",
+      "artifact": "lwjgl-freetype-3.4.3-mojang-2.15.0-natives-macos-arm64.jar",
+      "sha256": "b06e865989de732a2f4144b45536fb16e8e4874001fb42ef1ce7ed22c5f70f4c",
+      "verification": "direct_https_artifact_download",
+      "sourceUrl": "https://libraries.minecraft.net/org/lwjgl/lwjgl-freetype/3.4.3-mojang-2.15.0/lwjgl-freetype-3.4.3-mojang-2.15.0-natives-macos-arm64.jar",
+      "observedSha256": "b06e865989de732a2f4144b45536fb16e8e4874001fb42ef1ce7ed22c5f70f4c",
+      "sourceHost": "libraries.minecraft.net"
+    },
+    {
+      "root": "client",
+      "group": "org.lwjgl",
+      "module": "lwjgl-freetype",
+      "version": "3.4.3-mojang-2.15.0",
+      "artifact": "lwjgl-freetype-3.4.3-mojang-2.15.0-natives-macos.jar",
+      "sha256": "0232ad6d5107f5a582f66b55732356c9ca861e5b717b08018b787b776f2f42e9",
+      "verification": "direct_https_artifact_download",
+      "sourceUrl": "https://libraries.minecraft.net/org/lwjgl/lwjgl-freetype/3.4.3-mojang-2.15.0/lwjgl-freetype-3.4.3-mojang-2.15.0-natives-macos.jar",
+      "observedSha256": "0232ad6d5107f5a582f66b55732356c9ca861e5b717b08018b787b776f2f42e9",
+      "sourceHost": "libraries.minecraft.net"
+    },
+    {
+      "root": "client",
+      "group": "org.lwjgl",
+      "module": "lwjgl-freetype",
+      "version": "3.4.3-mojang-2.15.0",
+      "artifact": "lwjgl-freetype-3.4.3-mojang-2.15.0-natives-windows-arm64.jar",
+      "sha256": "1b45d57c2e7fc9746b10b21ca4883d5ce12f7dae60899e17f92b0da142eecdc5",
+      "verification": "direct_https_artifact_download",
+      "sourceUrl": "https://libraries.minecraft.net/org/lwjgl/lwjgl-freetype/3.4.3-mojang-2.15.0/lwjgl-freetype-3.4.3-mojang-2.15.0-natives-windows-arm64.jar",
+      "observedSha256": "1b45d57c2e7fc9746b10b21ca4883d5ce12f7dae60899e17f92b0da142eecdc5",
+      "sourceHost": "libraries.minecraft.net"
+    },
+    {
+      "root": "client",
+      "group": "org.lwjgl",
+      "module": "lwjgl-freetype",
+      "version": "3.4.3-mojang-2.15.0",
+      "artifact": "lwjgl-freetype-3.4.3-mojang-2.15.0-natives-windows.jar",
+      "sha256": "efdce69d4bc8b63c04a7ea133f4b1acc9005eea00893078d696ca219b3a1bfd1",
+      "verification": "direct_https_artifact_download",
+      "sourceUrl": "https://libraries.minecraft.net/org/lwjgl/lwjgl-freetype/3.4.3-mojang-2.15.0/lwjgl-freetype-3.4.3-mojang-2.15.0-natives-windows.jar",
+      "observedSha256": "efdce69d4bc8b63c04a7ea133f4b1acc9005eea00893078d696ca219b3a1bfd1",
+      "sourceHost": "libraries.minecraft.net"
+    },
+    {
+      "root": "client",
+      "group": "org.lwjgl",
+      "module": "lwjgl-freetype",
+      "version": "3.4.3-mojang-2.15.0",
+      "artifact": "lwjgl-freetype-3.4.3-mojang-2.15.0.jar",
+      "sha256": "bc04687e8fd103456c45e4febd3f325b4d9703a01b3b6c642277a6f7287b1829",
+      "verification": "direct_https_artifact_download",
+      "sourceUrl": "https://libraries.minecraft.net/org/lwjgl/lwjgl-freetype/3.4.3-mojang-2.15.0/lwjgl-freetype-3.4.3-mojang-2.15.0.jar",
+      "observedSha256": "bc04687e8fd103456c45e4febd3f325b4d9703a01b3b6c642277a6f7287b1829",
+      "sourceHost": "libraries.minecraft.net"
+    },
+    {
+      "root": "client",
+      "group": "org.lwjgl",
+      "module": "lwjgl-freetype",
+      "version": "3.4.3-mojang-2.15.0",
+      "artifact": "lwjgl-freetype-3.4.3-mojang-2.15.0.pom",
+      "sha256": "45602a88f4a40068583540976b3d747cd01d967f924705928ce23c8922f65b72",
+      "verification": "direct_https_artifact_download",
+      "sourceUrl": "https://libraries.minecraft.net/org/lwjgl/lwjgl-freetype/3.4.3-mojang-2.15.0/lwjgl-freetype-3.4.3-mojang-2.15.0.pom",
+      "observedSha256": "45602a88f4a40068583540976b3d747cd01d967f924705928ce23c8922f65b72",
+      "sourceHost": "libraries.minecraft.net"
     },
     {
       "root": "client",

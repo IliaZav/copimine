@@ -4,10 +4,10 @@ This record covers the migration's Paper plugin and Fabric client Gradle roots. 
 
 ## Checksum provenance
 
-[`GRADLE_DEPENDENCY_PROVENANCE.json`](GRADLE_DEPENDENCY_PROVENANCE.json) records the source URL, method, and SHA-256 for every external artifact entry in both manifests. The report contains 637 artifacts: 160 server artifacts and 477 client artifacts.
+[`GRADLE_DEPENDENCY_PROVENANCE.json`](GRADLE_DEPENDENCY_PROVENANCE.json) records the source URL, method, and SHA-256 for every external artifact entry in both manifests. The report contains 645 artifacts: 161 server artifacts and 484 client artifacts.
 
-- 544 recorded hashes match the publisher's `.sha256` sidecar fetched over HTTPS.
-- 93 recorded hashes match a direct HTTPS download of the exact artifact, hashed locally.
+- 545 recorded hashes match the publisher's `.sha256` sidecar fetched over HTTPS.
+- 100 recorded hashes match a direct HTTPS download of the exact artifact, hashed locally.
 - Six common parent POM sidecars from the Paper Maven mirror differed from the locked bytes. Direct Maven Central downloads matched the lock for all six. Maven Central is the first repository in the server build; strict verification will reject the Paper mirror's different POM bytes if repository fallback selects them.
 - The Paper API 26.3.build.205-stable JAR size and hash match `profile.lock.json`; its JAR, module metadata, and POM hashes match Paper Maven sidecars. Fabric Loom 1.19.1 and Fabric API 0.164.0+26.3 JAR/POM hashes, as well as the updated Fabric API module artifacts, match the SHA-256 sidecars published by Fabric Maven.
 
@@ -26,5 +26,6 @@ The Minecraft merged JAR and POM are generated locally by Fabric Loom. Their che
 - Tamper check: one byte in the isolated cached `fabric-loom-1.17.21.jar` was changed. Gradle rejected the build before `:help`; the exact cached JAR was restored and its SHA-256 again matched the manifest (`89c08938d865621172e3fb31036081399b2731a4971f599b42724b2509ff5b64`). Log: `D:\Temp\minecraft-26-3-gradle-verify-build-20261009\fabric-loom-tamper-build.log`.
 - Independent review confirmed the trusted-artifact exception is narrow and the provenance evidence covers every external artifact. A follow-up review found two test-contract gaps (the alternate mirror host/digest and exact Maven path); the test now checks the Paper host, lowercase SHA-256, inequality with the lock, and the exact sidecar URL derived from group/module/version/artifact. The reviewer confirmed both gaps are closed.
 - CodeRabbit CLI 0.8.2 reviewed the 10 dependency-verification files in an isolated worktree against the same base commit and reported 0 issues. The review used the free CLI allowance because this GitHub repository is not connected to an accessible CodeRabbit organization.
+- Upstream drift correction (2026-11-24): Mojang re-published the `26.3.json` version manifest (`702fe59163c6ee6578607daa85811d9bc9c7cc40` → `72f12519dbf6133f1c3c8027abe69cac0cfd16b2`). The client-only delta is the LWJGL FreeType bump `org.lwjgl:lwjgl-freetype:3.4.3` → `org.lwjgl:lwjgl-freetype:3.4.3-mojang-2.15.0` (main artifact plus five native classifiers); the client JAR SHA-1, asset index, library set and Java requirement are unchanged. A cold GitHub Actions run correctly refused the unlisted artifacts, so the client manifest now locks the seven `3.4.3-mojang-2.15.0` JARs/POM with SHA-256 values retrieved by direct HTTPS download from `libraries.minecraft.net` (Mojang publishes no `.sha256` sidecars here). `profile.lock.json` records the new manifest URL/SHA-1, and `GRADLE_DEPENDENCY_PROVENANCE.json` grew to 645 records (545 sidecar, 100 direct).
 
 This is one migration hardening checkpoint. A fresh post-fix Codex Security diff scan is still pending. Final acceptance still requires successful exact-SHA GitHub Actions and native Minecraft verification. GitLab remains a backup mirror and diagnostic; it does not replace or block the required GitHub gate.

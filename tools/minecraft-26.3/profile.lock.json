@@ -8,8 +8,8 @@
   "buildJavaVersion": "25.0.4.1",
   "grimPatchJavaMajor": 21,
   "minecraftManifest": {
-    "url": "https://piston-meta.mojang.com/v1/packages/702fe59163c6ee6578607daa85811d9bc9c7cc40/26.3.json",
-    "sha1": "702fe59163c6ee6578607daa85811d9bc9c7cc40"
+    "url": "https://piston-meta.mojang.com/v1/packages/72f12519dbf6133f1c3c8027abe69cac0cfd16b2/26.3.json",
+    "sha1": "72f12519dbf6133f1c3c8027abe69cac0cfd16b2"
   },
   "minecraftClient": {
     "url": "https://piston-data.mojang.com/v1/objects/e877b6a07acd633fb3bb475002175cec036e7b87/client.jar",

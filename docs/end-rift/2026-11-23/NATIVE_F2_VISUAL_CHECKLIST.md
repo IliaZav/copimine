@@ -2,9 +2,11 @@
 
 Дата: 2026-11-23. Ветка: `codex/end-rift-live-playtest-repair`.
 Деплой-кандидат (актуальный пин): `CopiMineEndEvent-26.3.jar` sha256
+`1cac8e0d46e538cd915b2a9131250bea19b8a094ecf3d2bf04aae1d3a415bfd2`
+(size 2 747 337 B). Предыдущий кандидат —
 `7519540b017053f4f5d4b9cfd5609b693e8872304e316fbd3c6d2519d7cd3d9d`
-(size 2 736 951 B). Предыдущий кандидат —
-`8cb640050942a157d79a9edf6c6a5e8b39f87cf54372da18e3fb29365c3198e4`;
+(2 736 951 B, ещё ранее
+`8cb640050942a157d79a9edf6c6a5e8b39f87cf54372da18e3fb29365c3198e4`);
 ранее задеплоенный в прод jar —
 `084cc0f53db7906e7fbae01852dc22a956bff3bba44ecb0fb800ec90d7547836`
 (все остаются в `replaceSha256` для чистой замены).

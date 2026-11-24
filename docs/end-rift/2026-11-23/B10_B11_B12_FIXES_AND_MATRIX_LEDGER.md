@@ -606,3 +606,19 @@ consumer is still open.
 - **Status**: `SOURCE` + `AUTO`. The packet is *not yet* signed by the bridge nor
   consumed by the 26.3 client; that integration and the measured reduction stay
   `NATIVE_BLOCKED`/open.
+- **Candidate re-pin (CI repair)**: both this codec and `acb63a0a` (the LOD
+  emitter change in `BossPresentationEffects`) alter
+  `build/minecraft-26.3/plugins/jars/CopiMineEndEvent-26.3.jar`, so run
+  `45382546101` for `acb63a0a` failed at step 12 ("Build and verify pinned
+  Minecraft 26.3 candidates") — the rebuilt jar no longer matched the pin
+  `7519540b…` (2 736 951 B). Not a code defect; the pin invariant fired exactly
+  as designed. The candidate was rebuilt twice from current source with the CI
+  toolchain (Temurin 25.0.4.1) and is byte-identical across builds:
+  `1cac8e0d46e538cd915b2a9131250bea19b8a094ecf3d2bf04aae1d3a415bfd2`
+  (2 747 337 B, sha512 `fb03327e…`). The previous candidate `7519540b…` is
+  prepended to `replaceSha256` (index 0) and `8cb64005…` shifts to index 1; the
+  lock, migration pin test, `OWN_PLUGIN_INVENTORY.json/.md` and the F2 checklist
+  were updated together, and `install_migration_server_plugins.py --stage-only`
+  then verified "31 pinned plugin candidates". One pre-existing duplicate
+  (`f12397d3…`, indices 68 and 244) was left untouched, because the documented
+  convention is to never dedupe this list.

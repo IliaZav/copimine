@@ -36,7 +36,16 @@ public final class BossSpellGeometryPolicy {
          * authored family (core, turbulent shell, helices, travelling rings,
          * impact crown).
          */
-        CHEST_BEAM
+        CHEST_BEAM,
+        /*
+         * N23-P1-06 residual body-sharing. `kagune_stab` still resolved to
+         * RIFT_LANCE (the ordinary rift projectile), `kagune_eruption` to the
+         * rock GEYSER, and `small_kagune` to KAGUNE_KNOT / 830206 (the ambush
+         * talon body). Three Kagune roles therefore shared the main visible
+         * object of three unrelated mechanics. Each now has its own silhouette
+         * in sample(), its own client mesh and its own renderer profile.
+         */
+        KAGUNE_STAB, KAGUNE_ERUPTION, KAGUNE_SMALL
     }
     public enum Anchor { CHEST, FEET, LOCKED_FLOOR }
     public enum Beat { CHARGE, RELEASE, IMPACT }
@@ -60,14 +69,12 @@ public final class BossSpellGeometryPolicy {
             case "chest_strike" -> Shape.CHEST_IRIS;
             case "ground_slam" -> Shape.SLAM_FAULT;
             case "ambush_grab" -> Shape.AMBUSH_TALONS;
-            case "small_kagune" -> Shape.KAGUNE_KNOT;
-            // The Kagune pair is drawn client-side by the LastSeal construct
-            // runtime, but it is part of the boss kit and the guard below
-            // requires every BossSpell to name a body. Each reuses an existing
-            // meshed silhouette whose form matches the ability rather than
-            // inventing a third Kagune family to verify separately.
-            case "kagune_stab" -> Shape.RIFT_LANCE;
-            case "kagune_eruption" -> Shape.GEYSER;
+            case "small_kagune" -> Shape.KAGUNE_SMALL;
+            // The Kagune roles are real boss mechanics, not decorative effects,
+            // so each needs a body of its own rather than borrowing the lance,
+            // the rock geyser or the ambush talon knot.
+            case "kagune_stab" -> Shape.KAGUNE_STAB;
+            case "kagune_eruption" -> Shape.KAGUNE_ERUPTION;
             case "phase_shift" -> Shape.PHASE_SHELL;
             case "defeat_collapse" -> Shape.DEFEAT;
             case "rift_fracture" -> Shape.RIFT_FRACTURE;
@@ -133,6 +140,12 @@ public final class BossSpellGeometryPolicy {
             // The signature chest beam's own exposed-socket body. A distinct id
             // is the whole point: the beam must not be the lance mesh.
             case CHEST_BEAM -> 830216;
+            // N23-P1-06 residual: three Kagune roles, three bodies. The stab is
+            // not the rift lance, the eruption is not the rock geyser, and the
+            // small melee summon is not the ambush talon knot.
+            case KAGUNE_STAB -> 830220;
+            case KAGUNE_ERUPTION -> 830221;
+            case KAGUNE_SMALL -> 830222;
             default -> 0;
         };
     }
@@ -141,7 +154,8 @@ public final class BossSpellGeometryPolicy {
         if (shape == null || beat == null) return Anchor.FEET;
         return switch (shape) {
             case VOID_RUNE, FINAL_SEAL, AMBUSH_TALONS, GEYSER,
-                    RIFT_FRACTURE, INFERNO_GEYSER, SNARE_CHAINS -> Anchor.LOCKED_FLOOR;
+                    RIFT_FRACTURE, INFERNO_GEYSER, SNARE_CHAINS,
+                    KAGUNE_ERUPTION -> Anchor.LOCKED_FLOOR;
             case VOID_SPHERE -> Anchor.LOCKED_FLOOR;
             case RIFT_LANCE, ARROW_RACK, FIREBALL_CAGE, CHEST_IRIS, CHEST_BEAM -> Anchor.CHEST;
             default -> Anchor.FEET;
@@ -433,6 +447,94 @@ public final class BossSpellGeometryPolicy {
                     double a = i * TAU / 12;
                     double s = (0.35 + 0.55 * easeOut(p)) * size;
                     add(out, Math.cos(a) * s, Math.sin(a) * s, reach, 1);
+                }
+            }
+            case KAGUNE_STAB -> {
+                // N23-P1-06 residual: the stab used to be the RIFT_LANCE, so a
+                // Kagune thrust and an ordinary rift projectile were drawn as
+                // the same object. This is a single curved, base-heavy impaling
+                // spine: it leaves the caster low, bows sideways and drives
+                // forward to a barbed point -- the opposite taper and axis of
+                // the straight, chest-anchored lance.
+                double reach = (charge ? 1.7 : 2.5) * size;
+                double lift = (charge ? 0.95 : 1.35) * size;
+                for (int spine = 0; spine < 3; spine++) {
+                    double fan = (spine - 1) * 0.22;
+                    for (int i = 0; i < 14; i++) {
+                        double u = i / 13.0;
+                        double bow = Math.sin(u * Math.PI) * 0.60 * size;
+                        add(out,
+                                fan * (0.4 + u) + bow * 0.75,
+                                lift * u * u + Math.sin(Math.PI * u) * 0.30 * size,
+                                reach * u,
+                                spine % 2);
+                    }
+                }
+                for (int barb = -1; barb <= 1; barb += 2) {
+                    line(out, new Point(0, lift, reach, 1),
+                            new Point(barb * 0.55 * size, lift * 0.55,
+                                    reach * 0.62, 1), 5, 1);
+                    line(out, new Point(barb * 0.55 * size, lift * 0.55,
+                                    reach * 0.62, 1),
+                            new Point(barb * 0.30 * size, lift * 0.30,
+                                    reach * 0.34, 2), 3, 2);
+                }
+                polygon(out, 5, r * 0.22 * size, 0.05, spin * 0.2, 2, 2);
+            }
+            case KAGUNE_ERUPTION -> {
+                // N23-P1-06 residual: a genuine Kagune eruption, not the rock
+                // geyser body. Four sinuous tentacles climb out of the floor in
+                // an S, each ending in an inward fang, over a low thorned ring.
+                // The S-curve is what separates it from the straight rock
+                // shards and the vertical fire ribbons of the other hazards.
+                double rise = (charge ? 1.1 + 0.9 * p : 1.7 + 0.7 * easeOut(p)) * size;
+                for (int arm = 0; arm < 4; arm++) {
+                    double a = arm * TAU / 4 + 0.25;
+                    double swayDir = arm % 2 == 0 ? 1 : -1;
+                    for (int i = 0; i < 12; i++) {
+                        double u = i / 11.0;
+                        double ring = r * (0.16 + 0.46 * u);
+                        double sway = Math.sin(u * Math.PI * 1.5) * 0.42 * size * swayDir;
+                        add(out,
+                                Math.cos(a) * ring - Math.sin(a) * sway,
+                                rise * u,
+                                Math.sin(a) * ring + Math.cos(a) * sway,
+                                arm % 2);
+                    }
+                    double tipRadius = r * 0.62;
+                    double tipSide = Math.cos(a) * tipRadius;
+                    double tipForward = Math.sin(a) * tipRadius;
+                    line(out, new Point(tipSide, rise, tipForward, 1),
+                            new Point(tipSide - Math.cos(a) * 0.55 * size,
+                                    rise + 0.55 * size,
+                                    tipForward - Math.sin(a) * 0.55 * size, 1), 4, 1);
+                }
+                polygon(out, 8, r * 0.34, 0.06, spin * 0.15, 3, 2);
+            }
+            case KAGUNE_SMALL -> {
+                // The small attacking Kagune is a compact claw-knot: three short
+                // tendrils curl out and hook back over a low thorn ring. It is
+                // smaller and wider than the guardian splinter and carries no
+                // grab volume, matching its melee-only role.
+                double compact = (charge ? 0.72 + 0.28 * p : 1.05 - 0.10 * p) * size;
+                for (int tendril = 0; tendril < 3; tendril++) {
+                    double a = tendril * TAU / 3 + 0.2;
+                    for (int i = 0; i < 10; i++) {
+                        double u = i / 9.0;
+                        double outward = r * (0.12 + 0.52 * Math.sin(u * Math.PI * 0.85));
+                        double curl = r * 0.34 * u * u;
+                        add(out,
+                                Math.cos(a) * outward - Math.sin(a) * curl,
+                                (0.20 + 1.15 * u - 0.28 * u * u) * compact,
+                                Math.sin(a) * outward + Math.cos(a) * curl,
+                                tendril % 2);
+                    }
+                }
+                for (int thorn = 0; thorn < 6; thorn++) {
+                    double a = thorn * TAU / 6 + spin * 0.08;
+                    line(out, new Point(Math.cos(a) * r * 0.18, 0.05, Math.sin(a) * r * 0.18, 2),
+                            new Point(Math.cos(a) * r * 0.46, 0.42 * compact,
+                                    Math.sin(a) * r * 0.46, 2), 3, 2);
                 }
             }
         }

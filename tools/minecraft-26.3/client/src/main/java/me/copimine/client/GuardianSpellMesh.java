@@ -21,7 +21,9 @@ public final class GuardianSpellMesh {
             "chest_beam",
             // N23-P1-06/N23-P1-08: the rock eruption, the floor rift and the
             // inferno column, which no longer share the fault fragment.
-            "geyser", "rift_fracture", "inferno_geyser"};
+            "geyser", "rift_fracture", "inferno_geyser",
+            // N23-P1-06 residual: the three Kagune roles, each with its own body.
+            "kagune_stab", "kagune_eruption", "kagune_small"};
     private static final Map<String, List<Vertex>> MESHES = loadAll();
     public record Vertex(float x, float y, float z, float u, float v, float nx, float ny, float nz) { }
     private GuardianSpellMesh() { }

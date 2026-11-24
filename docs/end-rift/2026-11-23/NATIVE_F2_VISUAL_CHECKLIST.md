@@ -2,13 +2,13 @@
 
 Дата: 2026-11-23. Ветка: `codex/end-rift-live-playtest-repair`.
 Деплой-кандидат (актуальный пин): `CopiMineEndEvent-26.3.jar` sha256
+`b88c758fa0d8eabfe6d63e30f4d28d8c27d213748e776ce19f4ba2958482b8d6`
+(size 2 752 789 B). Предыдущий кандидат —
 `958130c959cc5fd4458b6c4d3613bdd57aa656673be49d1c272862c1576bba6c`
-(size 2 751 628 B). Предыдущий кандидат —
+(2 751 628 B, ещё ранее
 `1cac8e0d46e538cd915b2a9131250bea19b8a094ecf3d2bf04aae1d3a415bfd2`
-(2 747 337 B, ещё ранее
-`7519540b017053f4f5d4b9cfd5609b693e8872304e316fbd3c6d2519d7cd3d9d`
-2 736 951 B, и
-`8cb640050942a157d79a9edf6c6a5e8b39f87cf54372da18e3fb29365c3198e4`);
+(2 747 337 B, и
+`7519540b017053f4f5d4b9cfd5609b693e8872304e316fbd3c6d2519d7cd3d9d` 2 736 951 B);
 ранее задеплоенный в прод jar —
 `084cc0f53db7906e7fbae01852dc22a956bff3bba44ecb0fb800ec90d7547836`
 (все остаются в `replaceSha256` для чистой замены).
@@ -26,7 +26,7 @@
    выше; прод на момент записи нёс предыдущий jar `084cc0f5…`
    (см. `B10_B11_B12_FIXES_AND_MATRIX_LEDGER.md` §3).
 2. Клиент: ровно `CopiMineClient-0.1.4+26.3.jar`
-   (30 384 667 B, sha512 `4e26b09f…`, пин `tools/minecraft-26.3/profile.lock.json`;
+   (30 389 722 B, sha512 `5967abfa…`, пин `tools/minecraft-26.3/profile.lock.json`;
    перепинен 2026-11-24 после того, как chest beam, cocoon-shatter и три авторских
    тела наземных угроз (geyser / rift_fracture / inferno_geyser) попали в клиент).
    Сервер требует `required_client_mod_version: 0.1.4+26.3` — пара должна совпасть,

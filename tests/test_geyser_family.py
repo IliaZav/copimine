@@ -8,10 +8,13 @@ ground slam used. A rock eruption, a cut in the floor and a pressurised fire
 column were therefore the same visible object -- the "sharing the main visible
 object/attack identity is not [allowed]" case the spec calls out.
 
-This walks the whole chain for each hazard independently: enum arm, mesh
-selector, an authored, bounded and distinct silhouette, the renderer table,
-``NAMES`` and the generated JSON. It proves authored geometry, not a Minecraft
-visual; the F2 screenshots stay an owner acceptance.
+N23-P1-06 later named the residual ``kagune_eruption -> GEYSER`` share again, so
+the Kagune eruption now has its own family (``tests/test_kagune_family.py``).
+``GEYSER`` remains the authored rock/obsidian body, no longer borrowed by a
+Kagune spell. This file keeps the two Phase-3 hazards and the geyser body honest:
+enum arm, mesh selector, an authored, bounded and distinct silhouette, the
+renderer table, ``NAMES`` and the generated JSON. It proves authored geometry,
+not a Minecraft visual; the F2 screenshots stay an owner acceptance.
 """
 import json
 import subprocess
@@ -27,9 +30,9 @@ MESH_DIR = (ROOT / "CopiMineClient/src/main/resources/assets/copimineclient"
 GENERATOR = ROOT / "CopiMineClient/tools/generate_guardian_spell_meshes.py"
 
 EXPECTED = {
-    "geyser": ("kagune_eruption", 830217),
-    "rift_fracture": ("rift_fracture", 830218),
-    "inferno_geyser": ("inferno_geyser", 830219),
+    "geyser": 830217,
+    "rift_fracture": 830218,
+    "inferno_geyser": 830219,
 }
 
 PROBE = """
@@ -43,27 +46,25 @@ public final class GeyserFamilyProbe {
         if (!ok) throw new AssertionError(message);
     }
 
-    static void body(String id, BossSpellGeometryPolicy.Shape shape, int model) {
-        BossSpellGeometryPolicy.Shape resolved = BossSpellGeometryPolicy.shape(id);
-        check(resolved == shape, id + " maps to " + resolved + ", not " + shape);
-        check(BossSpellGeometryPolicy.modelData(resolved) == model,
-                id + " mesh id changed: " + BossSpellGeometryPolicy.modelData(resolved));
+    static void shapeBody(BossSpellGeometryPolicy.Shape shape, int model) {
+        check(BossSpellGeometryPolicy.modelData(shape) == model,
+                shape + " mesh id changed: " + BossSpellGeometryPolicy.modelData(shape));
         for (var beat : BossSpellGeometryPolicy.Beat.values()) {
-            check(BossSpellGeometryPolicy.anchor(resolved, beat)
+            check(BossSpellGeometryPolicy.anchor(shape, beat)
                             == BossSpellGeometryPolicy.Anchor.LOCKED_FLOOR,
-                    id + " is not a floor hazard at " + beat);
+                    shape + " is not a floor hazard at " + beat);
             for (int frame = 0; frame <= 20; frame++) {
                 List<BossSpellGeometryPolicy.Point> points = BossSpellGeometryPolicy.sample(
-                        resolved, beat, frame / 20.0, 4.0);
-                check(!points.isEmpty(), id + " empty at " + beat + " " + frame);
-                check(points.size() <= BossSpellGeometryPolicy.MAX_POINTS, id + " unbounded");
+                        shape, beat, frame / 20.0, 4.0);
+                check(!points.isEmpty(), shape + " empty at " + beat + " " + frame);
+                check(points.size() <= BossSpellGeometryPolicy.MAX_POINTS, shape + " unbounded");
                 double minSide = Double.MAX_VALUE, maxSide = -Double.MAX_VALUE;
                 double minUp = Double.MAX_VALUE, maxUp = -Double.MAX_VALUE;
                 double minFwd = Double.MAX_VALUE, maxFwd = -Double.MAX_VALUE;
                 for (var point : points) {
                     check(Double.isFinite(point.side() + point.up() + point.forward()),
-                            id + " non-finite point");
-                    check(point.layer() >= 0 && point.layer() <= 2, id + " bad layer");
+                            shape + " non-finite point");
+                    check(point.layer() >= 0 && point.layer() <= 2, shape + " bad layer");
                     minSide = Math.min(minSide, point.side());
                     maxSide = Math.max(maxSide, point.side());
                     minUp = Math.min(minUp, point.up());
@@ -71,17 +72,31 @@ public final class GeyserFamilyProbe {
                     minFwd = Math.min(minFwd, point.forward());
                     maxFwd = Math.max(maxFwd, point.forward());
                 }
-                check(maxSide - minSide > 0.10, id + " has no side extent at " + beat);
-                check(maxUp - minUp > 0.10, id + " has no vertical extent at " + beat);
-                check(maxFwd - minFwd > 0.10, id + " has no forward extent at " + beat);
+                check(maxSide - minSide > 0.10, shape + " has no side extent at " + beat);
+                check(maxUp - minUp > 0.10, shape + " has no vertical extent at " + beat);
+                check(maxFwd - minFwd > 0.10, shape + " has no forward extent at " + beat);
             }
         }
     }
 
+    static void body(String id, BossSpellGeometryPolicy.Shape shape, int model) {
+        BossSpellGeometryPolicy.Shape resolved = BossSpellGeometryPolicy.shape(id);
+        check(resolved == shape, id + " maps to " + resolved + ", not " + shape);
+        shapeBody(shape, model);
+    }
+
     public static void main(String[] args) {
-        body("kagune_eruption", BossSpellGeometryPolicy.Shape.GEYSER, 830217);
         body("rift_fracture", BossSpellGeometryPolicy.Shape.RIFT_FRACTURE, 830218);
         body("inferno_geyser", BossSpellGeometryPolicy.Shape.INFERNO_GEYSER, 830219);
+        // The rock/obsidian geyser keeps its own authored body, but no spell
+        // borrows it any more: the Kagune eruption split into its own family.
+        shapeBody(BossSpellGeometryPolicy.Shape.GEYSER, 830217);
+        check(BossSpellGeometryPolicy.shape("kagune_eruption")
+                        == BossSpellGeometryPolicy.Shape.KAGUNE_ERUPTION,
+                "the Kagune eruption still resolves to the geyser shape");
+        check(BossSpellGeometryPolicy.modelData(BossSpellGeometryPolicy.Shape.KAGUNE_ERUPTION)
+                        != 830217,
+                "the Kagune eruption still shares the rock geyser body");
 
         // The ground slam keeps its own fragment, so the eruption never shares
         // a body with it again.
@@ -134,7 +149,7 @@ def test_geyser_family_geometry_is_authored_bounded_and_distinct(probe):
 def test_geyser_family_meshes_are_generated_and_wired():
     renderer = (CLIENT / "GuardianSpellRenderer.java").read_text(encoding="utf-8")
     names = (CLIENT / "GuardianSpellMesh.java").read_text(encoding="utf-8")
-    for name, (_, model) in EXPECTED.items():
+    for name, model in EXPECTED.items():
         assert f'case {model} -> "{name}";' in renderer, (name, model)
         assert f'"{name}"' in names, name
         assert f'case "{name}" -> new Motion(' in renderer, f"{name} needs a motion profile"
@@ -177,9 +192,9 @@ def _method(source, signature):
 def test_the_phase_three_hazards_spawn_their_authored_bodies():
     """The authored bodies must be reachable, not dead JSON.
 
-    ``kagune_eruption`` already renders through the generic boss-spell body, but
-    the Phase 3 crack and column have their own runtime. This pins the two
-    spawns so the meshes cannot silently become unreferenced assets.
+    The Kagune spells render through the generic boss-spell body, but the
+    Phase 3 crack and column have their own runtime. This pins the two spawns
+    so the meshes cannot silently become unreferenced assets.
     """
     event = (ROOT / "copimine-end-event/src/me/copimine/endevent/CopiMineEndEvent.java").read_text(
         encoding="utf-8", errors="surrogateescape")
@@ -192,4 +207,3 @@ def test_the_phase_three_hazards_spawn_their_authored_bodies():
     # Both live behind the eruption one-shot, so one hazard cannot spam bodies.
     eruption = tick[tick.index("if (!state.erupted())"):]
     assert "INFERNO_GEYSER" in eruption[: eruption.index("renderCurrentRiftFracture")]
-

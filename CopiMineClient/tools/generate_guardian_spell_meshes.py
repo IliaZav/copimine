@@ -215,6 +215,60 @@ def meshes():
                                   ('x' if index % 2 else 'z', 16)))
         inferno_geyser.append(box(x, 8.4 + height + 0.6, z, .8, 1.4, .8, 1, ('y', 45)))
     result['inferno_geyser'] = inferno_geyser
+    # N23-P1-06 residual: three Kagune roles, three authored bodies. A stab
+    # spine, a floor eruption of S-curved tentacles and a compact claw-knot.
+    # They used to be the rift_lance, the rock geyser and the ambush knot, so a
+    # Kagune ability and an unrelated mechanic were the same visible object.
+    stab = [box(8, 2.4, 7.4, 5.6, 1.8, 5.2, 9, ('y', 45))]
+    for x, y, z, sx, sy, sz, angle in (
+            (8.0, 4.6, 8.0, 3.4, 4.2, 2.6, 14.0),
+            (8.0, 7.4, 8.9, 2.8, 4.4, 2.2, 30.0),
+            (8.4, 10.2, 10.0, 2.2, 4.2, 1.8, 40.0),
+            (9.0, 12.8, 11.2, 1.6, 3.6, 1.3, 45.0),
+            (9.6, 14.9, 12.3, 1.0, 2.6, .9, 45.0),
+            (10.1, 16.2, 13.2, .55, 1.6, .55, 45.0)):
+        stab.append(box(x, y, z, sx, sy, sz, 9 if angle < 45 else 10, ('x', angle)))
+    for side in (-1, 1):
+        stab.append(box(8 + side * 1.9, 8.4, 9.3, 2.6, .9, 1.2, 1, ('y', side * 30)))
+        stab.append(box(8 + side * 2.6, 10.0, 10.2, 1.8, .7, .9, 1, ('y', side * 22)))
+    result['kagune_stab'] = stab
+    eruption = [box(8, 2.0, 8, 9.0, 2.0, 9.0, 15, ('y', 45))]
+    for arm in range(4):
+        a = arm * math.pi / 2 + 0.25
+        for step in range(5):
+            t = 0.12 + step * 0.20
+            radius = 1.4 + t * 3.4
+            sway = math.sin(t * math.pi * 1.5) * (1.3 if arm % 2 == 0 else -1.3)
+            x = 8 + math.cos(a) * radius - math.sin(a) * sway
+            z = 8 + math.sin(a) * radius + math.cos(a) * sway
+            y = 2.4 + t * 9.5
+            eruption.append(box(x, y, z, 1.9 - step * .18, 2.6, 1.9 - step * .18,
+                                9 if arm % 2 else 6,
+                                ('x' if arm % 2 else 'z', 18 + step * 5)))
+        tip_sway = math.sin(0.92 * math.pi * 1.5) * (1.3 if arm % 2 == 0 else -1.3)
+        tx = 8 + math.cos(a) * 4.53 - math.sin(a) * tip_sway
+        tz = 8 + math.sin(a) * 4.53 + math.cos(a) * tip_sway
+        eruption.append(box(tx - math.cos(a) * 1.0, 12.6, tz - math.sin(a) * 1.0,
+                            1.2, 2.8, 1.2, 1, ('y', 45)))
+    result['kagune_eruption'] = eruption
+    small = [box(8, 1.7, 8, 6.4, 1.4, 6.4, 15, ('y', 45))]
+    for tendril in range(3):
+        a = tendril * math.pi * 2 / 3 + 0.2
+        for step in range(4):
+            t = 0.18 + step * 0.24
+            radius = 1.0 + math.sin(t * math.pi * .85) * 2.6
+            curl = 1.5 * t * t
+            x = 8 + math.cos(a) * radius - math.sin(a) * curl
+            z = 8 + math.sin(a) * radius + math.cos(a) * curl
+            y = 2.2 + t * 5.4
+            small.append(box(x, y, z, 1.7 - step * .22, 1.9, 1.7 - step * .22,
+                             9 if tendril % 2 else 6,
+                             ('y', 45 if step % 2 else -30)))
+    for thorn in range(6):
+        a = thorn * math.pi / 3
+        small.append(box(8 + math.cos(a) * 2.2, 2.2, 8 + math.sin(a) * 2.2,
+                         2.4, .8, .9, 10, ('y', 45)))
+    result['kagune_small'] = small
     return result
 
 

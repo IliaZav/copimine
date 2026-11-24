@@ -261,10 +261,10 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # 24-November again: the three authored floor-hazard bodies (the rock
     # eruption, the rift crack and the pressure fire column) joined the packaged
     # geometry set, from the same clean `gradle test jar` on the pinned JDK.
-    assert artifact['size'] == 30_384_667
+    assert artifact['size'] == 30_389_722
     assert artifact['sha512'] == (
-        '4e26b09fdd3b7115d673ac15d043a7306788b0764c50642de571e0fd5785c8e36'
-        'a9f891401ad044b3185ad4c28d391973444ddb0afa4d38dfb111adfac1b6c10'
+        '5967abfa42693d50bc7bec2f5808496691012b6ae34421f6ee72588d15b672fb'
+        'a3fdcc1e6c70329b516513faf651225aefbc731b7c49b89325e4587297d6506a'
     )
 
 

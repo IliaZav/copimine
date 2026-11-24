@@ -139,7 +139,7 @@ def test_chest_beam_mesh_is_generated_and_wired():
     assert '"chest_beam"' in names
     mesh_test = (ROOT / "tools/minecraft-26.3/client/src/test/java/me/copimine/client"
                  / "GuardianSpellMeshTest.java").read_text(encoding="utf-8")
-    assert "AUTHORED_MESHES = 20" in mesh_test
+    assert "AUTHORED_MESHES = 23" in mesh_test
 
 
 def test_generated_meshes_match_the_generator_byte_for_byte(tmp_path):
@@ -149,7 +149,7 @@ def test_generated_meshes_match_the_generator_byte_for_byte(tmp_path):
          str(ROOT / "CopiMineClient/src/main/resources")],
         capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "20 bounded standalone spell meshes" in result.stdout
+    assert "23 bounded standalone spell meshes" in result.stdout
 
 
 def test_release_draws_the_frozen_lane_with_its_true_radius():

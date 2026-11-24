@@ -63,6 +63,10 @@ public final class GuardianSpellRenderer {
             case 830217 -> "geyser";
             case 830218 -> "rift_fracture";
             case 830219 -> "inferno_geyser";
+            // N23-P1-06 residual: the three Kagune roles own three bodies.
+            case 830220 -> "kagune_stab";
+            case 830221 -> "kagune_eruption";
+            case 830222 -> "kagune_small";
             default -> "";
         };
         if (mesh.isEmpty() || GuardianSpellMesh.vertices(mesh).isEmpty()) return null;
@@ -76,7 +80,9 @@ public final class GuardianSpellRenderer {
         float yaw = -entity.getYRot() + (model == 830208 ? age * 1.8F
                 : model == 830215 ? age * 3F
                 : model == 830216 ? age * 5F
-                : model == 830219 ? age * 0.7F : 0F);
+                : model == 830219 ? age * 0.7F
+                : model == 830221 ? age * 0.55F
+                : model == 830222 ? age * 1.4F : 0F);
         float roll = model == 830204 || model >= 830208 ? 0F : age * 4F;
         float size = switch (model) {
             case 830208 -> 2.6F;
@@ -94,6 +100,11 @@ public final class GuardianSpellRenderer {
             case 830217 -> 1.5F;
             case 830218 -> 1.8F;
             case 830219 -> 1.6F;
+            // The Kagune family: the stab reads as a long reached spike, the
+            // eruption as a wide floor burst, the small summon as a low knot.
+            case 830220 -> 1.25F;
+            case 830221 -> 1.45F;
+            case 830222 -> 1F;
             default -> 1F;
         };
         return new Pose(mesh, yaw, entity.getXRot(), roll, scale * size, age);
@@ -155,6 +166,18 @@ public final class GuardianSpellRenderer {
             case "inferno_geyser" -> new Motion(.92F + .14F * heartbeat,
                     .72F + .40F * charge + .16F * release,
                     .92F + .14F * heartbeat, -.18F, heartbeat, 0xFFCC86);
+            // N23-P1-06 residual: the Kagune family. The stab drives forward and
+            // flattens across its width on release; the eruption widens out of
+            // its base with a slow counter-twist rather than spinning like the
+            // rune; the small knot pulses compact and tight, with no grab sweep.
+            case "kagune_stab" -> new Motion(.90F - .12F * charge, 1F + .05F * release,
+                    1F + .38F * release, .10F, release, 0xD9B8FF);
+            case "kagune_eruption" -> new Motion(.95F + .18F * heartbeat,
+                    .70F + .38F * charge + .18F * release,
+                    .95F + .18F * heartbeat, -.22F, heartbeat, 0xE7B8FF);
+            case "kagune_small" -> new Motion(.86F + .18F * charge + .06F * heartbeat,
+                    .86F + .18F * charge, .86F + .18F * charge,
+                    .30F, charge, 0xF0C4FF);
             default -> new Motion(1F, 1F, 1F, 0F, 0F, 0xFFFFFF);
         };
     }

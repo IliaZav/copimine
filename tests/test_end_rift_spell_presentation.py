@@ -276,10 +276,16 @@ PROBE = textwrap.dedent(
                             null, null, 0, 1.0F, 1000, 5000),
                     new EndEventWorldVfxManager.BeamSnapshot(
                             instance("v51-beam-9"), "minecraft:the_end",
+                            null, null, 0, 1.0F, 1000, 5000),
+                    new EndEventWorldVfxManager.BeamSnapshot(
+                            instance("v51-geyser-31"), "minecraft:the_end",
                             null, null, 0, 1.0F, 1000, 5000));
             check("a v51-beam cue parses to the authored beam mesh",
                     SpellVisualGeometry.spellCue(instance("v51-beam-9"))
                             == SpellVisualGeometry.Spell.BEAM);
+            check("a v51-geyser cue parses to the authored eruption mesh",
+                    SpellVisualGeometry.spellCue(instance("v51-geyser-31"))
+                            == SpellVisualGeometry.Spell.GEYSER);
             List<RitualSpellPresentationPolicy.WorldPass> spellPasses = new ArrayList<>();
             RitualSpellPresentationPolicy.drawWorldPasses(authored, "minecraft:the_end", 2000,
                     pass -> { spellPasses.add(pass); return snapshot -> { }; });

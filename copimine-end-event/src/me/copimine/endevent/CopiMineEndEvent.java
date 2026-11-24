@@ -59886,6 +59886,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         double height = stage.geyserHeight(eventTickCounter);
         double radius = RiftFractureEruptionPolicy.GEYSER_RADIUS_BLOCKS;
         for (Location center : state.centers()) {
+            // N23-P1-08: one compact v51-geyser cue per live column, so the
+            // shipped 26.3 client rebuilds the authored rock/obsidian throat,
+            // volumetric flame sheets, ash, debris and collapse locally from
+            // the cast clock instead of only reading the sparse particles. It
+            // rides the existing bounded beam transport and is refreshed while
+            // the column exists; the key is stable per fracture for the whole
+            // eruption, so the animation clock never restarts.
+            if (height > 0.0D && center != null && center.getWorld() != null) {
+                broadcastSpellVisualCue("geyser", cueSeedFor(state.id()), center,
+                        center.clone().add(0.0D, height, 0.0D), 0xFF8A2B);
+            }
             for (Player viewer : eventAudience()) {
                 if (!isEventParticleViewer(viewer, center)) {
                     continue;

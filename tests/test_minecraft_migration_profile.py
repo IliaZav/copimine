@@ -281,10 +281,16 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # renderer switched to a full 3D orthonormal frame with a per-spell reach,
     # so diagonal and near-vertical beams render instead of collapsing to a
     # hairline. Repinned from two clean `gradle test jar` runs that agreed.
-    assert artifact['size'] == 30_424_217
+    # 24-November (N23-P1-08): the Phase 3 eruption gained its own authored
+    # rock/obsidian column (GEYSER family): seeded growing floor fissures,
+    # pressure-glow rings, jagged throat ribs, volumetric flame sheets, ash and
+    # debris and a collapsing crown, all rebuilt from the cast clock inside the
+    # authored 1.58-block visual radius (under the real 1.9-block damage radius).
+    # Repinned from two clean `gradle test jar` runs that agreed byte for byte.
+    assert artifact['size'] == 30_425_923
     assert artifact['sha512'] == (
-        '432375e77597603d5c8833a65075fce47b58a3661ac1bcc4f5163fd12025b436'
-        'ae48d6c21005c3871a208f664b90a9078981e43c05b349a2529c49dde67e7599'
+        '2fb6870c84f1bcbebb97c91f643b25a1a1ec928009848b3a05a9e40c0c9a92b3'
+        '0f3d305c4c701c2b6d9b34589d85371b2a32f8a3d1677cda5317860531a61484'
     )
 
 

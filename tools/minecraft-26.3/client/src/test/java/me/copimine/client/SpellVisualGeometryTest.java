@@ -313,6 +313,57 @@ class SpellVisualGeometryTest {
     }
 
     @Test
+    void geyserIsAnAuthoredCollapsingColumnInsideTheVisualRadius() {
+        // N23-P1-08: the Phase 3 eruption must read as a real rock/obsidian
+        // column with growing fissures, volumetric flame sheets and debris that
+        // collapses -- not a static particle spiral. Everything must stay inside
+        // the authored visual radius (under the real 1.9-block damage radius).
+        List<SpellVisualGeometry.Stroke> bloom = SpellVisualGeometry.build(
+                SpellVisualGeometry.Spell.GEYSER, 1080L, SEED,
+                SpellVisualGeometry.GEYSER_MAX_HEIGHT, SpellVisualGeometry.Quality.FULL);
+        List<SpellVisualGeometry.Stroke> collapse = SpellVisualGeometry.build(
+                SpellVisualGeometry.Spell.GEYSER, 2200L, SEED,
+                SpellVisualGeometry.GEYSER_MAX_HEIGHT, SpellVisualGeometry.Quality.FULL);
+        double bloomTop = bloom.stream().flatMap(stroke -> stroke.points().stream())
+                .mapToDouble(SpellVisualGeometry.Point::x).max().orElse(0);
+        double collapseTop = collapse.stream().flatMap(stroke -> stroke.points().stream())
+                .mapToDouble(SpellVisualGeometry.Point::x).max().orElse(0);
+        assertTrue(bloomTop > 8.0D && bloomTop <= SpellVisualGeometry.GEYSER_MAX_HEIGHT + 1.0E-6D,
+                "the full column must reach near its authored height, was " + bloomTop);
+        // Every radial feature hugs the throat: never wider than the visual
+        // radius, so the visible column cannot promise more than its hitbox.
+        // Checked on the bloom and on the collapsing tail, because a late-cycle
+        // mote that drifts outside the capsule would be just as dishonest.
+        for (List<SpellVisualGeometry.Stroke> frame : List.of(bloom, collapse)) {
+            for (SpellVisualGeometry.Stroke stroke : frame) {
+                for (SpellVisualGeometry.Point point : stroke.points()) {
+                    double radial = Math.hypot(point.y(), point.z());
+                    assertTrue(radial <= SpellVisualGeometry.GEYSER_VISUAL_RADIUS + 1.0E-6D,
+                            "a geyser point escaped the visual radius, radial " + radial);
+                    assertTrue(point.x() >= -1.0E-6D
+                                    && point.x() <= SpellVisualGeometry.GEYSER_MAX_HEIGHT + 1.0E-6D,
+                            "a geyser point escaped the authored column, x " + point.x());
+                }
+            }
+        }
+        assertTrue(count(bloom, SpellVisualGeometry.Style.LANE) >= 5, "growing floor fissures");
+        assertTrue(count(bloom, SpellVisualGeometry.Style.JAW) >= 5, "rock/obsidian throat");
+        assertTrue(count(bloom, SpellVisualGeometry.Style.FIELD) >= 4, "volumetric flame sheets");
+        assertTrue(count(bloom, SpellVisualGeometry.Style.TRACE) >= 6, "ash and debris");
+        // The authored height drives the extent.
+        double shortTop = SpellVisualGeometry.build(SpellVisualGeometry.Spell.GEYSER, 1080L, SEED,
+                        6.0D, SpellVisualGeometry.Quality.FULL).stream()
+                .flatMap(stroke -> stroke.points().stream())
+                .mapToDouble(SpellVisualGeometry.Point::x).max().orElse(0);
+        assertTrue(bloomTop > shortTop + 2.0D, "a taller staging really is taller");
+        // It animates continuously and collapses rather than sitting static.
+        assertTrue(!bloom.equals(SpellVisualGeometry.build(SpellVisualGeometry.Spell.GEYSER,
+                1380L, SEED, SpellVisualGeometry.GEYSER_MAX_HEIGHT,
+                SpellVisualGeometry.Quality.FULL)), "the geyser must animate over its clock");
+        assertTrue(collapseTop < bloomTop, "the column collapses at the end of the cycle");
+    }
+
+    @Test
     void cueParserAcceptsOnlyTheExactAuthoredForm() {
         assertEquals(SpellVisualGeometry.Spell.CROWN,
                 SpellVisualGeometry.spellCue("3f2a:17:world:v51-crown-4242"));
@@ -321,6 +372,8 @@ class SpellVisualGeometryTest {
                 SpellVisualGeometry.spellCue("e:1:world:v51-sweep-0"));
         assertEquals(SpellVisualGeometry.Spell.BEAM,
                 SpellVisualGeometry.spellCue("e:1:world:v51-beam-9"));
+        assertEquals(SpellVisualGeometry.Spell.GEYSER,
+                SpellVisualGeometry.spellCue("e:1:world:v51-geyser-31"));
         assertNull(SpellVisualGeometry.spellCue("e:1:world:v51-crown"));
         assertNull(SpellVisualGeometry.spellCue("e:1:world:v51-crown-12a"));
         assertNull(SpellVisualGeometry.spellCue("e:1:world:v51-unknown-1"));

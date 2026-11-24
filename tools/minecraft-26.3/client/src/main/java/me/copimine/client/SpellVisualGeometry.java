@@ -38,7 +38,9 @@ public final class SpellVisualGeometry {
         GUARDIAN_HEAVY("heavy"),
         SEPARATION("separation"),
         // N23-P1-05: the signature chest beam's own full-length cross-section.
-        BEAM("beam");
+        BEAM("beam"),
+        // N23-P1-08: the Phase 3 rock/obsidian eruption column.
+        GEYSER("geyser");
 
         private final String token;
 
@@ -148,6 +150,18 @@ public final class SpellVisualGeometry {
     public static final double BEAM_MIN_LENGTH = 2.0D;
     public static final double BEAM_MAX_LENGTH = 26.0D;
 
+    // N23-P1-08: the Phase 3 eruption column. The server stages real reversible
+    // blocks under an 8..12-block high damage column of radius 1.9 and restores
+    // every block afterwards. The authored visual is a rock/obsidian throat that
+    // opens fissures, chokes with volcanic flame sheets, throws ash and debris,
+    // then collapses -- all rebuilt from the cast clock so it stays animated and
+    // stays inside the real hit cylinder.
+    public static final double GEYSER_MAX_HEIGHT = 12.0D;
+    public static final double GEYSER_MIN_HEIGHT = 6.0D;
+    public static final double GEYSER_VISUAL_RADIUS = 1.58D;
+    /** One authored eruption cycle; the clock loops so the column keeps living. */
+    public static final long GEYSER_PERIOD_MILLIS = 2400L;
+
     /** Prefix of the compact authored-cast cue carried by the beam transport. */
     public static final String CUE_PREFIX = "v51-";
 
@@ -211,12 +225,15 @@ public final class SpellVisualGeometry {
     public static final int MAX_SEGMENTS = 1024;
     public static final double MAX_REACH_BLOCKS = 10.5D;
 
-    /** Per-spell footprint bound: the arena gravity field and the 26-block beam exceed the local reach. */
+    /** Per-spell footprint bound: the arena gravity field, the 26-block beam and the 12-block column exceed the local reach. */
     public static double maxReach(Spell spell) {
         if (spell == Spell.GRAVITY) {
             return 48.0D;
         }
-        return spell == Spell.BEAM ? BEAM_MAX_LENGTH + 1.0D : MAX_REACH_BLOCKS;
+        if (spell == Spell.BEAM) {
+            return BEAM_MAX_LENGTH + 1.0D;
+        }
+        return spell == Spell.GEYSER ? GEYSER_MAX_HEIGHT + 1.0D : MAX_REACH_BLOCKS;
     }
 
     private SpellVisualGeometry() {
@@ -251,6 +268,7 @@ public final class SpellVisualGeometry {
             case GUARDIAN_HEAVY -> guardianHeavy(elapsed, tier);
             case SEPARATION -> separation(elapsed, tier);
             case BEAM -> beam(elapsed, seed, reach, tier);
+            case GEYSER -> geyser(elapsed, seed, reach, tier);
         };
         return bounded(strokes, maxReach(spell));
     }
@@ -1010,6 +1028,138 @@ public final class SpellVisualGeometry {
      * stacked ribbons fill a genuine circular shaft and the widest sheet sits
      * exactly at the requested radius.
      */
+    // ------------------------------------------------------------------
+    // GEYSER (N23-P1-08): the Phase 3 rock/obsidian eruption column. A
+    // seeded ring of growing floor fissures feeds a jagged throat of rock
+    // ribs; volumetric flame sheets choke upward through it, volcanic ash
+    // and debris tumble out, and the whole column collapses and settles on
+    // the cast clock. Every radial feature stays inside the real 1.58-block
+    // visual radius (under the 1.9-block damage radius), and the height is
+    // driven by the authored reach so it matches the staged 8..12 blocks.
+    // ------------------------------------------------------------------
+    private static List<Stroke> geyser(long elapsedMillis, long seed, double requested,
+                                       Quality quality) {
+        double height = clamp(requested > 0.0D ? requested : GEYSER_MAX_HEIGHT,
+                GEYSER_MIN_HEIGHT, GEYSER_MAX_HEIGHT);
+        double t = frac(elapsedMillis / (double) GEYSER_PERIOD_MILLIS);
+        // Envelope: fissures and pressure lead, the column blooms, then it
+        // collapses and the ash settles. All phases overlap so motion never
+        // stops mid-cycle.
+        double swell = t < 0.22D ? smooth(t / 0.22D) : 1.0D;
+        double erupt = clamp((t - 0.18D) / 0.18D, 0.0D, 1.0D);
+        double collapse = clamp((t - 0.72D) / 0.28D, 0.0D, 1.0D);
+        double column = clamp(0.12D + 0.88D * erupt - collapse, 0.06D, 1.0D);
+        double spin = spinDegrees(elapsedMillis, 26.0D, splitUnit(seed, 5L) * 360.0D);
+        int samples = quality.samples();
+        List<Stroke> strokes = new ArrayList<>(64);
+
+        // 1. Growing floor fissures: seeded radial jags in the base plane.
+        int fissures = quality == Quality.REDUCED ? 5 : 8;
+        for (int fissure = 0; fissure < fissures; fissure++) {
+            double angle = Math.toRadians(splitUnit(seed, fissure) * 360.0D + spin * 0.20D);
+            double reach = GEYSER_VISUAL_RADIUS * (0.50D + 0.40D * swell)
+                    * (0.72D + 0.28D * splitUnit(seed, 40L + fissure));
+            List<Point> crack = new ArrayList<>(5);
+            List<Float> widths = new ArrayList<>(5);
+            for (int index = 0; index <= 4; index++) {
+                double u = index / 4.0D;
+                double jag = (index % 2 == 0 ? 1.0D : -1.0D) * 0.18D * u;
+                double r = reach * u;
+                crack.add(new Point(0.05D + jag * 0.06D,
+                        Math.cos(angle) * r - Math.sin(angle) * jag,
+                        Math.sin(angle) * r + Math.cos(angle) * jag));
+                widths.add((float) (0.080D * (1.0D - 0.70D * u)));
+            }
+            strokes.add(new Stroke(Style.LANE, crack, widths, 0.85F, 0.55F));
+        }
+
+        // 2. Pressure glow: pulsing rings hugging the throat at the base.
+        for (int ring = 0; ring < 3; ring++) {
+            double phase = frac(t + ring / 3.0D);
+            strokes.add(axisRing(0.10D + ring * 0.08D,
+                    GEYSER_VISUAL_RADIUS * (0.34D + 0.50D * phase), 18, 0.05D,
+                    Style.RING, 0.90F, (float) (0.55D * (1.0D - phase)), spin * 0.3D));
+        }
+
+        // 3. Rock/obsidian throat: jagged vertical ribs and stepped ledges.
+        int ribs = quality == Quality.REDUCED ? 5 : 7;
+        for (int rib = 0; rib < ribs; rib++) {
+            double angle = rib * (Math.PI * 2.0D) / ribs + spin * 0.10D;
+            double baseR = GEYSER_VISUAL_RADIUS * (0.55D + 0.10D * (rib % 3));
+            double topR = baseR * (0.72D + 0.18D * splitUnit(seed, 60L + rib));
+            double top = height * (0.52D + 0.16D * (rib % 3)) * column;
+            List<Point> throat = new ArrayList<>(samples + 1);
+            List<Float> widths = new ArrayList<>(samples + 1);
+            for (int index = 0; index <= samples; index++) {
+                double u = index / (double) samples;
+                double jag = Math.sin(u * Math.PI * 3.0D + rib) * 0.10D * GEYSER_VISUAL_RADIUS
+                        * Math.sin(Math.PI * u);
+                double r = baseR + (topR - baseR) * u + jag;
+                throat.add(new Point(top * u, Math.cos(angle) * r, Math.sin(angle) * r));
+                widths.add((float) (0.16D * (1.0D - 0.55D * u)));
+            }
+            strokes.add(new Stroke(Style.JAW, throat, widths, 0.60F, 0.90F));
+        }
+
+        // 4. Volumetric flame sheets: tall staggered, leaning, travelling wave.
+        int sheets = quality == Quality.REDUCED ? 4 : 6;
+        for (int sheet = 0; sheet < sheets; sheet++) {
+            double angle = sheet * (Math.PI * 2.0D) / sheets + spin * 0.16D;
+            double baseR = GEYSER_VISUAL_RADIUS * (0.30D + 0.06D * (sheet % 3));
+            double lean = GEYSER_VISUAL_RADIUS * 0.28D * (sheet % 2 == 0 ? 1.0D : -1.0D);
+            double top = height * (0.82D + 0.16D * splitUnit(seed, 80L + sheet)) * column;
+            int segments = Math.max(4, samples);
+            List<Point> flame = new ArrayList<>(segments + 1);
+            List<Float> widths = new ArrayList<>(segments + 1);
+            for (int index = 0; index <= segments; index++) {
+                double u = index / (double) segments;
+                double lash = Math.sin(u * Math.PI * 2.0D - spin * 0.60D + sheet)
+                        * 0.12D * GEYSER_VISUAL_RADIUS * u;
+                double r = baseR + lean * u * u;
+                flame.add(new Point(top * u,
+                        Math.cos(angle) * r - Math.sin(angle) * lash,
+                        Math.sin(angle) * r + Math.cos(angle) * lash));
+                double wave = 0.55D + 0.45D * (0.5D + 0.5D * Math.sin(u * 6.0D - spin * 0.90D));
+                widths.add((float) (0.20D * (1.0D - 0.45D * u) * wave));
+            }
+            strokes.add(new Stroke(Style.FIELD, flame, widths, 1.0F, 0.62F));
+        }
+
+        // 5. Ash and debris: motes flung out, then falling as it collapses.
+        int motes = quality == Quality.REDUCED ? 6 : 10;
+        for (int mote = 0; mote < motes; mote++) {
+            double angle = splitUnit(seed, 100L + mote) * (Math.PI * 2.0D) + spin * 0.40D;
+            double u = frac(t * (0.90D + 0.50D * splitUnit(seed, 140L + mote))
+                    + splitUnit(seed, 180L + mote));
+            double r = GEYSER_VISUAL_RADIUS * Math.min(1.0D,
+                    (0.50D + 0.90D * u) * (0.70D + 0.50D * collapse));
+            double x = Math.max(0.05D, Math.min(height,
+                    height * (0.35D + 0.75D * u) * column - collapse * height * 0.50D * u));
+            double tailX = Math.max(0.05D, Math.min(height, x - 0.16D - 0.08D * (mote % 3)));
+            double tailR = Math.min(GEYSER_VISUAL_RADIUS, r * 1.12D);
+            strokes.add(new Stroke(Style.TRACE, List.of(
+                    new Point(x, Math.cos(angle) * r, Math.sin(angle) * r),
+                    new Point(tailX, Math.cos(angle) * tailR, Math.sin(angle) * tailR)),
+                    List.of(0.10F, 0.03F), 0.70F, (float) (0.35D + 0.35D * (1.0D - u))));
+        }
+
+        // 6. Crown flare: short blades at the top of the living column.
+        if (column > 0.35D) {
+            double top = height * column;
+            for (int blade = 0; blade < 5; blade++) {
+                double angle = blade * (Math.PI * 2.0D) / 5.0D + spin * 0.30D;
+                strokes.add(new Stroke(Style.ARM, List.of(
+                        new Point(top * 0.84D, Math.cos(angle) * GEYSER_VISUAL_RADIUS * 0.30D,
+                                Math.sin(angle) * GEYSER_VISUAL_RADIUS * 0.30D),
+                        new Point(top * (0.90D + 0.08D * splitUnit(seed, 200L + blade)),
+                                Math.cos(angle) * GEYSER_VISUAL_RADIUS * 0.85D,
+                                Math.sin(angle) * GEYSER_VISUAL_RADIUS * 0.85D)),
+                        List.of(0.09F, 0.02F), 1.0F, (float) (0.50D + 0.50D * column)));
+            }
+        }
+        return strokes;
+    }
+
     private static List<Stroke> chordSheets(double length, int samples, double radius,
                                             int sheets, Style style, float brightness,
                                             float alpha) {
@@ -1154,6 +1304,12 @@ public final class SpellVisualGeometry {
 
     private static double clamp(double value, double minimum, double maximum) {
         return Math.max(minimum, Math.min(maximum, value));
+    }
+
+    /** Smoothstep ease, so authored growth never snaps. */
+    private static double smooth(double value) {
+        double u = clamp(value, 0.0D, 1.0D);
+        return u * u * (3.0D - 2.0D * u);
     }
 
     /** Hard-bound the mesh so no cue can request an unbounded submission. */

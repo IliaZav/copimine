@@ -692,6 +692,51 @@ measures:
 pass, and the CI-side wiring proof stays the always-on contract. Live mix,
 balance against phase music and 2+-player audibility remain `NATIVE_BLOCKED`.
 
+### N23-P2-16 — per-cast failure and recovery: audit of the shipped lifecycle
+
+Master V5.1 (N23-P2-16) requires a defined
+`start -> warning -> target lock -> release -> hit/miss -> aftermath -> cleanup`
+for **every** new cast and entity, and explicit handling of session generation,
+quit/death, chunk unload, boss death, plugin disable, restart-during-telegraph,
+rejoin-after-warning, late V4 join, double callback, duplicate packet, old cast
+token, resource reload, world rotation and arena relocate when inactive. This is
+an audit of where each of those lives in the shipped 26.3 client and End Event
+plugin, so the residual gaps are named instead of glossed.
+
+| Stage / failure | Owner in the shipped code | What ends it |
+|---|---|---|
+| start / warning (telegraph) | server-authored `END_WORLD_BEAM` cue per viewer | bounded `expiresAtMillis` (`MAX_BEAM_LIFETIME_MILLIS = 2000`) |
+| release (the cast arc) | same cue key `v51-<token>-<seed>`; the client derives the 7-key arc locally (`SpellVisualEnvelope`) | the same bounded lifetime + `fade = min(1, elapsed/160) * min(1, remaining/260)` |
+| target lock | **server-only** (`SpellVisualPolicy` / `BossChestStrike` lane lock); the client never picks targets | server policy state |
+| hit / miss + aftermath | separate world cues and the 6-step `BossSpellPresentationEffects.impact(...)` task — not the cast arc | their own bounded tasks |
+| cleanup (cast tick) | `EndEventWorldVfxManager.tick(now)` drops every beam with `expiresAtMillis <= now` | the lifetime |
+| cleanup (clear) | `applyClear` (`END_WORLD_VFX_CLEAR`, session+seq fenced) then `clearEvent(eventId, generation)` / `clear()` | the clear fence |
+| duplicate packet | `applyBeam` rejects `timestampMillis <= version.timestampMillis`; `applyClear` rejects an older timestamp and a duplicate clear at the same timestamp | the `instanceVersions` fence |
+| old cast token / generation | `snapshots(expectedEvent, expectedGeneration)` returns nothing for a foreign event/generation; `MAX_INSTANCE_VERSIONS = 256` | the generation check |
+| reconnect / disconnect | `CopiMineClient` calls `ClientBridgeProtocol.onDisconnect()` and `visualManager.clearAll("disconnect", true)`; `reset()` clears beams, versions, event, generation and the sound runtime | the connection reset |
+| quit / death | `renderHud` early-returns on `player.isDeadOrDying()`; the world manager is the sole VFX owner | player state |
+| sound after the cast | `SpellVisualSoundRuntime.observe(live)` fires one voice per new cue and `reset()`s on `clear()`/`reset()`; `shouldSound(prev, cur)` suppresses telegraph refreshes so a refreshed cue does not double-fire | the cue's lifetime |
+
+Coverage already in the tree: `EndEventWorldVfxManagerTest`
+(`rejectsStaleGenerationAndInvalidCoordinates`, the clear/version fences),
+`EndEventPlayerVisualManagerTest`
+(`duplicateClearIsIdempotentAndAStaleClearCannotEraseAFreshPickup`),
+`test_disposable_boss_defeat_adapter.py` (an old-generation defeat callback cannot
+clear a new generation), `test_crushing_gravity_runtime.py` (a stale generation
+cannot revive the field) and `test_end_rift_spell_presentation.py` (the manager
+must call `SpellVisualSoundRuntime.reset()` so reset/clear silences stale
+voices).
+
+**Honest gaps.** There is **no dedicated cancel packet**: the packet shape exists
+(`SpellCastPacket` START/CANCEL with stage and generation) but it is not wired, so
+a cast that the server interrupts mid-telegraph is not cancelled by a message —
+it relies on the beam's bounded lifetime (<= 2 s) and the event/phase clear fences,
+which means the arc can finish its authored window locally before the clear lands.
+Chunk unload, boss death mid-telegraph, plugin disable/restart during a telegraph,
+rejoin-after-warning and late V4-client join are only provable on a live
+client+server and stay `NATIVE_BLOCKED`. No world block is touched and no item is
+duplicated by any of the above: the client never mutates world state.
+
 ### V6 section 9E Phase 4 - the Core memorial survives a full raid roster
 
 V6 asks for `CoreMemorialService`: "persistent names and clean large-roster

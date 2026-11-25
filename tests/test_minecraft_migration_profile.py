@@ -306,10 +306,18 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # ignition curve that scales material brightness only, never the silhouette.
     # Repinned from two clean `--rerun-tasks gradle test jar` runs that agreed
     # byte for byte on the same JDK.
-    assert artifact['size'] == 30_685_728
+    # 25-November (N23-P1-08 staged geyser): the Phase 3 geyser's authored clock
+    # became a staged timeline (warning -> bloom -> a column that stands on every
+    # damaging tick -> collapse) instead of a 2400 ms loop that wrapped mid-hazard,
+    # its ignition curve now keeps the standing column hot, the server emits the
+    # `v51-geyser` cue from the warning tick so the client's clock and audio anchor
+    # to the real telegraph, and the authored geyser sample was re-synthesised so
+    # its impact transient lands on the eruption instant. Repinned from two clean
+    # `--rerun-tasks gradle test jar` runs that agreed byte for byte on the pinned JDK.
+    assert artifact['size'] == 30_685_697
     assert artifact['sha512'] == (
-        '03620f76e57f315ca7ad84977b7468378446e5ec05135f3ec7199bb95cb4c647'
-        '783f5696d3a1acfef14ceb88378b9e3116ec39edcaf6108da90e4d193805c811'
+        '2c871a2fb61e839bd8d51bab7d38ce9c3fcd7bfa10ca20ea4c1b581cb48caeafe'
+        'ed4b8a13c0d12f9538c543120b46cbafd580b6648d578fb782a1e09beb10ab8'
     )
 
 

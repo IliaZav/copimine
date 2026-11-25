@@ -88,6 +88,20 @@ def env(n: int, attack: float, tau: float, curve: float = 1.0) -> np.ndarray:
     return a * decay(n, tau)
 
 
+def env_at(n: int, start: float, attack: float, tau: float, curve: float = 1.0) -> np.ndarray:
+    """A percussive layer that begins at ``start`` seconds, not at zero.
+
+    The staged Phase 3 geyser needs its impact transient to land on the real
+    eruption instant (~1 s after the warning cue), so a plain ``env`` that is
+    anchored to t=0 cannot place it.  This shifts the attack and decay window
+    and stays exactly zero before ``start``.
+    """
+    t = timeline(n)
+    shifted = np.maximum(t - start, 0.0)
+    a = np.clip(shifted / max(1.0e-4, attack), 0.0, 1.0) ** curve
+    return np.where(t >= start, a * np.exp(-shifted / max(1.0e-4, tau)), 0.0)
+
+
 def thump(n: int, start_hz: float, end_hz: float, tau: float) -> np.ndarray:
     return sweep(n, start_hz, end_hz, 0.35) * decay(n, tau)
 
@@ -236,13 +250,23 @@ def beam() -> np.ndarray:
 
 
 def geyser() -> np.ndarray:
-    n = samples(2.9)
-    t = timeline(n)
-    rumble = band(white(n, 121), 30.0, 320.0) * env(n, 0.7, 0.9) * 0.55
-    crack = band(white(n, 122), 800.0, 9000.0) * decay(n, 0.07) * 0.75
-    blast = band(white(n, 123), 200.0, 5200.0) * rise(n, 0.22) * decay(n, 1.1) * 0.7
-    spires = sweep(n, 160.0, 720.0, 1.5) * env(n, 0.5, 1.6) * 0.28
-    return finish(rumble + crack + blast + spires, fade_out=0.45)
+    # Staged to the real Phase 3 fracture timeline, because the server now sends
+    # the v51-geyser cue at the warning tick and the client anchors its audio and
+    # its authored mesh clock to that first receipt:
+    #   * 0.00..1.00 s  the warning: ground splits (crack), a sub rumble and a
+    #     rising pressure tone build the "get off the footprint" anticipation;
+    #   * 1.00 s        the eruption transient lands on the real hit instant -
+    #     the blast and the low boom are the spike a player reads with eyes shut;
+    #   * 1.00..3.10 s  the fire column and its falling debris decay away.
+    n = samples(3.1)
+    crack = band(white(n, 122), 800.0, 9000.0) * decay(n, 0.08) * 0.78
+    rumble = band(white(n, 121), 28.0, 320.0) * env(n, 0.75, 1.35) * 0.52
+    pressure = sweep(n, 44.0, 132.0, 1.4) * env(n, 0.95, 1.15) * 0.34
+    blast = band(white(n, 123), 180.0, 5200.0) * env_at(n, 1.0, 0.05, 0.92) * 0.88
+    boom = sweep(n, 180.0, 44.0, 0.5) * env_at(n, 1.0, 0.02, 0.78) * 0.76
+    spires = sweep(n, 150.0, 700.0, 1.5) * env_at(n, 1.06, 0.40, 1.45) * 0.24
+    debris = band(white(n, 124), 300.0, 3600.0) * env_at(n, 1.30, 0.25, 1.05) * 0.26
+    return finish(crack + rumble + pressure + blast + boom + spires + debris, fade_out=0.5)
 
 
 BUILDERS = {

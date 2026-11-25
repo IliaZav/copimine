@@ -59885,17 +59885,30 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         RiftFractureEruptionPolicy.Phase phase = stage.phase(eventTickCounter);
         double height = stage.geyserHeight(eventTickCounter);
         double radius = RiftFractureEruptionPolicy.GEYSER_RADIUS_BLOCKS;
+        boolean staging = phase != RiftFractureEruptionPolicy.Phase.RESTORE
+                && phase != RiftFractureEruptionPolicy.Phase.DONE;
         for (Location center : state.centers()) {
             // N23-P1-08: one compact v51-geyser cue per live column, so the
             // shipped 26.3 client rebuilds the authored rock/obsidian throat,
             // volumetric flame sheets, ash, debris and collapse locally from
             // the cast clock instead of only reading the sparse particles. It
-            // rides the existing bounded beam transport and is refreshed while
-            // the column exists; the key is stable per fracture for the whole
-            // eruption, so the animation clock never restarts.
-            if (height > 0.0D && center != null && center.getWorld() != null) {
+            // rides the existing bounded beam transport; the key is stable per
+            // fracture for the whole stage, so the client's animation clock
+            // never restarts on a refresh.
+            //
+            // The cue starts at the warning tick, not at the eruption: the
+            // client anchors its authored clock to its first receipt, so
+            // anchoring here is what lets the whole one-second ground-breach
+            // warning (locked footprint + inward pre-blast) play as a warning
+            // instead of showing up after the blow. The reach is the authored
+            // maximum for the entire stage, not the current column height, so
+            // the cast axis stays vertical and stable while the column is
+            // still only a floor marker; the client's staged clock owns the
+            // visible height.
+            if (staging && center != null && center.getWorld() != null) {
                 broadcastSpellVisualCue("geyser", cueSeedFor(state.id()), center,
-                        center.clone().add(0.0D, height, 0.0D), 0xFF8A2B);
+                        center.clone().add(0.0D, RiftFractureEruptionPolicy.MAX_GEYSER_HEIGHT, 0.0D),
+                        0xFF8A2B);
             }
             for (Player viewer : eventAudience()) {
                 if (!isEventParticleViewer(viewer, center)) {
@@ -59945,6 +59958,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (state == null || !activeCurrentRiftFractures.remove(state.id(), state)) {
             return;
         }
+        // Retire the authored geyser cue with the fracture, so a restored floor
+        // cannot leave a ghost column standing for the rest of the beam
+        // lifetime.
+        clearSpellVisualCue("geyser", cueSeedFor(state.id()));
         for (BlockCellKey cell : state.cells()) {
             currentRiftFractureCells.remove(cell, state.id());
         }

@@ -11,7 +11,7 @@ This table covers all **nine installed first-party plugins** in the isolated loc
 | CopiMineEconomyCore | 1.0.0 | none | 0 / 0 | `d4051688d7a56e1c59b8b31023783d054724be6fac3554611ed6bf65d8568e89` | observed enabled |
 | CopiMineElectionCore | 9.2.0-postgres-v4-balance-credit | CopiMineEconomyCore | 2 / 5 | `ce4749dc346134680366fdccd044cfb0d61cb8fcbf7c8ee1a90e69917a4a4182` | observed enabled |
 | CopiMineDungeon | 1.0.0 | none | 1 / 2 | `416e40917e08e956230e2e602dbb51233986174f7988ac4d62bf857185d73e61` | NATIVE_BLOCKED |
-| CopiMineEndEvent | 0.1.0 | CopiMineWorldCore, CopiMineArtifacts | 1 / 2 | `22f511f347bfb3e55b71fd2713be5db71b080a19c8ab6f7f169b2dd0cad30cc5` | observed enabled |
+| CopiMineEndEvent | 0.1.0 | CopiMineWorldCore, CopiMineArtifacts | 1 / 2 | `a3493d353545e8f72dbd58a80da73f341dcca59847bc9d8b124656d840d191ca` | observed enabled |
 | CopiMineNarcotics | 2.1.0-client-bridge | none | 2 / 8 | `bea72432491f7afa0a0cbd23b608654b56899b8e463720f98dbfef0f39f2ef0d` | observed enabled |
 | CopiMineWorldCore | 1.0.0 | none | 1 / 1 | `e6a2703e8091053f2d7e4fb53fb9b278a8d1ad62956250c64da334c780a742bc` | observed enabled |
 | AuthEffects | 1.0.0 | none | 0 / 0 | `3ae5874bad098f6ac97c983806eb6e7143acc6fde5e57ea4ff9508fe6fef4e8f` | observed enabled |

@@ -17,6 +17,7 @@ import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -55,6 +56,7 @@ import me.copimine.endevent.domain.InfernoArenaLifecyclePolicy;
 import me.copimine.endevent.domain.InfernoDecayPolicy;
 import me.copimine.endevent.domain.InfernoMobWindowPolicy;
 import me.copimine.endevent.domain.InfernoSceneryPolicy;
+import me.copimine.endevent.domain.InfernoTransitionCinematicPolicy;
 import me.copimine.endevent.domain.InfernalForgePolicy;
 import me.copimine.endevent.domain.RiftFireRingPolicy;
 import me.copimine.endevent.domain.EndEventDisplayItems;
@@ -107,6 +109,8 @@ import me.copimine.endevent.domain.BossIntent;
 import me.copimine.endevent.domain.BossMovementPolicy;
 import me.copimine.endevent.domain.BossPhase;
 import me.copimine.endevent.domain.BossPhasePolicy;
+import me.copimine.endevent.domain.BossPhaseMusicPolicy;
+import me.copimine.endevent.domain.PlayerEchoCopyPolicy;
 import me.copimine.endevent.domain.ArenaMergeCinematicPolicy;
 import me.copimine.endevent.domain.BossPhaseTransitionCinematicPolicy;
 import me.copimine.endevent.domain.BossPerceptionSnapshot;
@@ -120,6 +124,7 @@ import me.copimine.endevent.domain.BossVisualCuePolicy;
 import me.copimine.endevent.domain.BossRealHealthDamagePolicy;
 import me.copimine.endevent.domain.BossEdgeVolleyPolicy;
 import me.copimine.endevent.domain.BossHitFeedbackPolicy;
+import me.copimine.endevent.domain.BossHitFlavorPolicy;
 import me.copimine.endevent.domain.BossCastMobilityPolicy;
 import me.copimine.endevent.domain.BossHitClassificationPolicy;
 import me.copimine.endevent.domain.BossFinalSealAnchorPolicy;
@@ -1786,6 +1791,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private boolean cocoonFallStarted;
     private boolean cocoonLandingPlayed;
     private CocoonFallPolicy.Stage cocoonFallStage = CocoonFallPolicy.Stage.COCOONED;
+    /**
+     * V6 §963: the last real combat action of each participant, so a Phase 5
+     * Echo reproduces the victim's own silhouette (their melee / ranged / area
+     * action) and not only the boss's. Presentation input only.
+     */
+    private final Map<UUID, String> playerRecentActionFamily = new LinkedHashMap<>();
     private int cocoonFallElapsedTicks = -1;
     private long cocoonFallLastServerTick = Long.MIN_VALUE;
     private int cocoonFallMoveFailures;
@@ -6481,7 +6492,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return null;
         }
         if (isCurrentBossMeleeFury()) return config.phaseMusic("boss-fury");
-        return config.phaseMusic("boss-" + bossPhase.name().toLowerCase(Locale.ROOT));
+        // Owner request: every phase owns an explicit track. Deriving the key
+        // from the enum name broke LAST_SEAL ("boss-last_seal" != the configured
+        // "boss-last-seal"); the pure policy keeps each phase, including the
+        // Phase 4 overload inferno, on its authored music.
+        return config.phaseMusic(BossPhaseMusicPolicy.musicKey(bossPhase));
     }
 
     private boolean isEventMusicPhase() {
@@ -7039,6 +7054,37 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             sendBossAnimationVisualUpdate(boss, BossAnimationId.HURT.wireId());
             scheduleBossHurtAnimationReset(boss, feedback.feedbackDurationTicks());
         }
+        // Owner request: a critical or an area hit must read differently from a
+        // plain strike. This is presentation only; the authoritative damage was
+        // already committed before the feedback was built.
+        if (feedback.critical() || feedback.splash()) {
+            int sparks = BossHitFeedbackPolicy.criticalSparkCount(feedback);
+            double splashRadius = BossHitFeedbackPolicy.splashRingRadius(feedback);
+            for (Player viewer : eventAudience()) {
+                if (!viewer.isOnline() || !viewer.getWorld().equals(world)) {
+                    continue;
+                }
+                if (viewer.getLocation().distanceSquared(point) > 96.0D * 96.0D) {
+                    continue;
+                }
+                if (feedback.critical()) {
+                    viewer.spawnParticle(Particle.CRIT, point, sparks,
+                            0.34D, 0.44D, 0.34D, 0.12D);
+                    viewer.spawnParticle(Particle.ENCHANT, point, Math.max(4, sparks / 2),
+                            0.30D, 0.40D, 0.30D, 0.05D);
+                }
+                if (splashRadius > 0.0D) {
+                    for (int step = 0; step < 8; step++) {
+                        double angle = Math.PI * 2.0D * step / 8.0D;
+                        Location ring = point.clone().add(
+                                Math.cos(angle) * splashRadius, 0.05D,
+                                Math.sin(angle) * splashRadius);
+                        viewer.spawnParticle(Particle.SWEEP_ATTACK, ring, 1,
+                                0.0D, 0.0D, 0.0D, 0.0D);
+                    }
+                }
+            }
+        }
         if (feedback.impactParticles() || feedback.shieldParticles()) {
             for (Player viewer : eventAudience()) {
                 if (!viewer.isOnline() || !viewer.getWorld().equals(world)
@@ -7091,10 +7137,40 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         return switch (cue) {
             case "ENTITY_PLAYER_ATTACK_STRONG" -> Sound.ENTITY_PLAYER_ATTACK_STRONG;
+            case "ENTITY_PLAYER_ATTACK_CRIT" -> Sound.ENTITY_PLAYER_ATTACK_CRIT;
             case "ENTITY_ARROW_HIT" -> Sound.ENTITY_ARROW_HIT;
             case "BLOCK_ANVIL_HIT" -> Sound.BLOCK_ANVIL_HIT;
             default -> null;
         };
+    }
+
+    /** Owner request: classify a real melee hit for its impact flavour. */
+    private BossHitFlavorPolicy.Flavor meleeHitFlavor(EntityDamageEvent event, LivingEntity boss,
+                                                      Entity source) {
+        boolean splash = event != null && isPlayerAreaDamageToBoss(event, boss, source);
+        boolean falling = source instanceof Player player
+                && player.getFallDistance() > 0.0F && !player.isOnGround();
+        if (source instanceof Player attacker) {
+            // V6 §963: remember the real action so a Phase 5 echo can mirror it.
+            recordPlayerRecentAction(attacker,
+                    splash ? PlayerEchoCopyPolicy.ACTION_AREA : PlayerEchoCopyPolicy.ACTION_MELEE);
+        }
+        return BossHitFlavorPolicy.melee(falling, splash);
+    }
+
+    /** Owner request: classify a real projectile hit for its impact flavour. */
+    private BossHitFlavorPolicy.Flavor projectileHitFlavor(Projectile projectile) {
+        if (projectile == null) {
+            return BossHitFlavorPolicy.none();
+        }
+        boolean area = projectile.getType() == EntityType.SPLASH_POTION
+                || projectile.getType() == EntityType.LINGERING_POTION;
+        boolean critical = projectile instanceof AbstractArrow arrow && arrow.isCritical();
+        if (projectile.getShooter() instanceof Player shooter) {
+            recordPlayerRecentAction(shooter,
+                    area ? PlayerEchoCopyPolicy.ACTION_AREA : PlayerEchoCopyPolicy.ACTION_RANGED);
+        }
+        return BossHitFlavorPolicy.projectile(critical, area);
     }
 
     private Location bodyImpactContact(LivingEntity boss, Entity source) {
@@ -49751,6 +49827,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // Owner request: the two Phase 4 signature spells fire at most once per
         // configured HP threshold, so the fight is never overloaded.
         tickOverloadSignatureCasts(boss);
+        // Owner request: the body reads slightly fiery through Phase 4. A low
+        // cadence keeps it an aura, not a particle flood.
+        if (bossPhase == BossPhase.OVERLOAD && eventTickCounter % 4L == 0L) {
+            renderOverloadBossEmbers(boss);
+        }
         observeCocoonPressure(boss);
         if (guardianPhysicalMoveActive && tickGuardianCommittedMove(boss, now)) return;
         if (tickBossCastLocomotion(boss, now, finalSealPinned)) return;
@@ -50153,6 +50234,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         sendCurrentBossPhaseVisualUpdate(boss, bossPhase, cinematic.poseAnimation());
         playEventMusic(musicForPhase());
         playBossPhaseTransitionPresentation(boss, cinematic, boss.getLocation());
+        // Owner request: the RIFT->OVERLOAD change is the arena transformation,
+        // so it gets its own 3.2 s staged cinematic on top of the short generic
+        // tell. Presentation only: no invulnerability, no control hold.
+        if (bossPhase == BossPhase.OVERLOAD
+                && transition.entered().contains(BossPhase.OVERLOAD)) {
+            startInfernoTransitionCinematic(boss);
+        }
         if (bossPhase != BossPhase.RIFT) {
             if (!activeCurrentRiftFractures.isEmpty()) {
                 clearCurrentRiftFractures("Current stage exit from RIFT");
@@ -51426,8 +51514,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         result = healthCommit.result();
         // The HP commit really happened above, so this is an accepted hit and
         // it is the only thing allowed to raise the red flash.
+        BossHitFlavorPolicy.Flavor hitFlavor = meleeHitFlavor(event, boss, source);
         applyBossHitFeedbackAt(boss, source, bodyImpactContact(boss, source),
-                BossHitFeedbackPolicy.forClassification(hit));
+                BossHitFeedbackPolicy.forClassification(hit,
+                        hitFlavor.critical(), hitFlavor.splash()));
         authoritativeCombatTraceEvents.put(event, Boolean.TRUE);
         emitBossDamageDiagnostic("DAMAGE_ACCEPT", "INFO", boss, source,
                 rawDamage, finalDamage, result.appliedDamage(), healthBefore,
@@ -51555,8 +51645,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         event.setCancelled(true);
         BossHealthCommit healthCommit = commitCurrentBossHealth(boss, result);
         result = healthCommit.result();
+        BossHitFlavorPolicy.Flavor projectileFlavor = projectileHitFlavor(projectile);
         applyBossHitFeedbackAt(boss, projectile, bodyImpactContact(boss, projectile),
-                BossHitFeedbackPolicy.forAcceptedHit(true));
+                BossHitFeedbackPolicy.forAcceptedHit(true,
+                        projectileFlavor.critical(), projectileFlavor.splash()));
         emitBossDamageDiagnostic("DAMAGE_ACCEPT", "INFO", boss, projectile,
                 rawDamage, finalDamage, result.appliedDamage(), healthBefore,
                 result.remainingHealth(), result.lethal() ? "lethal" : "entity-health-commit");
@@ -51664,8 +51756,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         BossHealthCommit healthCommit = commitCurrentBossHealth(boss, result);
         result = healthCommit.result();
+        BossHitFlavorPolicy.Flavor sweptFlavor = projectileHitFlavor(projectile);
         applyBossHitFeedbackAt(boss, projectile, bodyImpactContact(boss, projectile),
-                BossHitFeedbackPolicy.forAcceptedHit(true));
+                BossHitFeedbackPolicy.forAcceptedHit(true,
+                        sweptFlavor.critical(), sweptFlavor.splash()));
         emitBossDamageDiagnostic("DAMAGE_ACCEPT", "INFO", boss, projectile,
                 rawDamage, finalDamage, result.appliedDamage(), healthBefore,
                 result.remainingHealth(), result.lethal() ? "lethal" : "entity-health-commit");
@@ -56555,6 +56649,111 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " safe_cells=" + arenaInfernoSafeBlocks.size());
     }
 
+    // --- Phase 4 transition cinematic + fiery body (owner request) ----------
+
+    /**
+     * Owner request: play the dedicated Phase 4 transformation scene. It runs on
+     * its own bounded ticker, generation-fenced, and only renders presentation.
+     */
+    private void startInfernoTransitionCinematic(LivingEntity boss) {
+        if (boss == null || boss.getWorld() == null) {
+            return;
+        }
+        World world = boss.getWorld();
+        String callbackEvent = eventId;
+        long callbackGeneration = generation;
+        Location centre = boss.getLocation().clone();
+        final int[] elapsed = {0};
+        final boolean[] released = {false};
+        BukkitTask[] holder = new BukkitTask[1];
+        holder[0] = Bukkit.getScheduler().runTaskTimer(this, () -> {
+            if (!Objects.equals(eventId, callbackEvent) || generation != callbackGeneration
+                    || bossPhase != BossPhase.OVERLOAD || !boss.isValid() || boss.isDead()
+                    || taskRegistry != null && !taskRegistry.owns(callbackGeneration)) {
+                holder[0].cancel();
+                return;
+            }
+            int tick = elapsed[0]++;
+            InfernoTransitionCinematicPolicy.Stage stage =
+                    InfernoTransitionCinematicPolicy.stageFor(tick);
+            if (stage == InfernoTransitionCinematicPolicy.Stage.ENDED) {
+                holder[0].cancel();
+                return;
+            }
+            renderInfernoTransitionStage(boss, centre, tick, stage);
+            if (InfernoTransitionCinematicPolicy.isReleaseTick(tick) && !released[0]) {
+                released[0] = true;
+                world.playSound(centre, Sound.ENTITY_GENERIC_EXPLODE,
+                        SoundCategory.HOSTILE, 1.8F, 0.55F);
+                spawnEventParticle(centre, Particle.LAVA, 80,
+                        InfernoTransitionCinematicPolicy.VORTEX_RADIUS_BLOCKS, 1.0D,
+                        InfernoTransitionCinematicPolicy.VORTEX_RADIUS_BLOCKS, 0.12D);
+            }
+        }, 0L, 1L);
+        registerEncounterTask(holder[0]);
+        getLogger().info("PHASE4_TRANSITION_CINEMATIC_START event=" + eventId
+                + " " + InfernoTransitionCinematicPolicy.describe());
+    }
+
+    private void renderInfernoTransitionStage(LivingEntity boss, Location centre, int tick,
+                                              InfernoTransitionCinematicPolicy.Stage stage) {
+        World world = boss.getWorld();
+        if (world == null) {
+            return;
+        }
+        // Cracks brighten first, then shards levitate, then the overhead column.
+        int shards = InfernoTransitionCinematicPolicy.visibleShardCount(tick);
+        for (int index = 0; index < shards; index++) {
+            double angle = Math.PI * 2.0D * index / Math.max(1, InfernoTransitionCinematicPolicy.SHARD_COUNT);
+            double radius = 2.0D + 2.2D * ((index % 5) / 4.0D);
+            double height = 0.4D + InfernoTransitionCinematicPolicy.vortexHeight(tick) * 0.55D;
+            Location point = centre.clone().add(Math.cos(angle) * radius, height, Math.sin(angle) * radius);
+            spawnEventParticle(point, index % 3 == 0 ? Particle.LAVA : Particle.SOUL_FIRE_FLAME,
+                    1, 0.05D, 0.05D, 0.05D, 0.0D);
+        }
+        double vortexHeight = InfernoTransitionCinematicPolicy.vortexHeight(tick);
+        if (vortexHeight > 0.0D) {
+            Location ringCentre = centre.clone().add(0.0D, vortexHeight, 0.0D);
+            int segments = 16;
+            for (int index = 0; index < segments; index++) {
+                double angle = Math.PI * 2.0D * index / segments + tick * 0.18D;
+                Location point = ringCentre.clone().add(
+                        Math.cos(angle) * InfernoTransitionCinematicPolicy.VORTEX_RADIUS_BLOCKS,
+                        0.0D,
+                        Math.sin(angle) * InfernoTransitionCinematicPolicy.VORTEX_RADIUS_BLOCKS);
+                spawnEventParticle(point, index % 2 == 0 ? Particle.FLAME : Particle.LAVA,
+                        1, 0.06D, 0.10D, 0.06D, 0.0D);
+            }
+        }
+        if (stage == InfernoTransitionCinematicPolicy.Stage.GATHER && tick % 6 == 0) {
+            world.playSound(centre, Sound.BLOCK_FIRE_AMBIENT, SoundCategory.HOSTILE, 0.6F, 0.5F);
+        }
+    }
+
+    /**
+     * Owner request: the boss reads slightly fiery during Phase 4. A bounded
+     * ember aura is anchored to the real body; it is presentation only and is
+     * emitted at a low cadence so it cannot become a particle flood.
+     */
+    private void renderOverloadBossEmbers(LivingEntity boss) {
+        World world = boss.getWorld();
+        if (world == null) {
+            return;
+        }
+        Location core = boss.getLocation().add(0.0D, boss.getHeight() * 0.55D, 0.0D);
+        double spread = Math.max(0.4D, boss.getWidth() * 0.45D);
+        for (Player viewer : eventAudience()) {
+            if (!viewer.isOnline() || !viewer.getWorld().equals(world)
+                    || !isEventParticleViewer(viewer, core)) {
+                continue;
+            }
+            viewer.spawnParticle(Particle.FLAME, core, 2, spread,
+                    boss.getHeight() * 0.30D, spread, 0.01D);
+            viewer.spawnParticle(Particle.LAVA, core, 1, spread * 0.8D,
+                    boss.getHeight() * 0.24D, spread * 0.8D, 0.0D);
+        }
+    }
+
     // --- Phase 4 signature spells (owner request) ---------------------------
 
     /**
@@ -57955,8 +58154,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (!EchoAttackReplicaPolicy.lockTarget(playerKey, eligible)) {
                 continue;
             }
+            // V6 §963: the copy reproduces the victim's own recent action, so the
+            // player recognises their silhouette. A deterministic roll decides
+            // whether this copy is instead the Guardian's chest beam.
+            String action = playerRecentActionFamily.get(target.getUniqueId());
+            double roll = deterministicEchoRoll(target.getUniqueId(), eventTickCounter, index);
+            String copyFamily = PlayerEchoCopyPolicy.chooseFamily(action, roster.size(), roll);
             EchoAttackReplicaPolicy.Timeline timeline = EchoAttackReplicaPolicy.timeline(
-                    eventTickCounter, copyable);
+                    eventTickCounter, copyFamily);
             if (timeline == null) {
                 continue;
             }
@@ -57967,13 +58172,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             EchoReplicaPresentationPolicy.Placement placement =
                     EchoReplicaPresentationPolicy.placementForFamily(index, admitted,
                             eventTickCounter * 31L + generation,
-                            target.getLocation().getYaw() * Math.PI / 180.0D, copyable);
+                            target.getLocation().getYaw() * Math.PI / 180.0D, copyFamily);
             UUID copyId = UUID.randomUUID();
             EchoReplicaActor actor = spawnEchoReplicaActor(boss, copyId,
-                    target.getLocation(), placement, copyable);
+                    target.getLocation(), placement, copyFamily);
             if (actor == null) {
                 getLogger().info("ECHO_ATTACK_REPLICA_SPAWN_REFUSED event=" + eventId
-                        + " phase=" + bossPhase + " family=" + copyable
+                        + " phase=" + bossPhase + " family=" + copyFamily
                         + " reason=no-readable-spawn-point");
                 continue;
             }
@@ -57985,7 +58190,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             echoReplicaGenerations.put(copyId, generation);
             echoReplicaLastCastTick = eventTickCounter;
             echoReplicaLastCastFamily = copyable;
-            playEchoReplicaArrival(boss, copyId, copyable);
+            playEchoReplicaArrival(boss, copyId, copyFamily);
+            getLogger().info("BOSS_SPELL_PLAYER_ECHO_COPY event=" + eventId
+                    + " target=" + target.getUniqueId()
+                    + " " + PlayerEchoCopyPolicy.describe(roster.size(), action, copyFamily, roll));
             spawned++;
         }
         if (spawned <= 0) {
@@ -58003,6 +58211,38 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private int echoReplicaCursor;
+
+    /**
+     * A stable 0..1 roll for one echo copy, derived only from immutable identity
+     * (target UUID, tick, copy index). No RNG state, so a restart or a replayed
+     * tick reproduces the same cosmetic choice instead of rerolling the fight.
+     */
+    private static double deterministicEchoRoll(UUID playerId, long tick, int index) {
+        long mixed = playerId.getMostSignificantBits()
+                ^ Long.rotateLeft(playerId.getLeastSignificantBits(), 17)
+                ^ (tick * 0x9E3779B97F4A7C15L)
+                ^ ((long) index * 0xBF58476D1CE4E5B9L);
+        mixed ^= (mixed >>> 31);
+        mixed *= 0x7FB5D329728EA185L;
+        mixed ^= (mixed >>> 27);
+        return Math.floorMod((int) (mixed >>> 40), 1000) / 1000.0D;
+    }
+
+    /** Records the participant's most recent real combat action for Phase 5 echoes. */
+    private void recordPlayerRecentAction(Player player, String action) {
+        if (player == null || action == null || action.isBlank()) {
+            return;
+        }
+        playerRecentActionFamily.put(player.getUniqueId(), action);
+        // Bounded: only the current admitted roster needs a silhouette.
+        if (playerRecentActionFamily.size() > 64) {
+            Iterator<UUID> iterator = playerRecentActionFamily.keySet().iterator();
+            if (iterator.hasNext()) {
+                iterator.next();
+                iterator.remove();
+            }
+        }
+    }
 
     /** Advances every live copy along its own policy timeline. */
     private void tickEchoAttackReplicas(LivingEntity boss) {
@@ -58478,6 +58718,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         echoReplicaAcceptedBlastDamage.clear();
         echoReplicaLastCastTick = Long.MIN_VALUE;
         echoReplicaLastCastFamily = "";
+        // V6 §963: the recorded silhouettes only matter while echoes exist.
+        playerRecentActionFamily.clear();
         if (removed > 0) {
             getLogger().info("ECHO_ATTACK_REPLICAS_CLEARED event=" + eventId
                     + " generation=" + generation

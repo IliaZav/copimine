@@ -205,18 +205,26 @@ public final class EndRiftTentacleRenderer {
             effects.add(new ConstructEffect(frame, origin, origin.distanceToSqr(camera) < 28D * 28D ? 8 : 4));
         }
         if (effects.isEmpty()) return;
-        EndRiftRenderSubmission.submit(context, camera,
-                RenderTypes.entityTranslucentEmissive(LastSealSpellEffects.MATERIALS), (matrices, vertices) -> {
-                    for (ConstructEffect effect : effects) {
-                        KaguneSpellFrame frame = effect.frame();
-                        double progress = frame.previousProgress() + (frame.progress() - frame.previousProgress())
-                                * Math.max(0F, Math.min(1F, partialTick));
-                        matrices.pushPose();
-                        matrices.translate(effect.origin().x, effect.origin().y, effect.origin().z);
-                        LastSealSpellEffects.render(matrices, vertices, frame, progress, effect.plates());
-                        matrices.popPose();
-                    }
-                });
+        submitConstructLayer(context, camera, partialTick, effects, false);
+        submitConstructLayer(context, camera, partialTick, effects, true);
+    }
+
+    private static void submitConstructLayer(LevelRenderContext context, Vec3 camera, float partialTick,
+                                              List<ConstructEffect> effects, boolean energy) {
+        var layer = energy ? SpellVisualRenderer.layer()
+                : RenderTypes.entityTranslucentEmissive(LastSealSpellEffects.MATERIALS);
+        EndRiftRenderSubmission.submit(context, camera, layer, (matrices, vertices) -> {
+            for (ConstructEffect effect : effects) {
+                KaguneSpellFrame frame = effect.frame();
+                double progress = frame.previousProgress() + (frame.progress() - frame.previousProgress())
+                        * Math.max(0F, Math.min(1F, partialTick));
+                matrices.pushPose();
+                matrices.translate(effect.origin().x, effect.origin().y, effect.origin().z);
+                if (energy) LastSealSpellEffects.energy(matrices, vertices, frame, progress, effect.plates());
+                else LastSealSpellEffects.render(matrices, vertices, frame, progress, effect.plates());
+                matrices.popPose();
+            }
+        });
     }
 
     private static int componentMarker(Display.ItemDisplay display) {

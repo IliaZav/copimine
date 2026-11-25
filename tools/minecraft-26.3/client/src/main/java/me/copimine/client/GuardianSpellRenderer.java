@@ -17,7 +17,7 @@ import net.minecraft.world.entity.projectile.throwableitemprojectile.Snowball;
 public final class GuardianSpellRenderer {
     private static final Identifier TEXTURE = Identifier.fromNamespaceAndPath(
             "copimineclient", "textures/world/guardian_spell_materials.png");
-    public record Pose(String mesh, float yaw, float pitch, float roll, float scale, float age) { }
+    public record Pose(String mesh, float yaw, float pitch, float roll, float scale, float age, float duration, int stage) { }
     private record Motion(float width, float height, float depth, float twist, float surge, int tint) { }
     private GuardianSpellRenderer() { }
 
@@ -35,13 +35,13 @@ public final class GuardianSpellRenderer {
                 ? (float) -Math.toDegrees(Math.atan2(velocity.y, horizontal)) : entity.getXRot();
         if (!Float.isFinite(yaw) || !Float.isFinite(pitch)) return null;
         float age = entity.tickCount + partialTick;
-        return new Pose(mesh, yaw, pitch, age * 18F, model == 830013 ? 1.6F : 1.25F, age);
+        return new Pose(mesh, yaw, pitch, SpellVisualRenderer.reducedMotion() ? 0F : age * 18F, model == 830013 ? 1.6F : 1.25F, age, 24F, 3);
     }
 
     public static Pose displayPose(Display entity, float partialTick) {
         if (!(entity instanceof Display.ItemDisplay item) || entity.isRemoved()) return null;
-        int model = EndRiftItemModelData.firstFloatAsExactInteger(
-                item.getItemStack().get(DataComponents.CUSTOM_MODEL_DATA));
+        var data = item.getItemStack().get(DataComponents.CUSTOM_MODEL_DATA);
+        int model = EndRiftItemModelData.firstFloatAsExactInteger(data);
         String mesh = switch (model) {
             case 830200 -> "void_core";
             case 830201 -> "inferno_core";
@@ -77,13 +77,14 @@ public final class GuardianSpellRenderer {
         if (model == 830213) scale *= 1F - .15F*Math.min(1F, age/30F);
         // A floor rune spins around its vertical normal, never through the floor.
         // Arches and arrow racks remain upright and keep their committed facing.
-        float yaw = -entity.getYRot() + (model == 830208 ? age * 1.8F
-                : model == 830215 ? age * 3F
-                : model == 830216 ? age * 5F
-                : model == 830219 ? age * 0.7F
-                : model == 830221 ? age * 0.55F
-                : model == 830222 ? age * 1.4F : 0F);
-        float roll = model == 830204 || model >= 830208 ? 0F : age * 4F;
+        float spin = SpellVisualRenderer.reducedMotion() ? 0F : age;
+        float yaw = -entity.getYRot() + (model == 830208 ? spin * 1.8F
+                : model == 830215 ? spin * 3F
+                : model == 830216 ? spin * 5F
+                : model == 830219 ? spin * 0.7F
+                : model == 830221 ? spin * 0.55F
+                : model == 830222 ? spin * 1.4F : 0F);
+        float roll = model == 830204 || model >= 830208 ? 0F : spin * 4F;
         float size = switch (model) {
             case 830208 -> 2.6F;
             case 830209 -> 2.1F;
@@ -107,14 +108,20 @@ public final class GuardianSpellRenderer {
             case 830222 -> 1F;
             default -> 1F;
         };
-        return new Pose(mesh, yaw, entity.getXRot(), roll, scale * size, age);
+        Float durationValue = data.getFloat(1);
+        Float stageValue = data.getFloat(2);
+        float duration = durationValue != null && Float.isFinite(durationValue)
+                ? Math.clamp(durationValue, 2F, 80F) : 24F;
+        int stage = stageValue == null ? 0 : Math.clamp(stageValue.intValue(), 0, 2);
+        return new Pose(mesh, yaw, entity.getXRot(), roll, scale * size, age, duration, stage);
     }
 
     private static Motion motion(Pose pose) {
         float age = pose.age();
-        float heartbeat = .5F + .5F * (float) Math.sin(age * .32F);
-        float charge = Math.min(1F, age / 12F);
-        float release = (float) Math.sin(Math.PI * Math.min(1F, age / 18F));
+        float phase = Math.clamp(age / pose.duration(), 0, 1);
+        float heartbeat = SpellVisualRenderer.reducedMotion() ? .5F : .5F + .5F * (float) Math.sin(age * .32F);
+        float charge = phase * phase * (3F - 2F * phase);
+        float release = pose.stage() == 2 ? 1F - phase * phase : (float) Math.sin(Math.PI * phase);
         return switch (pose.mesh()) {
             case "void_core" -> new Motion(1F + .14F * heartbeat, 1F - .09F * heartbeat,
                     1F + .14F * heartbeat, .24F, heartbeat, 0xEAD2FF);
@@ -193,14 +200,17 @@ public final class GuardianSpellRenderer {
         Motion motion = motion(pose);
         matrices.scale(pose.scale() * motion.width(), pose.scale() * motion.height(),
                 pose.scale() * motion.depth());
+        float progress = Math.clamp(pose.age() / pose.duration(), 0, 1);
+        int opacity = pose.stage() == 2 ? Math.round(255 * (1 - progress * progress * progress)) : 255;
+        boolean calm = SpellVisualRenderer.reducedMotion();
         collector.submitCustomGeometry(matrices, RenderTypes.entityTranslucentEmissive(TEXTURE), (transform, buffer) -> {
             for (var vertex : vertices) {
                 // Preserve volume under an emissive material: face shading is
                 // authored here rather than depending on a dark arena lightmap.
-                float shade = .64F + .17F * Math.max(0, vertex.ny())
-                        + .09F * Math.max(0, -vertex.nz()) + .10F * motion.surge();
+                float shade = .46F + .27F * Math.max(0, vertex.ny())
+                        + .13F * Math.max(0, -vertex.nz()) + .10F * motion.surge();
                 float twist = motion.twist() * vertex.y()
-                        * (float) Math.sin(pose.age() * .24F + vertex.y() * 3F);
+                        * (float) Math.sin((calm ? 0 : pose.age() * .24F) + vertex.y() * 3F);
                 float cosine = (float) Math.cos(twist), sine = (float) Math.sin(twist);
                 float x = vertex.x() * cosine - vertex.z() * sine;
                 float z = vertex.x() * sine + vertex.z() * cosine;
@@ -208,12 +218,14 @@ public final class GuardianSpellRenderer {
                 buffer.addVertex(transform, x, vertex.y(), z)
                         .setColor(Math.round(((tint >>> 16) & 255) * shade),
                                 Math.round(((tint >>> 8) & 255) * shade),
-                                Math.round((tint & 255) * shade), 255).setUv(vertex.u(),vertex.v())
+                                Math.round((tint & 255) * shade), opacity).setUv(vertex.u(),vertex.v())
                         .setOverlay(OverlayTexture.NO_OVERLAY).setLight(0x00F000F0)
                         .setNormal(transform, vertex.nx() * cosine - vertex.nz() * sine,
                                 vertex.ny(), vertex.nx() * sine + vertex.nz() * cosine);
             }
         });
+        collector.submitCustomGeometry(matrices, SpellVisualRenderer.layer(),
+                (transform, buffer) -> GuardianSpellAccents.draw(transform, buffer, pose));
         matrices.popPose();
         return true;
     }

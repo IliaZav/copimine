@@ -21954,12 +21954,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     /** One finite cosmetic rig per cast. The real spell/projectile alone owns damage. */
     private void playBossSpellModel(LivingEntity boss, String spellId, Location at,
                                    int ticks, boolean followChest) {
+        playBossSpellModel(boss, spellId, at, ticks, followChest, false);
+    }
+
+    private void playBossSpellModel(LivingEntity boss, String spellId, Location at,
+                                    int ticks, boolean followChest, boolean impact) {
         int modelData = BossSpellGeometryPolicy.modelData(BossSpellGeometryPolicy.shape(spellId));
         if (taskRegistry == null || boss == null || at == null || at.getWorld() == null
                 || modelData == 0 || !boss.getWorld().equals(at.getWorld()) || bossSpellModelIds.size() >= 2) return;
         final ItemDisplay display;
         try {
-            display = spawnSpellModelDisplay(at, modelData);
+            display = spawnSpellModelDisplay(at, modelData, Math.clamp(ticks, 2, 80), impact ? 2 : 1);
         } catch (RuntimeException failure) {
             getLogger().warning("BOSS_SPELL_MODEL_SPAWN_FAILED spell=" + spellId);
             return;
@@ -22014,9 +22019,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * separate without duplicating the entity setup.</p>
      */
     private ItemDisplay spawnSpellModelDisplay(Location at, int modelData) {
+        return spawnSpellModelDisplay(at, modelData, 24, 1);
+    }
+
+    private ItemDisplay spawnSpellModelDisplay(Location at, int modelData, int durationTicks, int stage) {
         return at.getWorld().spawn(at, ItemDisplay.class, entity -> {
             // A known fallback item remains available to an older client.
-            entity.setItemStack(overlayItem(modelData, "end_rift_rift_bolt"));
+            ItemStack item = overlayItem(modelData, "end_rift_rift_bolt");
+            ItemMeta meta = item.getItemMeta();
+            if (meta != null) {
+                me.copimine.endevent.presentation.ItemPresentationComponents.setVisualFloats(
+                        meta, List.of((float) modelData, (float) durationTicks, (float) stage));
+                item.setItemMeta(meta);
+            }
+            entity.setItemStack(item);
             entity.setBrightness(new Display.Brightness(15, 15));
             entity.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.NONE);
             entity.setBillboard(Display.Billboard.FIXED);
@@ -22059,7 +22075,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || miniBossSpellModelIds.size() >= MAX_MINI_BOSS_SPELL_MODELS) return;
         final ItemDisplay display;
         try {
-            display = spawnSpellModelDisplay(at, modelData);
+            display = spawnSpellModelDisplay(at, modelData, Math.clamp(ticks, 2, 44), 0);
         } catch (RuntimeException failure) {
             getLogger().warning("MINIBOSS_SPELL_MODEL_SPAWN_FAILED spell=" + label);
             return;
@@ -53094,6 +53110,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (bossPhase == BossPhase.RAGE) startEchoAttackReplicas(boss, spell.name());
         double reach = BossContactStrikePolicy.MELEE_SWIPE_RANGE;
         playBossImpactPresentation(boss, BossImpactGeometryPolicy.Kind.SWIPE, origin, facing, reach, true, true);
+        publishSpellContact("guardian_basic_contact", boss, boss.getUniqueId(), origin, facing,
+                Math.acos(BossContactStrikePolicy.MELEE_SWIPE_FRONT_DOT), reach, 7);
         boolean hit = false;
         for (Player player : activeLivingPlayers()) {
             if (player.getWorld() != origin.getWorld()) continue;
@@ -54551,7 +54569,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                          renderAuthoredBossImpact(impactOrigin,
                                  BossSpellVisualCompositionPolicy.composition(spell.id()));
                          playBossSpellModel(boss, spell.id(), impactOrigin.clone().add(0, .35D, 0),
-                                 12, false);
+                                 12, false, true);
                      } else {
                          renderSpellImpactVisual(boss, impactOrigin, spell.id());
                      }
@@ -56201,6 +56219,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         if (boss != null && ownedBySession(projectile, eventId, generation)
                 && isBossCombatRuntimeActive(boss)) {
+            publishSpellContact("guardian_lance_contact", boss, projectile.getUniqueId(),
+                    projectile.getLocation(), new Vector(0, 1, 0), 1.25D, 0, 12);
             renderAuthoredBossImpact(projectile.getLocation(),
                     BossSpellVisualCompositionPolicy.composition("rift_projectile"));
             projectile.getWorld().playSound(projectile.getLocation(), Sound.BLOCK_AMETHYST_BLOCK_BREAK,
@@ -62321,6 +62341,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " slowness_ticks=" + effects.slownessTicks()
                     + " slowness_amplifier=" + effects.slownessAmplifier()
                     + " participants=" + participants.size());
+        }
+        if (!state.isWave4Obelisk() && boss != null && isBossCombatRuntimeActive(boss)) {
+            publishSpellContact("guardian_fireball_contact", boss, fireball.getUniqueId(), impact,
+                    new Vector(0, 1, 0), 2.75D, 0, 16);
         }
         renderRiftFireballImpact(impact);
         if (fireball.getWorld() != null) {

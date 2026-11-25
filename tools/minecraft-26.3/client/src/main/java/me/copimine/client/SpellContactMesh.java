@@ -10,6 +10,9 @@ import java.util.List;
 
 /** Short meshes that start on the server's committed swing, landing or collision tick. */
 enum SpellContactMesh {
+    GUARDIAN_BASIC("guardian_basic_contact", 0x398d82, 0xb0fff2),
+    GUARDIAN_LANCE("guardian_lance_contact", 0x3750f4, 0xcffbff),
+    GUARDIAN_FIREBALL("guardian_fireball_contact", 0xba210f, 0xffde73),
     GUARDIAN_FAN("guardian_cleave_contact", 0x86eaff, 0xe3faff),
     GUARDIAN_HEAVY("guardian_heavy_contact", 0xfe8439, 0xffe7a0),
     WARDEN_ECHO("warden_echo_contact", 0x16aeba, 0xa4fff7),
@@ -54,9 +57,9 @@ enum SpellContactMesh {
         return switch (this) {
             case WARDEN_ECHO, MINI_PULSE, VOID -> drawShell(pose, buffer, origin, lane.radius(), progress,
                     quality, budget);
-            case GUARDIAN_FAN, GUARDIAN_HEAVY, WITHER -> drawCleave(pose, buffer, origin, lane,
+            case GUARDIAN_BASIC, GUARDIAN_FAN, GUARDIAN_HEAVY, WITHER -> drawCleave(pose, buffer, origin, lane,
                     progress, quality, budget);
-            case MAGMA, BOLT, BREATH, WEB, SNARE -> drawFilaments(pose, buffer, origin, lane.radius(),
+            case GUARDIAN_LANCE, GUARDIAN_FIREBALL, MAGMA, BOLT, BREATH, WEB, SNARE -> drawFilaments(pose, buffer, origin, lane.radius(),
                     cast.seed(), time, progress, quality, reducedMotion, budget);
         };
     }
@@ -102,7 +105,7 @@ enum SpellContactMesh {
     private int drawCleave(PoseStack.Pose pose, VertexConsumer buffer, Vec3 origin,
                            SpellCastPacket.Lane lane, double[] progress,
                            SpellVisualGeometry.Quality quality, int budget) {
-        double[][] section = SpellVisualRenderer.profile(quality, this != WITHER);
+        double[][] section = SpellVisualRenderer.profile(quality, this == GUARDIAN_FAN || this == GUARDIAN_HEAVY);
         int samples = quality.samples() * 2;
         int required = section.length * (samples + 2) * 4;
         if (required > budget || lane.length() == 0) return 0;
@@ -110,7 +113,8 @@ enum SpellContactMesh {
         double sweep = lane.radius();
         double reach = lane.length() * (0.35 + 0.65 * progress[0]);
         int count = 0;
-        for (int pass = 0; pass < 2 && budget - count >= required; pass++) {
+        int passes = this == GUARDIAN_BASIC ? 1 : 2;
+        for (int pass = 0; pass < passes && budget - count >= required; pass++) {
             Vec3[] path = new Vec3[samples + 1];
             var radii = new ArrayList<Float>(path.length);
             int[] tones = new int[path.length];
@@ -140,6 +144,8 @@ enum SpellContactMesh {
             case WEB, SNARE -> 8;
             case BREATH -> 5;
             case MAGMA -> 7;
+            case GUARDIAN_LANCE -> 9;
+            case GUARDIAN_FIREBALL -> 12;
             default -> 6;
         };
         int knots = this == WEB || this == SNARE ? 5 : 4;
@@ -164,6 +170,8 @@ enum SpellContactMesh {
                     case WEB -> 0.26 * Math.sin(Math.PI * t);
                     case SNARE -> 1.2 * (1 - t) * progress[1];
                     case MAGMA -> 0.13 + 0.68 * Math.sin(Math.PI * t) * progress[1];
+                    case GUARDIAN_LANCE -> t * (0.4 + noise * 1.8) * progress[0];
+                    case GUARDIAN_FIREBALL -> 0.17 + (1.4 + noise) * Math.sin(Math.PI * t) * progress[1];
                     case BREATH -> t * (1.2 + noise * 0.8) * progress[0];
                     default -> t * (0.65 + noise) * progress[0];
                 };

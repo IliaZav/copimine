@@ -1,3 +1,4 @@
+import me.copimine.endevent.domain.Wave7MarksmanInvisibilityPolicy;
 import me.copimine.endevent.domain.Wave7SkeletonElusivenessPolicy;
 import me.copimine.endevent.domain.Wave7SkeletonPairPolicy;
 
@@ -29,7 +30,14 @@ public final class Wave7SkeletonElusivenessPolicyTest {
     }
 
     private static void aHideIsShortAndRepeats() {
-        check("the hide is short enough to read", Wave7SkeletonElusivenessPolicy.VANISH_TICKS <= 40);
+        // The live hide is owned by Wave7MarksmanInvisibilityPolicy
+        // (MARK-005/006: five seconds). Assert single ownership instead of
+        // re-freezing a second, drifting duration here.
+        check("the hide length has one owner",
+                Wave7SkeletonElusivenessPolicy.VANISH_TICKS
+                        == Wave7MarksmanInvisibilityPolicy.INVISIBLE_TICKS);
+        check("the hide is the ratified five seconds",
+                Wave7SkeletonElusivenessPolicy.VANISH_TICKS <= 100);
         check("the hide still exists", Wave7SkeletonElusivenessPolicy.VANISH_TICKS >= 10);
         long start = 500L;
         check("hidden at the start",

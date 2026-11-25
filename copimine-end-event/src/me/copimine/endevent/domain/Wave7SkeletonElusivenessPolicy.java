@@ -16,7 +16,14 @@ public final class Wave7SkeletonElusivenessPolicy {
     /** They move between hides far more often than a normal mob repositions. */
     public static final int REPOSITION_INTERVAL_TICKS = 8;
 
-    /** A hide is brief: long enough to lose them, short enough to punish late. */
+    /**
+     * A hide is brief: long enough to lose them, short enough to punish late.
+     *
+     * <p>The live hide window has exactly one owner,
+     * {@link Wave7MarksmanInvisibilityPolicy#INVISIBLE_TICKS} (five seconds,
+     * MARK-005/006). This tick model is the superseded one, so the constant is
+     * derived from the owner instead of carrying a second, drifting duration.</p>
+     */
     public static final int VANISH_TICKS = (int) Wave7MarksmanInvisibilityPolicy.INVISIBLE_TICKS;
 
     /** A vanished archer cannot shoot and cannot be hit; the tell is the smoke. */

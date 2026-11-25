@@ -113,6 +113,13 @@ public class InfernoRuntimeCadenceProbe {
     // InfernoSceneryPolicyTest; this probe pins ONLY the vent cadence, so the
     // pack tick is a no-op here and cannot alter the eruption receipts below.
     void tickInfernoPack(LivingEntity boss,int castTick){ }
+    // Owner request (V6 Phase 4): the cold patches relocate on the decay
+    // policy's hp-scaled cadence. This probe pins ONLY the vent cadence, so the
+    // relocation seam is declared with the real field shape but stays a no-op
+    // here; InfernoDecayPolicyTest owns the relocation behaviour.
+    long arenaInfernoRelocateIntervalTicks=me.copimine.endevent.domain.InfernoDecayPolicy.FULL_HEALTH_RELOCATE_TICKS;
+    int arenaInfernoLastRelocateTick=-1_000_000;
+    void relocateInfernoSafeCells(LivingEntity boss,int castTick){ }
 ''' + ticker + "\n" + steam + r'''
     static void check(boolean v,String m){if(!v)throw new AssertionError(m);}
     public static void main(String[] args){

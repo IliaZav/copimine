@@ -27,10 +27,14 @@ dependencies {
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
-// Keep the signed cast payload codec identical to Paper's source.
+// Keep the signed cast payload codec identical to Paper's source. The Phase 5
+// copy presentation policy is compiled here too: the server and the client must
+// agree on the copy marker, the reserved epoch band and the alpha arithmetic, so
+// there is deliberately one file rather than two drifting copies.
 tasks.named('compileJava', JavaCompile).configure {
     source fileTree('../../../copimine-end-event/src/me/copimine/endevent/domain') {
-        include 'SpellCastPacket.java', 'SpellCastPacketCodec.java', 'ArchmageV5CombatPolicy.java'
+        include 'SpellCastPacket.java', 'SpellCastPacketCodec.java', 'ArchmageV5CombatPolicy.java',
+                'Phase5EchoCopyPresentationPolicy.java'
     }
 }
 

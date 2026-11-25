@@ -56,6 +56,10 @@ public final class Wave7AbilityEffectPolicyTest {
         for (String abilityId : dispatched) {
             check(abilityId + " has an authored signature",
                     !Wave7AbilityEffectPolicy.passes(abilityId).isEmpty());
+            // Particles alone are explicitly not a finished spell: every
+            // dispatched id also owns a real mesh body.
+            check(abilityId + " has an authored mesh body",
+                    Wave7AbilityEffectPolicy.bodyShape(abilityId) != null);
         }
     }
 
@@ -90,7 +94,8 @@ public final class Wave7AbilityEffectPolicyTest {
         // can read both where it came from and where it went.
         for (String abilityId : List.of("WAVE7_MARKSMAN_HEAVY_SHOT", "WAVE7_ARCHMAGE_BEAM",
                 "WAVE7_ARCHMAGE_SPEAR", "WAVE7_WARDEN_SLAM", "WAVE7_MARKSMAN_DEFENDER",
-                "WAVE7_MARKSMAN_PAIRED_CROSSFIRE", "WAVE7_ARCHMAGE_FANGS_GROUP")) {
+                "WAVE7_MARKSMAN_PAIRED_CROSSFIRE", "WAVE7_ARCHMAGE_FANGS_GROUP",
+                "WAVE7_MARKSMAN_SKY_HAIL")) {
             check(abilityId + " is built from more than one pass",
                     Wave7AbilityEffectPolicy.passes(abilityId).size() >= 2);
         }
@@ -122,6 +127,7 @@ public final class Wave7AbilityEffectPolicyTest {
     private static void soundsAreAuthored() {
         for (String abilityId : List.of("WAVE7_MARKSMAN_QUICK_SHOT", "WAVE7_MARKSMAN_HEAVY_SHOT",
                 "WAVE7_MARKSMAN_PAIRED_CROSSFIRE", "WAVE7_MARKSMAN_DEFENDER",
+                "WAVE7_MARKSMAN_SKY_HAIL",
                 "WAVE7_ARCHMAGE_FANGS", "WAVE7_ARCHMAGE_SPEAR", "WAVE7_ARCHMAGE_STEP",
                 "WAVE7_ARCHMAGE_BEAM", "WAVE7_WARDEN_NARROW_STRIKE", "WAVE7_WARDEN_SLAM",
                 "WAVE7_WARDEN_SONIC_LUNGE")) {
@@ -145,7 +151,8 @@ public final class Wave7AbilityEffectPolicyTest {
         String worstId = "";
         for (String abilityId : List.of("WAVE7_MARKSMAN_QUICK_SHOT", "WAVE7_MARKSMAN_HEAVY_SHOT",
                 "WAVE7_MARKSMAN_SPREAD_SHOT", "WAVE7_MARKSMAN_PAIRED_CROSSFIRE",
-                "WAVE7_MARKSMAN_DEFENDER", "WAVE7_ARCHMAGE_FANGS_GROUP", "WAVE7_ARCHMAGE_SPEAR",
+                "WAVE7_MARKSMAN_DEFENDER", "WAVE7_MARKSMAN_SKY_HAIL",
+                "WAVE7_ARCHMAGE_FANGS_GROUP", "WAVE7_ARCHMAGE_SPEAR",
                 "WAVE7_ARCHMAGE_STEP", "WAVE7_ARCHMAGE_BEAM", "WAVE7_WARDEN_NARROW_STRIKE",
                 "WAVE7_WARDEN_WIDE_STRIKE", "WAVE7_WARDEN_SONIC_LUNGE", "WAVE7_WARDEN_SLAM")) {
             int total = 0;

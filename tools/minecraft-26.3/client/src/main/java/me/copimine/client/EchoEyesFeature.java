@@ -56,9 +56,15 @@ public final class EchoEyesFeature extends RenderLayer<AvatarRenderState, Player
         if (EchoEyePassPlan.includes(passes, EchoEyePassPlan.BODY)) {
             // The drain is not part of the eye ramp: a copy wears the darkened
             // body from its first frame, even while its eyes are still dark.
-            collector.submitModel(getParentModel(), state, matrices,
-                    RenderTypes.entityTranslucent(state.skin.body().texturePath()),
-                    light, OverlayTexture.NO_OVERLAY, EchoVanillaRenderer.ECHO_BODY_TINT);
+            // V6 Phase 5: a marked RAGE copy is already drawn through the
+            // translucent entity pipeline with the drain carried in its model
+            // tint, so this opaque overlay would re-opaque it. A copy therefore
+            // keeps its eye layer only; every ordinary echo gets the drain.
+            if (!(bound.copimine$echoCopyAlpha() < 1.0F)) {
+                collector.submitModel(getParentModel(), state, matrices,
+                        RenderTypes.entityTranslucent(state.skin.body().texturePath()),
+                        light, OverlayTexture.NO_OVERLAY, EchoVanillaRenderer.ECHO_BODY_TINT);
+            }
         }
     }
 }

@@ -275,6 +275,26 @@ public final class Wave7AbilityEffectPolicy {
                     "CRIT", DUST_CYAN, true));
 
     /**
+     * The squad's cooperative Sky Hail.
+     *
+     * <p>V6 binds two marksmen (a third adds a second wave) to one locked ground
+     * area and requires twelve real arrows per wave. The signature has to sell
+     * both halves of that: a hard marked floor circle where the rain lands, a
+     * bright rising dome where the archers converge, and a long lance so the
+     * group reads that the cast comes from archers across the room rather than
+     * from the victim's own position.</p>
+     */
+    private static final List<Pass> MARKSMAN_SKY_HAIL = List.of(
+            new Pass(Shape.TARGET_OUTLINE, 28, 5.0D, 5.0D, 0.05D, 0.0D,
+                    "END_ROD", DUST_CYAN, true),
+            new Pass(Shape.GROUND_RING, 30, 0.0D, 5.0D, 0.0D, 0.0D,
+                    "END_ROD", DUST_WHITE, true),
+            new Pass(Shape.HELIX, 26, 2.4D, 1.1D, 3.4D, 0.0D,
+                    "ELECTRIC_SPARK", DUST_CYAN, true),
+            new Pass(Shape.AIM_LANCE, 22, 24.0D, 0.9D, 0.0D, 0.0D,
+                    "ELECTRIC_SPARK", DUST_WHITE, true));
+
+    /**
      * The authored 3D body for one Wave 7 attack identity.
      *
      * <p>Every pass list above is vanilla particles only, and the objective is
@@ -302,6 +322,9 @@ public final class Wave7AbilityEffectPolicy {
             case "MARKSMAN_SUPPORT" -> BossSpellGeometryPolicy.Shape.VOID_RUNE;
             case "MARKSMAN_PAIRED_CROSSFIRE" -> BossSpellGeometryPolicy.Shape.RIFT_LANCE;
             case "MARKSMAN_DEFENDER" -> BossSpellGeometryPolicy.Shape.SUMMON_ARCH;
+            // The squad's rain lands inside one locked circle; a four-rib dome
+            // over that circle reads as a sky the arrows fall out of.
+            case "MARKSMAN_SKY_HAIL" -> BossSpellGeometryPolicy.Shape.FINAL_SEAL;
             case "ARCHMAGE_FANGS" -> BossSpellGeometryPolicy.Shape.INFERNO_CROWN;
             case "ARCHMAGE_FANGS_GROUP" -> BossSpellGeometryPolicy.Shape.FIREBALL_CAGE;
             case "ARCHMAGE_SPEAR" -> BossSpellGeometryPolicy.Shape.RIFT_LANCE;
@@ -341,6 +364,7 @@ public final class Wave7AbilityEffectPolicy {
             case "MARKSMAN_SUPPORT" -> MARKSMAN_SUPPORT;
             case "MARKSMAN_PAIRED_CROSSFIRE" -> MARKSMAN_PAIRED_CROSSFIRE;
             case "MARKSMAN_DEFENDER" -> MARKSMAN_DEFENDER;
+            case "MARKSMAN_SKY_HAIL" -> MARKSMAN_SKY_HAIL;
             case "ARCHMAGE_FANGS" -> ARCHMAGE_FANGS;
             case "ARCHMAGE_SPEAR" -> ARCHMAGE_SPEAR;
             case "ARCHMAGE_STEP" -> ARCHMAGE_STEP;
@@ -375,6 +399,7 @@ public final class Wave7AbilityEffectPolicy {
             case "MARKSMAN_SUPPORT" -> "BLOCK_AMETHYST_BLOCK_CHIME";
             case "MARKSMAN_PAIRED_CROSSFIRE" -> "ENTITY_ARROW_SHOOT";
             case "MARKSMAN_DEFENDER" -> "ENTITY_RAVAGER_ROAR";
+            case "MARKSMAN_SKY_HAIL" -> "ENTITY_FIREWORK_ROCKET_BLAST";
             case "ARCHMAGE_FANGS" -> "ENTITY_EVOKER_CAST_SPELL";
             case "ARCHMAGE_SPEAR" -> "ITEM_TRIDENT_THROW";
             case "ARCHMAGE_STEP" -> "ENTITY_ENDERMAN_TELEPORT";
@@ -399,6 +424,7 @@ public final class Wave7AbilityEffectPolicy {
         return switch (normalize(abilityId)) {
             case "MARKSMAN_QUICK_SHOT", "MARKSMAN_SPREAD_SHOT" -> "BLOCK_AMETHYST_BLOCK_CHIME";
             case "MARKSMAN_HEAVY_SHOT" -> "BLOCK_AMETHYST_BLOCK_RESONATE";
+            case "MARKSMAN_SKY_HAIL" -> "BLOCK_BEACON_POWER_SELECT";
             case "ARCHMAGE_FANGS" -> "BLOCK_RESPAWN_ANCHOR_CHARGE";
             case "ARCHMAGE_SPEAR" -> "ENTITY_EVOKER_PREPARE_ATTACK";
             case "ARCHMAGE_STEP" -> "ENTITY_ILLUSIONER_PREPARE_MIRROR";

@@ -334,7 +334,7 @@ public final class EndRiftBossBarHud {
                 int px = left + segment * stepWidth;
                 int py = baseY + offset + coilOffset(segment, nowMillis, reduced)
                         + (pass == 0 ? 0 : 3);
-                int segmentAlpha = Math.min(0xFF,
+                int segmentAlpha = (int) Math.min(0xFFL,
                         passAlpha + Math.round(Math.sin(segment * 0.7D + nowMillis / 180.0D) * 20.0D));
                 context.fill(px, py, px + stepWidth, py + 2,
                         (segmentAlpha << 24) | (passColor & 0x00FFFFFF));

@@ -104,9 +104,97 @@ keep safe zones reachable. Implemented as pure, tested owners plus a thin adapte
   tests/test_last_seal_structural_geometry.py
   tests/test_minecraft_migration_profile.py → 76 passed, 1 skipped`;
   `PLUGIN BUILD EXIT=0`.
-- Remaining: Phase 5 echo-copy upgrades, Phase 6 boss-bar animation + tentacle
-  coil, Phase 4 music track, the transition cinematic and native VFX/audio
-  capture (still `NATIVE_BLOCKED`).
+- Remaining: the transition cinematic and native VFX/audio capture (still
+  `NATIVE_BLOCKED`).
+
+### 4.9 Phase 4 cinematic/music, hit flavours, Phase 6 bar, Phase 5 echoes (2026-11-25)
+
+Owner directives after the §4.8 increment. Implemented as pure, tested owners plus
+thin adapters; native capture stays `NATIVE_BLOCKED`.
+
+- **Phase 4 transition cinematic** — NEW `domain/InfernoTransitionCinematicPolicy`
+  owns the 3.2 s staged RIFT→OVERLOAD scene (GATHER → LEVITATE → VORTEX →
+  RELEASE), inside the V6 §947/§8 3–6 s window. The monolith drives it from a
+  generation-fenced ticker (`startInfernoTransitionCinematic`), rendering shards,
+  the overhead flame column and exactly one pressure release. Presentation only:
+  no invulnerability, no control hold.
+- **Phase 4 music enabled + Phase 6 music bug fixed** — NEW
+  `domain/BossPhaseMusicPolicy` makes every phase→`music.phase` key explicit. The
+  old `"boss-" + bossPhase.name().toLowerCase()` derivation produced
+  `boss-last_seal` and silently stranded LAST_SEAL on the previous track;
+  `boss-overload` (Phase 4) and `boss-last-seal` (Phase 6) now both resolve, and
+  enum/kebab/snake spellings are accepted.
+- **Slightly fiery Phase 4 body** — `renderOverloadBossEmbers` emits a low-cadence
+  ember aura anchored to the real boss body.
+- **Splash/critical damage feedback** — NEW `domain/BossHitFlavorPolicy`
+  classifies a real melee/projectile hit; `BossHitFeedbackPolicy` now carries
+  `critical`/`splash` and selects a louder cue (`ENTITY_PLAYER_ATTACK_CRIT`), extra
+  CRIT/ENCHANT sparks and a `SWEEP_ATTACK` ring. Presentation only: the
+  authoritative damage and the red flash are unchanged, and blocked/missed hits
+  stay silent.
+- **Phase 6 dramatic boss bar** — `EndRiftBossBarHud` layers a breathing accent
+  and a two-pass coiling tentacle ribbon over the authored frame; both wall-clock
+  driven, bounded and fully suppressed by reduced-motion.
+- **Phase 5 echoes reproduce the victim's own action** — NEW
+  `domain/PlayerEchoCopyPolicy` maps the target's recorded melee/ranged/area
+  action to a copyable family and rolls a bounded, deterministic chest-beam chance
+  (solo 0.50 → raid 0.20). Melee/projectile feedback sites record the real action.
+- Evidence: `pytest tests/test_phase5_6_owner_directives.py → 7 passed`;
+  `PLUGIN BUILD EXIT=0` (30 tasks).
+
+### 4.10 Echo wire P0, Phase 5 marker redesign, 20-TPS bands, probe/compile repair (2026-11-25)
+
+- **P0: every Wave 7 Echo packet was silently dropped at encode.** A real
+  `EndEventBridgeBodyCodec.encode` probe (outside the repo, pinned JDK 25) proved
+  `END_ECHO_STATE` with `durationMillis=2000` throws
+  `IllegalArgumentException: Invalid Echo presentation fields` (codec line 590),
+  while `durationMillis=0` encodes and round-trips byte-for-byte. Both producers
+  — `sendEchoCloneView` (monolith 10370) and `sendNamedEchoView` (27335) — passed
+  `2_000L`, so no Echo avatar ever rendered. Fixed to `0L`: the signed Echo body
+  is lease-free and the client owns freshness (client lease 2000 ms + broadcast
+  keepalive). No test was weakened.
+- **Phase 5 copy marker moved into the frame epoch band.** The planned
+  `reason`/`source` string marker is impossible: `EndEventBridgeBodyCodec`
+  refuses any non-empty reserved string on an `END_ECHO_*` body
+  ("End Event reserved strings must be empty"), proven by the same probe. The
+  copy contract now rides the 12-field frame's own `epoch`:
+  `Phase5EchoCopyPresentationPolicy.isCopyEpoch(epoch)` (`epoch >= EPOCH_BASE`
+  = 1 000 000), `epochFor(generation)`. The client decoder derives `copyAlpha`
+  from the epoch, never from a metadata string; Wave 7 duel epochs stay below the
+  band and keep the opaque drained body. No wire-schema change.
+- **20-TPS transcription repaired, not the policy.** The stale V5.1 test bands
+  assumed 50 ms ticks; V6 §W7-ARCHMAGE-03 (0.8–1.1 s Fang warning) and the Warden
+  sweep prep (~0.7–1.0 s) are correct in policy (Archmage 18/24/12, Warden 18).
+  Fixed the stale test bands/comments only (`ArchmageV5CombatPolicyTest`,
+  `WardenV5CombatPolicyTest`, `Wave7SkeletonElusivenessPolicy`,
+  `Wave7SkeletonElusivenessPolicyTest`, `Wave7AbilityEffectPolicy`,
+  `Wave7AbilityEffectPolicyTest`). `VANISH_TICKS` stays aliased to the single
+  live hide owner (`Wave7MarksmanInvisibilityPolicy`).
+- **Probe-stub maintenance (no assertion weakened).** `tests/test_boss_edge_volley_runtime.py`
+  and `tests/test_inferno_runtime_cadence.py` gained the stub declarations the new
+  production code requires (`overloadFireRingSpentThresholds`,
+  `infernalForgeSpentThresholds` sets, `infernalForgeVulnerableUntilTick`,
+  `arenaInfernoRelocateIntervalTicks`, `arenaInfernoLastRelocateTick`, no-op
+  `relocateInfernoSafeCells`).
+- **26.3 client compile defect repaired.** `EndRiftBossBarHud.java:337`
+  `possible lossy conversion from long to int` (`Math.min(0xFF, …)` with a long)
+  → `(int) Math.min(0xFFL, …)`. The Phase 5 translucent-copy client path
+  (`EchoEyesFeature` BODY-pass skip for copies, `EchoVanillaRenderer` copy-alpha
+  map, `LivingEntityRendererMixin` translucent render type + tint,
+  `EchoPresentationPacket` epoch decode) is committed inert until the server marks
+  copies.
+- **New regression test registered in the gate.**
+  `tests/test_end_rift_echo_wire_contract.py` compiles and runs the real codec
+  against the duration literals the production producers actually pass, asserts
+  `0` for both, and re-proves that `2000` is refused. Added to the gate step
+  "Wave 7 Echo presentation and no-loot probe".
+- Evidence: full gate `tests\RunEndRiftEventChecks.ps1` → `GATE_EXIT=0`,
+  "End Rift current local checks passed" (the previously red
+  "Boss accepted hits, cast ownership and Kagune recovery" step now 145 passed,
+  2 skipped; 270 pure policies passed). New wire test `→ 3 passed`;
+  `Phase5EchoCopyPresentationPolicyTest → passed=1 failed=0`;
+  26.3 client `compileJava → BUILD SUCCESSFUL`, `CLIENT_COMPILE_EXIT=0`.
+  Native visual verification stays `NATIVE_BLOCKED`.
 
 ### 4.7 Build-and-verify pass: migration pack, gate, VFX reel (2026-11-25)
 

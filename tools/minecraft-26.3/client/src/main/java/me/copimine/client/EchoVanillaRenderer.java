@@ -42,6 +42,11 @@ import net.minecraft.world.item.ItemStack;
 public final class EchoVanillaRenderer {
     private static final EchoPresentationState STATE = new EchoPresentationState();
     private static final Map<UUID, CachedView> VIEWS = new HashMap<>();
+    /**
+     * V6 Phase 5: actor → body alpha for the copies the server marked as player
+     * duplicates. An ordinary Wave 7 echo is absent here and therefore opaque.
+     */
+    private static final Map<UUID, Float> COPY_ALPHA = new HashMap<>();
     private static final EquipmentSlot[] VISIBLE_SLOTS = {EquipmentSlot.HEAD, EquipmentSlot.CHEST,
             EquipmentSlot.LEGS, EquipmentSlot.FEET, EquipmentSlot.MAINHAND, EquipmentSlot.OFFHAND};
     /** Vanilla swing length in ticks ({@code LivingEntity.SWING_DURATION}). */
@@ -84,7 +89,17 @@ public final class EchoVanillaRenderer {
             case "REMOVE" -> STATE.remove(packet.frame());
             default -> false;
         };
-        if (accepted && packet.operation().equals("REMOVE")) VIEWS.remove(packet.frame().actor());
+        if (accepted) {
+            UUID actor = packet.frame().actor();
+            if (packet.operation().equals("REMOVE")) {
+                VIEWS.remove(actor);
+                COPY_ALPHA.remove(actor);
+            } else if (packet.copyAlpha() < 1.0F) {
+                COPY_ALPHA.put(actor, packet.copyAlpha());
+            } else {
+                COPY_ALPHA.remove(actor);
+            }
+        }
         return accepted;
     }
 
@@ -135,6 +150,11 @@ public final class EchoVanillaRenderer {
         // The eyes light up only after the body has mostly taken shape.
         if (echoState instanceof EndRiftRenderStateAccess access) {
             access.copimine$echoEyeGlow(cached.player.eyeGlow(now));
+            // V6 Phase 5: a copy marked by the server is a semi-transparent
+            // duplicate of the locked player. An absent entry keeps the body
+            // opaque, which is what every Wave 7 echo still expects.
+            float copyAlpha = COPY_ALPHA.getOrDefault(semantic.frame().actor(), 1.0F);
+            if (copyAlpha < 1.0F) access.copimine$echoCopyAlpha(copyAlpha);
         }
         // Materialisation: a copy grows into place from its feet instead of
         // popping in at full size. Vanilla animations play throughout.
@@ -286,7 +306,11 @@ public final class EchoVanillaRenderer {
         return Identifier.fromNamespaceAndPath("copimine", "textures/entity/end_event_echo_eyes.png");
     }
 
-    public static void clear() { STATE.clear(); VIEWS.clear(); }
-    public static void reset() { STATE.reset(); VIEWS.clear(); }
-    public static void retire(UUID actor) { STATE.retire(actor); VIEWS.remove(actor); }
+    public static void clear() { STATE.clear(); VIEWS.clear(); COPY_ALPHA.clear(); }
+    public static void reset() { STATE.reset(); VIEWS.clear(); COPY_ALPHA.clear(); }
+    public static void retire(UUID actor) {
+        STATE.retire(actor);
+        VIEWS.remove(actor);
+        COPY_ALPHA.remove(actor);
+    }
 }

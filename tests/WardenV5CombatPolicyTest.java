@@ -50,9 +50,12 @@ public final class WardenV5CombatPolicyTest {
                 "a player behind the Warden is a miss");
         check(!WardenV5CombatPolicy.sweepHits(2.0D, 0.0D, 2.6D),
                 "a player on an unreachable ledge is a miss");
-        check(WardenV5CombatPolicy.SWEEP_PREP_TICKS >= 35
-                        && WardenV5CombatPolicy.SWEEP_PREP_TICKS <= 50,
-                "the sweep preparation is 0.7..1.0 s");
+        // V6 W7-WARDEN-* fixes the tell at 0.7..1.0 s of real server ticks.
+        // At 20 TPS that is 14..20 ticks (18 = 0.9 s); the old 35..50 band was
+        // a 50-ticks-per-second transcription of the same wall-clock window.
+        check(WardenV5CombatPolicy.SWEEP_PREP_TICKS >= 14
+                        && WardenV5CombatPolicy.SWEEP_PREP_TICKS <= 20,
+                "the sweep preparation is 0.7..1.0 s (14..20 ticks at 20 TPS)");
     }
 
     private static void sweepEffectsAreBounded() {

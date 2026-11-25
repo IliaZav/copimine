@@ -10367,7 +10367,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (!echoCloneBroadcast.shouldSend(viewer.getUniqueId(), frame.actor(), signature, eventTickCounter)) {
                 continue;
             }
-            boolean delivered = sendClientPacket(viewer, "END_ECHO_STATE", frame.duel().toString(), 2_000L,
+            // The signed Echo body carries no lease: EndEventBridgeBodyCodec
+            // refuses a nonzero duration for END_ECHO_* ("Invalid Echo
+            // presentation fields"), so a 2_000 ms value dropped every frame at
+            // encode. Freshness is the client's own lease plus the broadcast
+            // keepalive, never a wire duration.
+            boolean delivered = sendClientPacket(viewer, "END_ECHO_STATE", frame.duel().toString(), 0L,
                     frame.actor().toString(), "END_RIFT_ECHO_V1", 0, 0, 0,
                     frame.fields(), frame.dimension());
             // Only a delivered frame may reset the dedupe key, or a dropped
@@ -27325,7 +27330,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Player owner = Bukkit.getPlayer(pair.owner());
         if (!isNamedEchoClientReady(owner)) return;
         EchoPresentationProbeState.Frame frame = view.nextFrame(eventTickCounter);
-        sendClientPacket(owner, type, pair.duel().toString(), 2_000L, pair.actor().toString(),
+        // Echo bodies are lease-free on the wire: the codec refuses a nonzero
+        // duration for END_ECHO_*, and the client owns freshness.
+        sendClientPacket(owner, type, pair.duel().toString(), 0L, pair.actor().toString(),
                 "END_RIFT_ECHO_V1", 0, 0, 0.0F, frame.fields(), frame.dimension());
     }
 

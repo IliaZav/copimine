@@ -75,7 +75,8 @@ LOD, доказательство и точные пути ассетов.
 | Тесты геометрии | `tools/minecraft-26.3/client/src/test/java/me/copimine/client/SpellVisualGeometryTest.java` |
 | Тесты проводки/геометрии | `tests/test_end_rift_spell_presentation.py` |
 | Превью-листы из исходника (§9L) | `docs/end-rift/2026-11-23/spell_previews/<token>.svg` |
-| Флипбук для просмотра дуги каста | `docs/end-rift/2026-11-23/spell_previews/playtest_reel.html` (проигрывает те же листы, `steps(7)`) |
+| Анимированные GIF дуги каста | `docs/end-rift/2026-11-23/spell_previews/<token>.gif` (7 кадров = 7 ключей) |
+| Флипбук для просмотра дуги каста | `docs/end-rift/2026-11-23/spell_previews/playtest_reel.html` (GIF + `steps(7)`) |
 | Генератор превью-листов | `scripts/minecraft/RenderSpellVisualPreviews.py` (`--check` в CI) |
 | Тест актуальности превью | `tests/test_end_rift_spell_visual_previews.py` |
 | Пин клиента | `tools/minecraft-26.3/profile.lock.json` → `clientArtifact` |

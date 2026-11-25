@@ -21,10 +21,18 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts/minecraft/RenderSpellVisualPreviews.py"
 GEOMETRY = ROOT / "tools/minecraft-26.3/client/src/main/java/me/copimine/client/SpellVisualGeometry.java"
 SHEETS = ROOT / "docs/end-rift/2026-11-23/spell_previews"
+
+# The seven authored semantic cast keys (Section 9A.03(C)), mirrored from
+# ``RenderSpellVisualPreviews.FRAMES``; the animated GIF holds the last key for
+# ``GIF_TAIL_MS`` before it loops.
+FRAMES_MS = (0, 240, 540, 860, 1180, 1580, 2000)
+GIF_TAIL_MS = 800
 
 
 def _authored_tokens() -> list[str]:
@@ -106,6 +114,9 @@ def test_the_flipbook_plays_the_very_sheets_it_references() -> None:
     # Every panel is one of the committed sheets, referenced in roster order.
     refs = re.findall(r'src="([a-z]+)\.svg"', text)
     assert refs == tokens, f"flipbook sheet references drifted: {refs}"
+    # Each card leads with the animated cast arc and keeps the strip beneath it.
+    motion = re.findall(r'src="([a-z]+)\.gif"', text)
+    assert motion == tokens, f"flipbook gif references drifted: {motion}"
     # A single-cell viewport stepping through all seven keys.
     assert f"steps({keys})" in text, "the flipbook must step through seven keys"
     assert f"width: {keys * 100}%" in text, "the strip must be seven cells wide"
@@ -117,3 +128,39 @@ def test_the_flipbook_plays_the_very_sheets_it_references() -> None:
         ("dormant", "anticipation", "energized", "release", "peak", "dissipate", "completed")
     ):
         assert beat in text, f"the flipbook dropped semantic cast key {index + 1} ({beat})"
+
+
+def test_the_animated_cast_arc_loops_the_seven_authored_keys() -> None:
+    """The animated GIF must be a real seven-key loop, one per family.
+
+    Pillow is a workstation tool, not a CI test dependency, so this skips cleanly
+    on the runner rather than failing; a skip is never a pass, and the committed
+    ``--check``-pinned sheets stay the always-on evidence.  Where Pillow is
+    present, the GIF is verified as seven frames at the authored timings.
+    """
+    pil = pytest.importorskip("PIL.Image")
+
+    tokens = _authored_tokens()
+    gifs = {path.stem for path in SHEETS.glob("*.gif")}
+    assert gifs == set(tokens), (
+        "the animated GIFs and the Spell roster drifted: "
+        f"only-on-disk {sorted(gifs - set(tokens))}, "
+        f"only-in-code {sorted(set(tokens) - gifs)}"
+    )
+
+    authored_total = (FRAMES_MS[-1] - FRAMES_MS[0]) + GIF_TAIL_MS
+    for token in tokens:
+        path = SHEETS / f"{token}.gif"
+        assert path.stat().st_size > 8_000, f"{token}.gif looks like a stub"
+        with pil.open(path) as image:
+            assert image.n_frames == len(FRAMES_MS), (
+                f"{token}.gif has {image.n_frames} frames, expected {len(FRAMES_MS)}"
+            )
+            assert image.info.get("loop") == 0, f"{token}.gif must loop forever"
+            durations = []
+            for frame in range(image.n_frames):
+                image.seek(frame)
+                durations.append(image.info.get("duration", 0))
+            assert sum(durations) == authored_total, (
+                f"{token}.gif plays for {sum(durations)} ms, expected the authored {authored_total} ms"
+            )

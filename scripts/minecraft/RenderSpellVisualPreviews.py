@@ -383,6 +383,8 @@ def reel_html(geometry: dict) -> str:
         cards.append(textwrap.dedent(
             f"""\
             <figure class="card" style="--deep:{_rgb(deep)};--base:{_rgb(base)};--hot:{_rgb(hot)}">
+              <img class="motion" src="{token}.gif"
+                   alt="{name} animated authored cast arc, seven keys">
               <div class="viewport" style="aspect-ratio:{sheet_w} / {sheet_h}">
                 <img class="strip" src="{token}.svg" alt="{name} authored cast arc, seven keys">
               </div>
@@ -426,6 +428,7 @@ def reel_html(geometry: dict) -> str:
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(255,255,255,0.03);
           }}
           .viewport {{ width: 100%; overflow: hidden; }}
+          .motion {{ display: block; width: 100%; height: auto; }}
           .strip {{
             display: block; width: {len(FRAMES) * 100}%; height: auto;
             animation: cast {len(FRAMES) * 0.26:.2f}s steps({len(FRAMES)}) infinite;
@@ -444,7 +447,8 @@ def reel_html(geometry: dict) -> str:
           <p class="caveat">
             Each panel steps through the seven authored semantic cast keys of
             <code>SpellVisualEnvelope</code> (Section 9A.03(C)) from the committed source-derived
-            sheets. <strong>This is not an in-game screenshot.</strong> Native F2 capture remains
+            sheets: an animated <code>&lt;token&gt;.gif</code> on top and the seven-key strip
+            below. <strong>This is not an in-game screenshot.</strong> Native F2 capture remains
             BLOCKED on this host; the sheets are projections of the shipped mesh, not a render of it.
             Freeze the loop by enabling "reduce motion" in your OS, or open any
             <code>&lt;token&gt;.svg</code> to inspect every key side by side.
@@ -460,6 +464,116 @@ def reel_html(geometry: dict) -> str:
 
 def _rgb(triple: tuple[int, int, int]) -> str:
     return "#{:02x}{:02x}{:02x}".format(*triple)
+
+
+# ----------------------------------------------------------------------------
+# Animated cast-arc GIFs (optional; require Pillow, so CI skips them cleanly).
+# ----------------------------------------------------------------------------
+GIF_SCALE = 0.8
+# Each key holds for the real time until the next key, plus a beat on the last.
+GIF_DURATIONS = tuple(b - a for a, b in zip(FRAMES, FRAMES[1:])) + (800,)
+
+
+def _pillow():
+    try:
+        from PIL import Image, ImageDraw, ImageFilter  # noqa: PLC0415
+    except Exception as exc:  # noqa: BLE001
+        raise SystemExit("Pillow is required for --gif / --check-gif: " + str(exc))
+    return Image, ImageDraw, ImageFilter
+
+
+def _rgba(colour: str, alpha: int) -> tuple[int, int, int, int]:
+    r, g, b = (int(colour[i:i + 2], 16) for i in (1, 3, 5))
+    return r, g, b, alpha
+
+
+def cast_arc_frames(spell: dict) -> list:
+    """Rasterise the seven authored cast keys into one flip-book of frames.
+
+    Mirrors ``cell_svg``'s three passes (blurred glow, toned body, white-hot core)
+    so the animation shows exactly the mesh the sheets and the runtime draw.
+    """
+    Image, ImageDraw, ImageFilter = _pillow()
+    token = spell["token"]
+    bound = float(spell["bound"])
+    deep, base, hot = PALETTE.get(token, PALETTE["beam"])
+    span = max(6.0, bound * 2.2)
+    scale = (CELL_W - 2.0 * MARGIN) / span * GIF_SCALE
+    width = int(round(CELL_W * GIF_SCALE))
+    height = int(round(CELL_H * GIF_SCALE))
+    cx, cy = width / 2.0, height / 2.0 + 18.0 * GIF_SCALE
+    extent = max(2.0, bound * 0.8)
+
+    def screen(x: float, y: float, z: float) -> tuple[float, float]:
+        sx, sy, _depth = project(x, y, z, scale)
+        return cx + sx, cy + sy
+
+    frames = []
+    for frame in spell["frames"]:
+        canvas = Image.new("RGBA", (width, height), (5, 4, 10, 255))
+        draw = ImageDraw.Draw(canvas, "RGBA")
+        # Ground grid.
+        grid = _rgba(mix(deep, base, 0.25), 70)
+        for step in range(-4, 5):
+            offset = extent * step / 4.0
+            for p, q in ((screen(offset, 0.0, -extent), screen(offset, 0.0, extent)),
+                         (screen(-extent, 0.0, offset), screen(extent, 0.0, offset))):
+                draw.line([p, q], fill=grid, width=1)
+
+        segments: list[tuple[float, float, float, float, float, float, str, float]] = []
+        for stroke in frame["strokes"]:
+            points = stroke["points"]
+            widths = stroke["widths"]
+            for index in range(len(points) - 1):
+                x1, y1, z1 = points[index]
+                x2, y2, z2 = points[index + 1]
+                sx1, sy1, depth = project(x1, y1, z1, scale)
+                sx2, sy2, depth2 = project(x2, y2, z2, scale)
+                w = max(widths[index], widths[index + 1]) * 2.0 * scale
+                segments.append((max(depth, depth2), sx1, sy1, sx2, sy2, w,
+                                 stroke["style"], float(stroke["brightness"])))
+        segments.sort(key=lambda item: item[0])
+
+        # Pass 1: blurred glow.
+        glow = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+        gdraw = ImageDraw.Draw(glow, "RGBA")
+        glow_colour = _rgba(mix(deep, base, 0.55), 120)
+        for _d, sx1, sy1, sx2, sy2, w, _s, _b in segments:
+            gdraw.line([(cx + sx1, cy + sy1), (cx + sx2, cy + sy2)],
+                       fill=glow_colour, width=max(1, int(round(w * 2.6))))
+        canvas = Image.alpha_composite(canvas, glow.filter(ImageFilter.GaussianBlur(3.0)))
+
+        # Passes 2 and 3: toned body, then a white-hot core on hero strokes.
+        over = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+        odraw = ImageDraw.Draw(over, "RGBA")
+        for _d, sx1, sy1, sx2, sy2, w, _s, brightness in segments:
+            odraw.line([(cx + sx1, cy + sy1), (cx + sx2, cy + sy2)],
+                       fill=_rgba(mix(deep, base, 0.35 + 0.65 * brightness), 235),
+                       width=max(1, int(round(w))))
+            if brightness >= 0.9:
+                odraw.line([(cx + sx1, cy + sy1), (cx + sx2, cy + sy2)],
+                           fill=_rgba(mix(base, hot, 0.92), 242),
+                           width=max(1, int(round(w * 0.46))))
+        canvas = Image.alpha_composite(canvas, over)
+        frames.append(canvas.convert("RGB"))
+    return frames
+
+
+def write_cast_arc_gif(spell: dict, out_dir: Path) -> Path:
+    """Encode one token's seven cast keys into an animated GIF."""
+    Image, _draw, _filter = _pillow()
+    frames = cast_arc_frames(spell)
+    path = out_dir / f"{spell['token']}.gif"
+    # One shared palette keeps the loop stable and the file small.
+    palette = frames[0].quantize(colors=128, method=Image.Quantize.MEDIANCUT)
+    quantised = [
+        frame.quantize(palette=palette, dither=Image.Dither.NONE) for frame in frames
+    ]
+    quantised[0].save(
+        path, format="GIF", save_all=True, append_images=quantised[1:],
+        duration=list(GIF_DURATIONS), loop=0, optimize=True, disposal=2,
+    )
+    return path
 
 
 def render(geometry: dict, out_dir: Path) -> list[Path]:
@@ -480,21 +594,60 @@ def render(geometry: dict, out_dir: Path) -> list[Path]:
     return written
 
 
+def check_gifs(geometry: dict, committed: Path) -> int:
+    """Re-render the animated GIFs and compare byte-for-byte (needs Pillow)."""
+    _pillow()
+    if not committed.is_dir():
+        print(f"no committed preview directory: {committed}", file=sys.stderr)
+        return 1
+    with tempfile.TemporaryDirectory(prefix="spell_gifs_") as tmp:
+        fresh = Path(tmp) / "out"
+        fresh.mkdir(parents=True, exist_ok=True)
+        problems: list[str] = []
+        for spell in geometry["spells"]:
+            produced = write_cast_arc_gif(spell, fresh)
+            target = committed / produced.name
+            if not target.is_file():
+                problems.append(f"missing committed gif: {produced.name}")
+            elif target.read_bytes() != produced.read_bytes():
+                problems.append(f"stale committed gif: {target.name}")
+    if problems:
+        for problem in problems:
+            print(problem, file=sys.stderr)
+        print("re-run: py -3 scripts/minecraft/RenderSpellVisualPreviews.py "
+              "--gif --out docs/end-rift/2026-11-23/spell_previews", file=sys.stderr)
+        return 1
+    print(f"{len(geometry['spells'])} authored cast-arc gifs match the shipped geometry")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--check", action="store_true",
                         help="compare freshly rendered sheets with the committed ones")
+    parser.add_argument("--gif", action="store_true",
+                        help="also write animated cast-arc GIFs (needs Pillow)")
+    parser.add_argument("--check-gif", action="store_true",
+                        help="re-render the GIFs and compare them (needs Pillow)")
     args = parser.parse_args(argv)
 
     geometry = build_geometry()
     geometry["spells"] = [spell for spell in geometry["spells"] if len(spell["frames"]) == len(FRAMES)]
+
+    if args.check_gif:
+        return check_gifs(geometry, args.out)
 
     if not args.check:
         written = render(geometry, args.out)
         for path in written:
             print(f"wrote {path.relative_to(ROOT) if path.is_relative_to(ROOT) else path}")
         print(f"{len(written)} authored preview sheets")
+        if args.gif:
+            gifs = [write_cast_arc_gif(spell, args.out) for spell in geometry["spells"]]
+            for path in gifs:
+                print(f"wrote {path.relative_to(ROOT) if path.is_relative_to(ROOT) else path}")
+            print(f"{len(gifs)} authored cast-arc gifs")
         return 0
 
     committed = args.out

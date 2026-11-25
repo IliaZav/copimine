@@ -358,6 +358,110 @@ def _lfs(path: Path) -> str:
     return path.read_text(encoding="utf-8").replace("\r\n", "\n")
 
 
+REEL_NAME = "playtest_reel.html"
+
+
+def reel_html(geometry: dict) -> str:
+    """A self-contained flipbook player for the committed sheets.
+
+    Each committed ``<token>.svg`` is a horizontal strip of the seven authored
+    semantic cast keys.  This page shows one cell at a time and steps through the
+    seven, so the whole cast arc animates in a browser without a GUI Minecraft
+    client and without duplicating a single byte of geometry.  It is a watching
+    aid, not a measurement: the in-game F2 capture stays BLOCKED.
+    """
+    sheet_w = CELL_W * len(FRAMES)
+    sheet_h = CELL_H + HEADER_H + MARGIN
+
+    cards: list[str] = []
+    for spell in geometry["spells"]:
+        token = spell["token"]
+        name = spell["name"].replace("_", " ").title()
+        deep, base, hot = PALETTE.get(token, PALETTE["beam"])
+        beats = [str(frame.get("beat", "")).lower() for frame in spell["frames"]]
+        strip = " &rsaquo; ".join(beats)
+        cards.append(textwrap.dedent(
+            f"""\
+            <figure class="card" style="--deep:{_rgb(deep)};--base:{_rgb(base)};--hot:{_rgb(hot)}">
+              <div class="viewport" style="aspect-ratio:{sheet_w} / {sheet_h}">
+                <img class="strip" src="{token}.svg" alt="{name} authored cast arc, seven keys">
+              </div>
+              <figcaption>
+                <span class="name">{name}</span>
+                <span class="beats">{strip}</span>
+              </figcaption>
+            </figure>
+            """
+        ))
+    return textwrap.dedent(
+        f"""\
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>End Rift V5.1 authored cast arc - flipbook</title>
+        <style>
+          :root {{ color-scheme: dark; }}
+          * {{ box-sizing: border-box; }}
+          body {{
+            margin: 0; padding: 28px 24px 48px;
+            background: radial-gradient(circle at 50% 0%, #140f22, #05040a 62%);
+            color: #ece7fb; font-family: "Segoe UI", Helvetica, Arial, sans-serif;
+          }}
+          h1 {{ margin: 0 0 6px; font-size: 24px; letter-spacing: 2px; font-weight: 600; }}
+          .caveat {{
+            margin: 0 0 22px; max-width: 900px; font-size: 13px; line-height: 1.5;
+            color: #b7a9d8;
+          }}
+          .caveat strong {{ color: #ffd9a0; }}
+          .grid {{
+            display: grid; gap: 20px;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+          }}
+          .card {{
+            margin: 0; border: 1px solid color-mix(in srgb, var(--base) 55%, #000);
+            border-radius: 14px; overflow: hidden;
+            background: linear-gradient(180deg, color-mix(in srgb, var(--deep) 30%, #0a0812), #070610);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(255,255,255,0.03);
+          }}
+          .viewport {{ width: 100%; overflow: hidden; }}
+          .strip {{
+            display: block; width: {len(FRAMES) * 100}%; height: auto;
+            animation: cast {len(FRAMES) * 0.26:.2f}s steps({len(FRAMES)}) infinite;
+          }}
+          @keyframes cast {{ from {{ transform: translateX(0); }} to {{ transform: translateX(-100%); }} }}
+          @media (prefers-reduced-motion: reduce) {{
+            .strip {{ animation: none; }}
+          }}
+          figcaption {{ padding: 10px 14px 14px; display: flex; flex-direction: column; gap: 4px; }}
+          .name {{ font-size: 15px; letter-spacing: 1.2px; color: var(--hot); }}
+          .beats {{ font-size: 11px; letter-spacing: 0.4px; color: #9d90bf; }}
+        </style>
+        </head>
+        <body>
+          <h1>End Rift V5.1 - authored cast arc flipbook</h1>
+          <p class="caveat">
+            Each panel steps through the seven authored semantic cast keys of
+            <code>SpellVisualEnvelope</code> (Section 9A.03(C)) from the committed source-derived
+            sheets. <strong>This is not an in-game screenshot.</strong> Native F2 capture remains
+            BLOCKED on this host; the sheets are projections of the shipped mesh, not a render of it.
+            Freeze the loop by enabling "reduce motion" in your OS, or open any
+            <code>&lt;token&gt;.svg</code> to inspect every key side by side.
+          </p>
+          <div class="grid">
+        {textwrap.indent("".join(cards), "    ")}
+          </div>
+        </body>
+        </html>
+        """
+    )
+
+
+def _rgb(triple: tuple[int, int, int]) -> str:
+    return "#{:02x}{:02x}{:02x}".format(*triple)
+
+
 def render(geometry: dict, out_dir: Path) -> list[Path]:
     out_dir.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
@@ -370,6 +474,9 @@ def render(geometry: dict, out_dir: Path) -> list[Path]:
         # core.autocrlf and a Linux runner must produce byte-identical evidence.
         path.write_text(spell_svg(spell), encoding="utf-8", newline="\n")
         written.append(path)
+    # The flipbook reuses the very sheets above, so it carries no geometry of its
+    # own and stays in lockstep with the mesh by construction.
+    (out_dir / REEL_NAME).write_text(reel_html(geometry), encoding="utf-8", newline="\n")
     return written
 
 
@@ -408,6 +515,13 @@ def main(argv: list[str] | None = None) -> int:
         expected = {f"{spell['token']}.svg" for spell in geometry["spells"]}
         for extra in sorted(p.name for p in committed.glob("*.svg") if p.name not in expected):
             problems.append(f"unexpected committed sheet: {extra}")
+        # The flipbook must describe the same seven keys as the sheets it plays.
+        fresh_reel = fresh / REEL_NAME
+        target_reel = committed / REEL_NAME
+        if not target_reel.is_file():
+            problems.append(f"missing committed flipbook: {REEL_NAME}")
+        elif _lfs(target_reel) != _lfs(fresh_reel):
+            problems.append(f"stale committed flipbook: {REEL_NAME}")
     if problems:
         for problem in problems:
             print(problem, file=sys.stderr)

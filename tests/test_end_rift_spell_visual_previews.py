@@ -82,3 +82,38 @@ def test_every_authored_cast_has_a_labelled_preview_sheet() -> None:
             )
         assert text.count("<line") > 40, f"{token}.svg looks like an empty placeholder"
         assert sheet.stat().st_size > 5_000, f"{token}.svg is suspiciously small"
+
+
+def test_the_flipbook_plays_the_very_sheets_it_references() -> None:
+    """The browsing aid must reuse the committed sheets, not a private copy.
+
+    A playtest viewer needs to *watch* the cast arc, not read a strip of seven
+    stills.  ``playtest_reel.html`` steps a single-cell viewport through each
+    sheet's seven panels with a CSS ``steps(7)`` animation, so it contains no
+    geometry of its own: every frame it plays is the byte-for-byte sheet that
+    ``--check`` already pins to the shipped mesh.
+    """
+    tokens = _authored_tokens()
+    reel = SHEETS / "playtest_reel.html"
+    assert reel.is_file(), "the playtest flipbook must ship next to the sheets"
+    keys = 7
+
+    text = reel.read_text(encoding="utf-8")
+    assert text.lstrip().startswith("<!DOCTYPE html>")
+    assert "This is not an in-game screenshot" in text, (
+        "the flipbook must keep the honest native-capture caveat"
+    )
+    # Every panel is one of the committed sheets, referenced in roster order.
+    refs = re.findall(r'src="([a-z]+)\.svg"', text)
+    assert refs == tokens, f"flipbook sheet references drifted: {refs}"
+    # A single-cell viewport stepping through all seven keys.
+    assert f"steps({keys})" in text, "the flipbook must step through seven keys"
+    assert f"width: {keys * 100}%" in text, "the strip must be seven cells wide"
+    # Reduced motion turns the loop into a still, matching the client policy.
+    assert "prefers-reduced-motion: reduce" in text, (
+        "the flipbook must honour reduced-motion like the client does"
+    )
+    for index, beat in enumerate(
+        ("dormant", "anticipation", "energized", "release", "peak", "dissipate", "completed")
+    ):
+        assert beat in text, f"the flipbook dropped semantic cast key {index + 1} ({beat})"

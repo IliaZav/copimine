@@ -27,6 +27,9 @@ enum SpellContactMesh {
     WITHER("wither_contact", 0x518abd, 0xcbeaff),
     MAGMA("magma_contact", 0xb3230b, 0xffbf39),
     INFERNO_VORTEX("inferno_vortex", 0x762041, 0xffb850),
+    INFERNO_RING("inferno_ring", 0xc32b12, 0xffcf68),
+    INFERNO_FORGE("inferno_forge", 0x79252a, 0xffb847),
+    INFERNO_FORGE_CLEAVE("inferno_forge_cleave", 0xee4817, 0xffdc85),
     INFERNO_FRONT("inferno_front", 0x6e233f, 0xffa142),
     INFERNO_VENT("inferno_vent_contact", 0x672340, 0xffc768),
     INFERNO_CINDER("inferno_cinder_contact", 0xcb3617, 0xffdf80),
@@ -60,7 +63,10 @@ enum SpellContactMesh {
 
     int draw(PoseStack.Pose pose, VertexConsumer buffer, SpellCastPacket cast, double time,
              SpellVisualGeometry.Quality quality, boolean reducedMotion, int budget) {
-        if (cast.lanes().isEmpty() || cast.stage() != 2) return 0;
+        if (cast.lanes().isEmpty()) return 0;
+        if (this == INFERNO_RING || this == INFERNO_FORGE)
+            return drawOverloadSignature(pose, buffer, cast, time, quality, reducedMotion, budget);
+        if (cast.stage() != 2) return 0;
         if (this == INFERNO_FRONT || this == INFERNO_VENT)
             return drawFireFront(pose, buffer, cast, time, quality, reducedMotion, budget);
         if (cast.lanes().size() != 1) return 0;
@@ -70,16 +76,64 @@ enum SpellContactMesh {
         return switch (this) {
             case AWAKENING, HUNT, RIFT, OVERLOAD, RAGE, LAST_SEAL ->
                     drawPhase(pose, buffer, origin, lane.radius(), time, quality, reducedMotion, budget);
-            case INFERNO_FRONT, INFERNO_VENT -> 0;
+            case INFERNO_FRONT, INFERNO_VENT, INFERNO_RING, INFERNO_FORGE -> 0;
             case INFERNO_VORTEX -> drawVortex(pose, buffer, origin, lane.radius(), lane.length(),
                     time, quality, reducedMotion, budget);
             case WARDEN_ECHO, MINI_PULSE, VOID -> drawShell(pose, buffer, origin, lane.radius(), progress,
                     quality, budget);
-            case GUARDIAN_BASIC, GUARDIAN_FAN, GUARDIAN_HEAVY, WITHER -> drawCleave(pose, buffer, origin, lane,
+            case GUARDIAN_BASIC, GUARDIAN_FAN, GUARDIAN_HEAVY, WITHER, INFERNO_FORGE_CLEAVE -> drawCleave(pose, buffer, origin, lane,
                     progress, quality, budget);
             case GUARDIAN_LANCE, GUARDIAN_FIREBALL, MAGMA, INFERNO_CINDER, BOLT, BREATH, WEB, SNARE -> drawFilaments(pose, buffer, origin, lane.radius(),
                     cast.seed(), time, progress, quality, reducedMotion, budget);
         };
+    }
+
+    private int drawOverloadSignature(PoseStack.Pose pose, VertexConsumer buffer, SpellCastPacket cast,
+                                      double time, SpellVisualGeometry.Quality quality, boolean calm, int budget) {
+        var lane = cast.lanes().getFirst();
+        Vec3 origin = new Vec3(lane.x(), lane.y(), lane.z());
+        Vec3 forward = new Vec3(lane.dx(), lane.dy(), lane.dz()).normalize();
+        if (lane.radius() <= 0 || forward.lengthSqr() < .001D) return 0;
+        Vec3 side = (Math.abs(forward.y) > .95 ? new Vec3(1, 0, 0) : new Vec3(0, 1, 0))
+                .cross(forward).normalize();
+        Vec3 up = forward.cross(side);
+        double[][] section = SpellVisualRenderer.profile(quality, true);
+        int nodes = quality.samples() * 2 + 1;
+        int required = (nodes + 1) * section.length * 4;
+        boolean ring = this == INFERNO_RING;
+        int strands = ring ? 3 : quality == SpellVisualGeometry.Quality.REDUCED ? 3 : 6;
+        int emitted = 0;
+        double angleOffset = calm ? 0 : time * TAU * (ring ? 1.75 : .65);
+        for (int strand = 0; strand < strands && emitted + required <= budget; strand++) {
+            Vec3[] centers = new Vec3[nodes];
+            int[] colors = new int[nodes];
+            var radius = new ArrayList<Float>(nodes);
+            for (int n = 0; n < nodes; n++) {
+                double t = n / (double) (nodes - 1);
+                double heading = angleOffset + (ring ? TAU * t : TAU * (strand / (double) strands + t * .26));
+                double wave = Math.sin(heading * 5 + strand * 1.3);
+                double rim;
+                double lift;
+                if (ring) {
+                    rim = lane.radius() * ((cast.stage() == 0 ? .36 + .64 * time : 1)
+                            + .037 * wave - strand * .06);
+                    lift = .15 * wave - strand * .22;
+                } else {
+                    rim = lane.radius() * (cast.stage() == 0 ? 1 - t * .94 : .24 + .49 * Math.sin(Math.PI * t));
+                    lift = cast.stage() == 0 ? t * 1.56 + .55 * Math.sin(Math.PI * t)
+                            : .13 + 3.7 * t;
+                }
+                centers[n] = origin.add(side.scale(Math.cos(heading) * rim))
+                        .add(up.scale(Math.sin(heading) * rim)).add(forward.scale(lift));
+                double taper = ring ? .75 + .25 * wave : Math.sin(Math.PI * t);
+                radius.add((float) (.02 + (strand == 0 ? .19 : .115) * taper));
+                double fade = cast.stage() == 2 ? 1 - time : 1;
+                colors[n] = argb(strand == 0 || wave > .58 ? core : body,
+                        (strand == 0 ? 239 : 155) * fade * (.54 + .46 * taper));
+            }
+            emitted += SpellVisualRenderer.tube(buffer, pose, centers, radius, colors, section);
+        }
+        return emitted;
     }
 
     private int drawFireFront(PoseStack.Pose pose, VertexConsumer buffer, SpellCastPacket cast, double time,
@@ -150,7 +204,8 @@ enum SpellContactMesh {
                           double time, SpellVisualGeometry.Quality quality, boolean calm, int budget) {
         int desired = switch (this) {
             case LAST_SEAL -> 12;
-            case RIFT, OVERLOAD -> 8;
+            case OVERLOAD -> 10;
+            case RIFT -> 8;
             default -> 6;
         };
         int strands = quality == SpellVisualGeometry.Quality.REDUCED ? desired / 2 : desired;
@@ -187,7 +242,7 @@ enum SpellContactMesh {
                 double lift = switch (this) {
                     case HUNT -> .24 + arch * .4;
                     case RIFT -> .20 + arch * (i % 3 + 1) * .83;
-                    case OVERLOAD -> arch * 3.7;
+                    case OVERLOAD -> arch * (4.1 + (i % 3) * 1.15);
                     case RAGE -> arch * 1.9;
                     case LAST_SEAL -> arch * 6.5 + t * .6;
                     default -> arch * 2.9;

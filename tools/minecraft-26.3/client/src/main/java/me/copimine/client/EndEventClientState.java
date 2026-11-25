@@ -25,6 +25,7 @@ public final class EndEventClientState {
     private String bossBindingInstance = "";
     private String bossVisualId = "";
     private BossBarState bossBar;
+    private long guardianHurtAt = Long.MIN_VALUE;
     private final Map<String, BossPhaseBinding> bossPhase = new HashMap<>();
     private final Map<String, EntityVisualBinding> entityVisuals = new HashMap<>();
     private final Map<String, EntityAnimationBinding> entityAnimations = new HashMap<>();
@@ -112,10 +113,19 @@ public final class EndEventClientState {
         if (!BOSS_PHASES.contains(phaseId) || !BOSS_CAST_STATES.contains(castState)) {
             return false;
         }
+        if (bossBar == null || !bossBar.bossUuid().equals(packet.subjectId())
+                || !bossBar.instanceId().equals(packet.instanceId())) guardianHurtAt = Long.MIN_VALUE;
+        else if (normalizedProgress < bossBar.progress()) guardianHurtAt = nowMillis;
         bossBar = new BossBarState(
                 packet.instanceId(), packet.subjectId(), phaseId, castState,
                 normalizedHealth, normalizedMax, normalizedProgress, true, nowMillis);
         return true;
+    }
+
+    public synchronized float guardianHurtTint(String uuid, long nowMillis) {
+        if (bossBar == null || !bossBar.bossUuid().equals(uuid) || guardianHurtAt < 0
+                || nowMillis < guardianHurtAt) return 0F;
+        return Math.max(0F, 1F - (nowMillis - guardianHurtAt) / 260F);
     }
 
     public synchronized boolean isReverseActive(long nowMillis) {

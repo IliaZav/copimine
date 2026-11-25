@@ -71,7 +71,7 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity,
      * a shade colder than the real boss. ARGB 0xD6/0xC4/0xF0 keeps the authored
      * skin readable while a careful player can learn the difference.
      */
-    @Unique private static final int COPIER_TINT = 0xFFD6C4F0;
+    @Unique private static final int COPIER_TINT = 0xBAD6C4F0;
 
     @Inject(method = "extractRenderState(Lnet/minecraft/world/entity/LivingEntity;Lnet/minecraft/client/renderer/entity/state/LivingEntityRenderState;F)V",
             at = @At("TAIL"))
@@ -166,6 +166,17 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity,
             // for a careful player to learn and far from the forbidden "FAKE"
             // label.
             cir.setReturnValue(COPIER_TINT);
+        } else if (state instanceof EndRiftRenderStateAccess body) {
+            var clientState = ClientBridgeProtocol.endEventState();
+            float hurt = clientState.guardianHurtTint(body.copimine$uuid(), System.currentTimeMillis());
+            if (hurt > 0) {
+                int shade = Math.round(255 - 188 * hurt);
+                cir.setReturnValue(0xFFFF0000 | (shade << 8) | shade);
+            } else {
+                var bar = clientState.bossBar();
+                if (bar != null && bar.bossUuid().equals(body.copimine$uuid()) && "OVERLOAD".equals(bar.phaseId()))
+                    cir.setReturnValue(0xFFFFC68D);
+            }
         }
     }
 
@@ -207,7 +218,10 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity,
             // through its renderer; every other entity type (Pillager decoy,
             // echo replica) renders with its own texture, so the authored boss
             // skin has to be supplied here or the body draws with wrong UVs.
-            RenderType type = state instanceof EndermanRenderState
+            boolean copy = livingState instanceof EndRiftRenderStateAccess bound
+                    && copimine$isGuardianCopy(bound.copimine$visual());
+            RenderType type = copy ? net.minecraft.client.renderer.rendertype.RenderTypes.entityTranslucent(
+                    me.copimine.client.RiftGuardianModelRenderer.bossTexture()) : state instanceof EndermanRenderState
                     ? renderType
                     : net.minecraft.client.renderer.rendertype.RenderTypes.entityCutout(
                             me.copimine.client.RiftGuardianModelRenderer.bossTexture());

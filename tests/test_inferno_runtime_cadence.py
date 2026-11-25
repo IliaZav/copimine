@@ -64,6 +64,7 @@ public class InfernoRuntimeCadenceProbe {
     static class Bukkit { static final Scheduler scheduler=new Scheduler();static Scheduler getScheduler(){return scheduler;} }
     final LivingEntity boss=new LivingEntity();final Player target=new Player();
     final List<Block> arenaInfernoBlocks=new ArrayList<>(List.of(new Block()));
+    final Set<Block> forgeCooledFloor=new HashSet<>();
     final long eventTickCounter=137;
     final long ARENA_INFERNO_VENT_PERIOD_TICKS=60;
     static class Registry {boolean owns(long g){return g==7;}}

@@ -893,13 +893,13 @@
       "candidate": {
         "filename": "CopiMineDungeon-26.3.jar",
         "runtimeFilename": "CopiMineDungeon.jar",
-        "sha256": "a4884fba6d96d8be1692d3fe396e2eb093bc186b506a8730066fe51bffad9fdd",
+        "sha256": "f447404b32293edf41fb6e1bf40649e9748159ea030c2a919a3a9cb959a74ae2",
         "apiVersion": "26.3",
         "buildArtifact": "build/minecraft-26.3/plugins/jars/CopiMineDungeon-26.3.jar",
         "compatibilityStatus": "requires-runtime-validation",
         "nativeVerified": false,
-        "sha512": "b88e0214ffe019d426ee1510e0b9976cae80b67dbf5f9df453fe922e4b743d2c1a5cfebf653bcbf96a2c2e3092cca0529cd599852a28012686173ac95202c58e",
-        "size": 232338,
+        "sha512": "f4a698161cfd5e21b0190e621f957e4b848d7fb157b972360aadc1ec8b8d7858fa8dc8543ee69405161465332d19e6ed0c96d5c7e549f0a5477090151dde7fa2",
+        "size": 280467,
         "runtimeEligible": true,
         "replaceSha256": [
           "416e40917e08e956230e2e602dbb51233986174f7988ac4d62bf857185d73e61",
@@ -1031,13 +1031,13 @@
       "candidate": {
         "filename": "CopiMineEndEvent-26.3.jar",
         "runtimeFilename": "CopiMineEndEvent.jar",
-        "sha256": "b5db1781f2af47af9b8eb2cd160b0e2c4e7dfaf639476d393995ceebd8e4a2a6",
+        "sha256": "c3364e34272811764e7a174c5d60e51db82b79dc61d0d2fc22d996312ff0f29b",
         "apiVersion": "26.3",
         "buildArtifact": "build/minecraft-26.3/plugins/jars/CopiMineEndEvent-26.3.jar",
         "compatibilityStatus": "requires-runtime-validation",
         "nativeVerified": false,
-        "size": 2824188,
-        "sha512": "e08a22c8639505aee0642547bffa72fa74d755a871ce01ed576d611276e4e3a978baaf1d3c9d61449b9a4a57ed2484915c6f3ae0a524b289c5bc04bdac2804e0",
+        "size": 2896941,
+        "sha512": "b32440c07842c3e86d5cfc1a0478d0a436278e60a05c1ff41205be8f3f8a9481a7694426d8d694e0eeb245576855bbd9add92032115901cbc1dc8a56671b2f45",
         "runtimeEligible": true,
         "replaceSha256": [
           "aac8b88dec2adb39529ab6da611e0701d54eaff844e77a9078c2e5118aa886a0",

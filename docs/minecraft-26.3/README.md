@@ -17,7 +17,7 @@
 | Java сборки | Temurin 25; Grim compatibility patch собирается Java 21 |
 | Gradle | 9.8.1, distribution SHA-256 закреплён в lock |
 | Fabric | Loader 0.19.5, Loom 1.19.1, Fabric API 0.164.0+26.3 (вложен в CopiMineClient) |
-| CopiMineClient | `CopiMineClient-0.1.5+26.3.jar`, 30 732 175 байт; SHA-512 `80a1e21a6f28a01e5646f5d3483c4f7d6df8a6fddb34cfe9297ceeec2b965b2b247cb0f35bcfd53b419ded2d85b5dcfbe86c544e7b8a81175d0fc0ee4b8e5f09`, собран на Temurin 25.0.4.1+1 / Gradle 9.8.1 |
+| CopiMineClient | `CopiMineClient-0.1.5+26.3.jar`, 30 771 060 байт; SHA-512 `de0605cc1b3c0e81c169c934ba162513c057cd16f7384e005a8c10a05c25256915d408e2007cd5bc08f0f8d41d00e25a5ff5e7eb45bb8ecc7fe224fe7944b67e`, собран на Temurin 25.0.4.1+1 / Gradle 9.8.1 |
 | Gradle зависимости | SHA-256 manifest и описание происхождения в `GRADLE_DEPENDENCY_VERIFICATION.md` |
 | Серверные плагины | Lock с URL, версией, размером, SHA-256 и SHA-512 в `server-plugins.lock.json` |
 

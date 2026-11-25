@@ -34,6 +34,8 @@ public final class EndRiftGuardianShieldRenderer {
     private static ClientLevel candidateWorld;
     private static long candidateGameTime = Long.MIN_VALUE;
     private static Set<UUID> cachedCandidateIds = new LinkedHashSet<>();
+    private static String coilBoss = "";
+    private static long coilStartedTick;
 
     private EndRiftGuardianShieldRenderer() {
     }
@@ -90,7 +92,11 @@ public final class EndRiftGuardianShieldRenderer {
         Vec3 bossPosition = bossPosition(world, tickDelta);
         Set<UUID> candidateIds = candidateEntityIds(world);
         ORBITS.keySet().retainAll(candidateIds);
-        if (candidateIds.isEmpty()) return;
+        if (candidateIds.isEmpty()) {
+            coilBoss = "";
+            return;
+        }
+        submitLivingCoils(context, world, cameraPos, bossPosition, candidateIds, tickDelta, time);
         EndRiftRenderSubmission.submit(context, cameraPos, RenderTypes.entityTranslucent(TEXTURE), (matrices, buffer) -> {
             for (UUID entityId : candidateIds) {
                 Entity entity = ((ClientWorldAccessor) world).copimine$getEntities().get(entityId);
@@ -133,6 +139,51 @@ public final class EndRiftGuardianShieldRenderer {
                 matrices.rotate(Axis.ZP, pose.shieldRoll());
                 renderShieldMesh(matrices, buffer);
                 matrices.popPose();
+            }
+        });
+    }
+
+    private static void submitLivingCoils(LevelRenderContext context, ClientLevel world, Vec3 camera,
+                                          Vec3 boss, Set<UUID> carriers, float partial, long tick) {
+        String owner = ClientBridgeProtocol.endEventState().bossUuid();
+        if (!finite(boss) || boss.distanceToSqr(camera) > 72D * 72D || owner == null || owner.isBlank()) return;
+        if (!owner.equals(coilBoss) || tick < coilStartedTick) {
+            coilBoss = owner;
+            coilStartedTick = tick;
+        }
+        boolean calm = SpellVisualRenderer.reducedMotion();
+        var quality = SpellVisualRenderer.quality();
+        double progress = calm ? 1 : Math.clamp((tick - coilStartedTick + partial) / 28D, 0D, 1D);
+        int nodes = quality.samples() + 4;
+        int maxStrands = quality == SpellVisualGeometry.Quality.REDUCED ? 3 : 6;
+        var section = SpellVisualRenderer.profile(quality, true);
+        var entities = ((ClientWorldAccessor) world).copimine$getEntities();
+        EndRiftRenderSubmission.submit(context, camera, SpellVisualRenderer.layer(), (matrices, buffer) -> {
+            int drawn = 0;
+            for (UUID id : carriers) {
+                if (!(entities.get(id) instanceof Display.ItemDisplay display) || display.isRemoved()) continue;
+                Vec3 anchor = display.getPosition(partial);
+                if (!finite(anchor)) continue;
+                double reach = Math.min(4.1D, Math.hypot(anchor.x - boss.x, anchor.z - boss.z));
+                if (reach < .2D) continue;
+                double start = Math.atan2(anchor.z - boss.z, anchor.x - boss.x);
+                boolean clockwise = (drawn & 1) == 0;
+                Vec3[] path = new Vec3[nodes];
+                var widths = new java.util.ArrayList<Float>(nodes);
+                int[] colors = new int[nodes];
+                for (int i = 0; i < nodes; i++) {
+                    double t = progress * i / (nodes - 1D);
+                    double angle = start + (clockwise ? 1 : -1) * t * (2.1 + drawn * .24);
+                    double radius = reach * (1 - t * .62);
+                    double y = (anchor.y - boss.y) * (1 - t) + t * (1.2D + drawn * .31)
+                            + Math.sin(t * Math.PI) * .53D;
+                    path[i] = boss.add(Math.cos(angle) * radius, y, Math.sin(angle) * radius);
+                    double crest = Math.sin(t * Math.PI);
+                    widths.add((float) (.026 + (.21 + .04 * Math.cos(t * 46)) * crest));
+                    colors[i] = crest > .77 ? 0xbbce609d : 0xa75a235f;
+                }
+                SpellVisualRenderer.tube(buffer, matrices.last(), path, widths, colors, section);
+                if (++drawn >= maxStrands) break;
             }
         });
     }

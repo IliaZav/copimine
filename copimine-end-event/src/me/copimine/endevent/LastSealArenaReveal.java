@@ -38,7 +38,7 @@ import java.util.function.Predicate;
 
 /** Changes only the cells pinned by a site plan. The journal also owns recovery without that plan. */
 final class LastSealArenaReveal {
-    static final int DURATION_TICKS = 280;
+    static final int DURATION_TICKS = 320;
     // The approved site mask is authored, not generated, so the ceiling has to
     // cover a genuinely large concealed corridor rather than the first 320
     // cells: the V6 audit requires "the exact mask" be honoured in bounded
@@ -119,7 +119,7 @@ final class LastSealArenaReveal {
                     || !original.contains(landing.at(world)) || !safeLanding(landing, world)) {
                 throw new IOException("world, Core, radius or rescue landing is invalid");
             }
-            if ((corridor == null) != (safeZone == null))
+            if (corridor == null || safeZone == null)
                 throw new IOException("concealed corridor and protected safe zone must both be configured");
             byte[] approval = corridor == null ? bytes
                     : (new String(bytes, StandardCharsets.UTF_8) + "\n" + corridor + "\n" + safeZone)

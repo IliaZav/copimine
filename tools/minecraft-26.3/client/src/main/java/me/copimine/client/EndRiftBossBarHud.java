@@ -264,10 +264,33 @@ public final class EndRiftBossBarHud {
                 x + (WIDTH - 44) / 2, portraitY,
                 phase * 64F, 0F, 44, 44,
                 64, 64, 64 * 6, 64);
+        if (phase == 5) drawLastSealTendrils(context, x, y, reduced, now);
         context.centeredText(client.font, castComponent(state.castState()),
                 x + (INNER_LEFT + INNER_RIGHT) / 2, y + CAST_LABEL_OFFSET, 0xFFBEB8D5);
         } finally {
             context.pose().popMatrix();
+        }
+    }
+
+    private static void drawLastSealTendrils(GuiGraphicsExtractor context, int x, int y,
+                                               boolean reduced, long now) {
+        double motion = reduced || phaseChangedAtMillis <= 0 ? 1
+                : Math.clamp((now - phaseChangedAtMillis) / 560D, 0D, 1D);
+        int mirror = x + WIDTH / 2;
+        for (int side : new int[]{-1, 1}) {
+            for (int branch = 0; branch < 3; branch++) {
+                int nodes = (int) Math.round(motion * (34 + branch * 8));
+                for (int i = 0; i < nodes; i++) {
+                    double t = i / (double) (34 + branch * 8);
+                    int dx = Math.min(WIDTH / 2 - 3, 15 + (int) (i * (1.15 + branch * .38)));
+                    int px = mirror + side * dx;
+                    int py = y + 45 - (int) (Math.sin(t * Math.PI * .86 + branch * .27) * (14 + branch * 6));
+                    int thick = Math.max(1, 5 - (int) (4 * t));
+                    context.fill(px, py, px + 2, py + thick + 2, 0xff23102d);
+                    context.fill(px, py, px + 2, py + thick, 0xff732453 + branch * 0x0009170a);
+                    if ((i & 3) == 0) context.fill(px, py, px + 1, py + 1, 0xfff599cd);
+                }
+            }
         }
     }
 

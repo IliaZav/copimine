@@ -827,25 +827,24 @@ public final class RiftRamEncounter {
         if(trampleOrigin==null) return;
         int samples=Math.max(16,Math.min(Math.min(96,host.particleBudget()/3),
                 (int)Math.ceil(2*Math.PI*Math.max(1.0D,radius)/.65)));
-        double lipY=host.floorY()+1.35D;
-        for(Player viewer:viewers) {
-            if(!viewer.getWorld().equals(trampleOrigin.getWorld())
-                    || viewer.getLocation().distanceSquared(trampleOrigin)>48*48) continue;
-            for(int i=0;i<samples;i++) {
-                double angle=2*Math.PI*i/samples;
-                double cos=Math.cos(angle), sin=Math.sin(angle);
-                double x=trampleOrigin.getX()+cos*radius, z=trampleOrigin.getZ()+sin*radius;
-                viewer.spawnParticle(Particle.BLOCK,x,host.floorY()+1.12,z,2,.25,.1,.25,0,Material.DEEPSLATE.createBlockData());
-                if((i&1)==0) viewer.spawnParticle(Particle.BLOCK,x,host.floorY()+1.5,z,1,.3,.2,.3,0,Material.OBSIDIAN.createBlockData());
-                // A single lit seam per sample gives the front a crisp boundary
-                // instead of a soft haze.
-                viewer.spawnParticle(Particle.BLOCK,x,lipY,z,1,.12,.16,.12,0,Material.CRYING_OBSIDIAN.createBlockData());
-                // Every eighth sample throws real debris upward: sparse enough to
-                // never read as confetti, dense enough to sell weight.
-                if((i&7)==0) {
-                    viewer.spawnParticle(Particle.BLOCK,x,host.floorY()+1.05D,z,1,.2,.5,.2,0.06,
-                            Material.DEEPSLATE.createBlockData());
-                }
+        double floor = host.floorY() + 1.0D;
+        var stone = Material.DEEPSLATE.createBlockData();
+        var hotSeam = new Particle.DustOptions(Color.fromRGB(0xD48DFF), 1.1F);
+        List<Player> nearby = viewers.stream().filter(viewer -> viewer.getWorld().equals(trampleOrigin.getWorld()))
+                .filter(viewer -> viewer.getLocation().distanceSquared(trampleOrigin) <= (radius + 36) * (radius + 36))
+                .toList();
+        for (int i = 0; i < samples; i++) {
+            double angle = 2 * Math.PI * i / samples;
+            double cos = Math.cos(angle), sin = Math.sin(angle);
+            double crest = .36D + .23D * Math.abs(Math.sin(angle * 5 + trampleBeat * .8D));
+            Location seam = new Location(trampleOrigin.getWorld(),
+                    trampleOrigin.getX() + cos * radius, floor + .08D, trampleOrigin.getZ() + sin * radius);
+            if (!host.inArena(seam)) continue;
+            Location lip = seam.clone().add(-cos * .23D, crest, -sin * .23D);
+            for (Player viewer : nearby) {
+                viewer.spawnParticle(Particle.DUST, seam, 1, .07, .06, .07, 0, hotSeam);
+                viewer.spawnParticle(Particle.BLOCK, lip, 1, .13, crest * .35, .13, .025, stone);
+                if ((i & 3) == 0) viewer.spawnParticle(Particle.ASH, lip, 2, .22, crest * .45, .22, .035);
             }
         }
     }
@@ -1150,9 +1149,10 @@ public final class RiftRamEncounter {
             host.pose(pillarSkeleton, "WAVE_RECOVER", 10);
             return;
         }
-        if (cast.ability() == WaveSixPillarSkeletonPolicy.Ability.BONE_RAIN && tick % 8 == 0)
-            dust(cast.locked(), 10, 1.0D, .06D);
-        if (tick < cast.releaseTick()) return;
+        if (tick < cast.releaseTick()) {
+            if (tick % 5 == 0) presentSpireCharge(players, cast);
+            return;
+        }
         skeletonCast = null;
         skeletonNextCastTick = tick + 20;
         boolean validTarget = players.stream().anyMatch(player -> player.getUniqueId().equals(cast.target())
@@ -1182,10 +1182,39 @@ public final class RiftRamEncounter {
         if (accepted) {
             skeletonNextCastTick = tick + 38;
             host.pose(pillarSkeleton, "WAVE_RELEASE", 12);
+            if (cast.ability() == WaveSixPillarSkeletonPolicy.Ability.SPIRE_LANCE)
+                pillarSkeleton.getWorld().playSound(pillarSkeleton.getLocation(), Sound.BLOCK_AMETHYST_BLOCK_BREAK, 1.2F, .55F);
+            if (cast.ability() == WaveSixPillarSkeletonPolicy.Ability.BONE_RAIN)
+                locked.getWorld().playSound(locked, Sound.BLOCK_BONE_BLOCK_BREAK, .85F, .64F);
             pillarSkeleton.getWorld().playSound(pillarSkeleton.getLocation(), Sound.ENTITY_SKELETON_SHOOT,
                     1.4F, cast.ability() == WaveSixPillarSkeletonPolicy.Ability.SPIRE_LANCE ? .48F : .85F);
         } else {
             host.pose(pillarSkeleton, "WAVE_RECOVER", 10);
+        }
+    }
+
+    private void presentSpireCharge(List<Player> players, SpireCast cast) {
+        Location center = cast.ability() == WaveSixPillarSkeletonPolicy.Ability.BONE_RAIN
+                ? cast.locked().clone().add(0, .12D, 0) : pillarSkeleton.getLocation().add(0, 1.5D, 0);
+        boolean rain = cast.ability() == WaveSixPillarSkeletonPolicy.Ability.BONE_RAIN;
+        boolean lance = cast.ability() == WaveSixPillarSkeletonPolicy.Ability.SPIRE_LANCE;
+        Vector direction = cast.locked().toVector().subtract(center.toVector()).setY(0);
+        if (direction.lengthSquared() < .001D) direction.setZ(1);
+        direction.normalize();
+        Vector side = new Vector(-direction.getZ(), 0, direction.getX());
+        double radius = rain ? 1.18D : lance ? .44D : .28D;
+        for (int i = 0; i < 8; i++) {
+            double angle = i * Math.PI / 4 + tick * .11D;
+            Location point = center.clone();
+            if (rain) point.add(Math.cos(angle) * radius, (i & 1) * .18D, Math.sin(angle) * radius);
+            else point.add(side.clone().multiply(Math.cos(angle) * radius))
+                    .add(0, Math.sin(angle) * radius, 0).add(direction.clone().multiply((i & 1) * .38D));
+            if (!host.inArena(point)) continue;
+            for (Player viewer : players) {
+                if (viewer.getWorld().equals(point.getWorld()) && viewer.getLocation().distanceSquared(point) < 48 * 48)
+                    viewer.spawnParticle(lance ? Particle.ELECTRIC_SPARK : rain ? Particle.ASH : Particle.CRIT,
+                            point, 1, .018D, .018D, .018D, .015D);
+            }
         }
     }
 

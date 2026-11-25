@@ -29,6 +29,7 @@ import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.List;
@@ -65,11 +66,13 @@ final class LastSealArenaReveal {
             return dx * dx + dz * dz <= (double) radius * radius;
         }
     }
+    private record CollapseCell(Change change, int tick) { }
     private record Fragment(BlockDisplay display, Transformation fall, long start, long end) { }
 
     private final Path planPath;
     private final Path journal;
     private final List<Fragment> fragments = new ArrayList<>();
+    private List<CollapseCell> collapse = List.of();
     private Plan plan;
     private Square square;
     private long owner;
@@ -156,6 +159,11 @@ final class LastSealArenaReveal {
             throw new IOException("missing approval for the exact manifest or unfinished recovery");
         writeJournal(checked, original);
         plan = checked;
+        collapse = checked.changes().stream()
+                .map(change -> new CollapseCell(change, collapseTick(checked, change)))
+                .sorted(Comparator.comparingInt(CollapseCell::tick))
+                .toList();
+        open = false;
         square = original;
         owner = generation;
         startTick = tick;
@@ -195,7 +203,7 @@ final class LastSealArenaReveal {
         if (!active(generation)) return;
         if (!world.getUID().equals(plan.worldId())) throw new IOException("arena world changed");
         fragments.removeIf(fragment -> {
-            if (fragment.display().isValid() && now == fragment.start()) {
+            if (fragment.display().isValid() && now >= fragment.start() && fragment.display().getInterpolationDelay() != 0) {
                 fragment.display().setInterpolationDelay(0);
                 fragment.display().setTransformation(fragment.fall());
             }
@@ -205,22 +213,28 @@ final class LastSealArenaReveal {
         });
         long age = now - startTick;
         beat(world, core, age);
-        if (age >= 40 && next < plan.changes().size()) {
-            for (int i = 0; i < BATCH && next < plan.changes().size(); i++) {
-                Change change = plan.changes().get(next);
-                if (!change.wall() && age < 100) break;
+        if (next < collapse.size()) {
+            CollapseCell lead = collapse.get(next);
+            if (lead.tick() - age >= 1 && lead.tick() - age <= 12 && age % 10 < 5)
+                crumble(world, lead.change().cell().at(world).add(0, .55, 0), lead.change().wall(), false);
+            for (int i = 0; i < BATCH && next < collapse.size(); i++) {
+                CollapseCell scheduled = collapse.get(next);
+                if (age < scheduled.tick()) break;
+                Change change = scheduled.change();
                 Cell cell = change.cell();
                 if (!cell.loaded(world)) throw new IOException("unloaded approved cell " + cell);
                 Block block = cell.block(world);
                 if (!block.getBlockData().getAsString().equals(change.original()) || block.getState(false) instanceof TileState)
                     throw new IOException("site was modified during reveal at " + cell);
+                if (i == 0 || i == BATCH / 2)
+                    crumble(world, cell.at(world).add(0, .55, 0), change.wall(), true);
                 if (fragments.size() < 40 && ((next & 3) == 0 || !change.wall() && (next & 1) == 0))
                     animate(world, block, change.wall(), now);
                 block.setType(Material.AIR, false);
                 next++;
             }
         }
-        open = next == plan.changes().size() && age >= 100;
+        open = next == collapse.size() && age >= 100;
         if (age >= 100) {
             for (Player player : world.getPlayers()) {
                 Location at = player.getLocation();
@@ -233,6 +247,34 @@ final class LastSealArenaReveal {
                 }
             }
         }
+    }
+
+    private static int collapseTick(Plan plan, Change change) {
+        Cell cell = change.cell();
+        if (!change.wall()) {
+            double distance = Math.hypot(cell.x() - plan.x(), cell.z() - plan.z());
+            return 100 + (int) (25 * Math.min(1, distance / plan.radius()));
+        }
+        double angle = Math.atan2(cell.z() - plan.z(), cell.x() - plan.x());
+        double sweep = (angle + Math.PI) / (2 * Math.PI);
+        int verticalDelay = Math.clamp(plan.floor() + 12 - cell.y(), 0, 12);
+        return 38 + (int) (42 * sweep) + verticalDelay;
+    }
+
+    private static void crumble(World world, Location center, boolean wall, boolean impact) {
+        world.playSound(center, collapseSound(wall, impact), SoundCategory.BLOCKS,
+                impact ? 1.55f : .68f, wall ? .62f : .86f);
+        world.spawnParticle(Particle.LARGE_SMOKE, center, impact ? 14 : 4,
+                impact ? .9 : .4, .3, impact ? .9 : .4, .035);
+        world.spawnParticle(Particle.DUST, center, impact ? 16 : 7, .7, wall ? .6 : .24, .7, 0,
+                new Particle.DustOptions(Color.fromRGB(wall ? 0x946680 : 0xca68ff), impact ? 1.35f : .85f));
+        if (impact) world.playSound(center, Sound.ENTITY_GENERIC_EXPLODE, SoundCategory.BLOCKS,
+                wall ? .8f : .55f, wall ? .65f : .82f);
+    }
+
+    private static Sound collapseSound(boolean wall, boolean impact) {
+        if (wall) return impact ? Sound.BLOCK_DEEPSLATE_BREAK : Sound.BLOCK_DEEPSLATE_HIT;
+        return impact ? Sound.BLOCK_RESPAWN_ANCHOR_DEPLETE : Sound.BLOCK_AMETHYST_BLOCK_HIT;
     }
 
     private void beat(World world, Location core, long age) {
@@ -257,6 +299,7 @@ final class LastSealArenaReveal {
             display.setBrightness(new Display.Brightness(12, 12));
             display.setViewRange(1.15f);
             display.setInterpolationDuration(FALL_TICKS);
+            display.setInterpolationDelay(-1);
         });
         double dx = at.getX() - plan.x(), dz = at.getZ() - plan.z();
         double length = Math.max(1, Math.hypot(dx, dz));
@@ -273,6 +316,7 @@ final class LastSealArenaReveal {
     void restore() throws IOException {
         for (Fragment fragment : fragments) fragment.display().remove();
         fragments.clear();
+        collapse = List.of();
         if (!needsRecovery()) { plan = null; open = false; return; }
         String contents = new String(readBounded(journal), StandardCharsets.UTF_8);
         List<String> lines = java.util.Arrays.asList(contents.split("\\R"));

@@ -20967,10 +20967,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         for(UUID id:new ArrayList<>(activeEliteArrowVisuals.keySet())) {
             if(activeEventArrowAges.containsKey(id)) continue;
             Entity raw=Bukkit.getEntity(id);
-            if(raw instanceof Arrow arrow && arrow.isValid() && !arrow.isDead()
-                    && isNamedTrialProjectile(arrow) && ownedBySession(arrow,eventId,generation)
-                    && readInt(arrow,keyWave,0)==7) syncEliteArrowVisual(arrow);
-            else removeEliteArrowVisual(id);
+            if (!(raw instanceof Arrow arrow) || !arrow.isValid() || arrow.isDead()
+                    || !isNamedTrialProjectile(arrow) || !ownedBySession(arrow, eventId, generation)
+                    || readInt(arrow, keyWave, 0) != 7) {
+                removeEliteArrowVisual(id);
+                continue;
+            }
+            syncEliteArrowVisual(arrow);
+            if ((arrow.getTicksLived() & 3) == 0
+                    && "MARKSMAN_HEAVY_SHOT".equals(readString(arrow, namedTrialProjectileAttackKey()))
+                    && arrow.getShooter() instanceof LivingEntity marksman) {
+                renderMarksmanLanceFlight(marksman, arrow);
+            }
         }
         if (activeEventArrowAges.isEmpty()) {
             return;
@@ -26484,6 +26492,25 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
+    private void renderMarksmanLanceFlight(LivingEntity marksman, Arrow arrow) {
+        Vector axis = arrow.getVelocity();
+        if (axis.lengthSquared() < .001D) return;
+        axis.normalize();
+        Vector side = axis.clone().crossProduct(Math.abs(axis.getY()) < .95D
+                ? new Vector(0, 1, 0) : new Vector(1, 0, 0)).normalize();
+        Vector normal = side.clone().crossProduct(axis);
+        Location center = arrow.getLocation();
+        double rotation = arrow.getTicksLived() * .22D;
+        for (int i = 0; i < 8; i++) {
+            double angle = rotation + i * Math.PI / 4;
+            Location facet = center.clone().add(side.clone().multiply(.29D * Math.cos(angle)))
+                    .add(normal.clone().multiply(.29D * Math.sin(angle)))
+                    .subtract(axis.clone().multiply(.24D + (i & 1) * .32D));
+            emitTrialParticle(marksman, facet, (i & 1) == 0 ? Particle.END_ROD : Particle.ELECTRIC_SPARK,
+                    1, 0, 0, 0, 0);
+        }
+    }
+
     private void renderNamedTrialShotContact(Projectile shot, Location at, boolean playerHit) {
         UUID owner = parseUuidOrNull(readString(shot, namedTrialProjectileSourceKey()));
         Entity actor = owner == null ? null : Bukkit.getEntity(owner);
@@ -26496,15 +26523,22 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         axis.normalize();
         Vector side = axis.clone().crossProduct(Math.abs(axis.getY()) < .95 ? new Vector(0, 1, 0) : new Vector(1, 0, 0)).normalize();
         Vector normal = side.clone().crossProduct(axis).normalize();
-        int segments = heavy ? 12 : magic ? 8 : 5;
-        Particle sparks = heavy ? Particle.ELECTRIC_SPARK : magic ? Particle.END_ROD : Particle.CRIT;
+        boolean paired = "MARKSMAN_PAIRED_CROSSFIRE".equals(attack);
+        boolean hail = "MARKSMAN_SKY_HAIL".equals(attack);
+        int segments = heavy ? 16 : magic || paired ? 8 : 5;
+        Particle sparks = heavy || paired ? Particle.ELECTRIC_SPARK : magic || hail ? Particle.END_ROD : Particle.CRIT;
         for (int i = 0; i < segments; i++) {
             double angle = 2 * Math.PI * i / segments;
             Vector radial = side.clone().multiply(Math.cos(angle)).add(normal.clone().multiply(Math.sin(angle)));
             Location point = at.clone().add(radial.multiply(heavy ? .43D : .28D))
                     .subtract(axis.clone().multiply((i & 1) == 0 ? .16D : .37D));
             emitTrialParticle(caster, point, sparks, 1, .018D, .018D, .018D, .03D);
+            if (heavy && (i & 1) == 0) {
+                Location shard = at.clone().add(radial.multiply(2.0D)).subtract(axis.clone().multiply(.56D));
+                emitTrialParticle(caster, shard, Particle.END_ROD, 1, .035D, .035D, .035D, .025D);
+            }
         }
+        if (heavy) emitTrialParticle(caster, at, Particle.SMOKE, 8, .24D, .18D, .24D, .025D);
         playTrialSound(caster, at, magic ? Sound.BLOCK_AMETHYST_BLOCK_HIT
                         : heavy ? Sound.BLOCK_CHAIN_HIT : Sound.ENTITY_ARROW_HIT,
                 heavy ? .75F : .48F, playerHit ? 1.22F : .87F);
@@ -30507,6 +30541,19 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             viewer.playSound(core, sound, SoundCategory.HOSTILE,
                     beat == 2 ? 1.1F : .75F, beat == 4 ? .58F : .70F);
             if (beat < 1 || beat >= 4) continue;
+            Vector forward = viewer.getLocation().getDirection().setY(0);
+            if (forward.lengthSquared() < .001D) forward.setZ(1);
+            forward.normalize();
+            Vector right = new Vector(-forward.getZ(), 0, forward.getX());
+            Location behind = viewer.getLocation().subtract(forward.multiply(beat == 3 ? 3.0D : 5.0D))
+                    .add(right.multiply(beat == 2 ? -2.4D : 2.4D)).add(0, 1.0D, 0);
+            if (isArenaLocation(behind) && behind.getBlock().isPassable()) {
+                viewer.playSound(behind, beat == 3 ? Sound.ENTITY_ENDERMAN_STARE : Sound.BLOCK_SCULK_CATALYST_BLOOM,
+                        SoundCategory.HOSTILE, beat == 3 ? .67F : .46F, beat == 3 ? .83F : .52F);
+                viewer.spawnParticle(Particle.ASH, behind, 14, .22D, .88D, .22D, .014D);
+                viewer.spawnParticle(Particle.REVERSE_PORTAL, behind.clone().add(0, 1.0D, 0),
+                        5, .12D, .24D, .12D, .025D);
+            }
             double reach = 2.5D + 1.8D * beat;
             spawnPatternRing(viewer, core.clone().add(0, .10D, 0),
                     new Vector(1, 0, 0), new Vector(0, 0, 1), reach, 24, beat * .57D, Particle.REVERSE_PORTAL);
@@ -47633,6 +47680,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         scaledAttack, WAVE_MOB_DAMAGE_REDUCTION));
             }
         }
+        if (wave == 2 && !elite && !guardianWave) {
+            // Later packs close distance faster while retaining the same reserve and hit damage.
+            AttributeInstance speed = enderman.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED);
+            if (speed != null) {
+                int stage = Math.clamp(waveSpawnGroupIndex, 0, WaveTwoStagePolicy.STAGE_COUNT - 1);
+                speed.setBaseValue(speed.getBaseValue() * (1.0D + stage * .055D));
+            }
+        }
         applyWaveThreeModifiers(enderman, wave);
         registerOwnedEntity(enderman);
         assignRealitySplitChamber(enderman, index);
@@ -49553,7 +49608,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (!finalSealPinned) {
             if (boss instanceof Mob mob) restoreBossPursuitTarget(mob, now);
             maintainBossPath(boss, now);
-            maintainBossTeleport(boss, now);
             detectBossStuck(boss, now);
         }
         if (tickGuardianBranch(boss, now)) return;
@@ -50743,18 +50797,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
         }
         return false;
-    }
-
-    private void maintainBossTeleport(LivingEntity boss, long now) {
-        if (!(boss instanceof Mob mob)) {
-            return;
-        }
-        // A normal pursuit must never recover by teleporting. The only named
-        // relocation is the FINAL_SEAL pin, which executes outside this path.
-        GroundedBossMotionPolicy.Resolution motion = applyGroundedBossPursuitMotion(mob, 0.0D);
-        if (!motion.allowTeleport()) {
-            return;
-        }
     }
 
     /**
@@ -52790,7 +52832,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         // A legal melee opening is a successful destination. Do not step back
         // to the preferred 3.5-block ring and abandon contact on every path tick.
-        if (plan.tactic() == CombatTacticsPolicy.BossTactic.MELEE_PRESSURE
+        if (!targetOnCore && bossAbilityState == BossAbilityState.NONE
                 && targetDistance >= 1.6D && targetDistance <= BossContactStrikePolicy.MELEE_SWIPE_RANGE
                 && boss.getLocation().distanceSquared(target.getLocation())
                     <= BossContactStrikePolicy.MELEE_SWIPE_RANGE * BossContactStrikePolicy.MELEE_SWIPE_RANGE
@@ -53460,8 +53502,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         List<GuardianV5MeleePolicy.Move> rotation = GuardianV5MeleePolicy.committedRotation();
         Location origin = boss.getLocation();
         Vector facing = horizontalDirection(origin, target.getLocation());
-        long exposed = activeLivingPlayers().stream()
+        long exposed = activeBossParticipants().stream()
                 .filter(player -> player.getWorld().equals(origin.getWorld()))
+                .filter(this::isCombatTarget)
+                .filter(player -> !isPlayerUnderTentacleControl(player) && boss.hasLineOfSight(player))
                 .filter(player -> Math.abs(player.getY() - origin.getY()) <= GuardianV5MeleePolicy.FAN_VERTICAL_BLOCKS)
                 .filter(player -> {
                     double dx = player.getX() - origin.getX(), dz = player.getZ() - origin.getZ();
@@ -53946,16 +53990,24 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void renderGuardianHeavyBurst(Location origin, Vector facing) {
         Location impact = origin.clone().add(facing.clone().multiply(2.2D)).add(0.0D, 0.3D, 0.0D);
-        for (int ring = 0; ring < 3; ring++) {
-            for (int i = 0; i < 18; i++) {
-                double angle = i * Math.PI / 9.0D + ring * 0.4D;
-                double radius = 1.0D + ring * 0.7D;
-                spawnEventParticle(impact.clone().add(Math.cos(angle) * radius,
-                        ring * 0.18D, Math.sin(angle) * radius),
-                        ring == 0 ? Particle.EXPLOSION : Particle.SCULK_SOUL, 1, 0, 0, 0, 0);
-            }
-        }
+        spawnEventParticle(impact, Particle.EXPLOSION, 1, 0, 0, 0, 0);
         spawnEventParticle(impact, Particle.SONIC_BOOM, 1, 0, 0, 0, 0);
+        spawnEventParticle(impact, Particle.LARGE_SMOKE, 12, .7D, .22D, .7D, .04D);
+        Vector side = new Vector(-facing.getZ(), 0, facing.getX());
+        for (int slab = 0; slab <= 8; slab++) {
+            double t = slab / 8.0D;
+            double height = Math.sin(t * Math.PI) * 2.2D;
+            Location blade = impact.clone().subtract(facing.clone().multiply((1 - t) * 2.0D)).add(0, height, 0);
+            double spread = .16D + t * .32D;
+            spawnEventParticle(blade.clone().add(side.clone().multiply(spread)), Particle.SCULK_SOUL, 1, 0, 0, 0, 0);
+            spawnEventParticle(blade.subtract(side.clone().multiply(spread)), Particle.ELECTRIC_SPARK, 1, 0, 0, 0, 0);
+        }
+        for (int ray = -2; ray <= 2; ray++) {
+            Vector direction = rotateFlat(facing, ray * .34D);
+            for (int chip = 1; chip <= 4; chip++)
+                spawnEventParticle(impact.clone().add(direction.clone().multiply(chip * .52D)),
+                        Particle.ASH, 2, .12D, .05D, .12D, .025D);
+        }
     }
 
     private void renderGuardianSeparationBurst(Location origin, double radius) {

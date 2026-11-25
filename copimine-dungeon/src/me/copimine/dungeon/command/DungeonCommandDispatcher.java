@@ -11,6 +11,7 @@ import me.copimine.dungeon.domain.RewardMode;
 import me.copimine.dungeon.domain.RewardSpec;
 import me.copimine.dungeon.domain.ScalingMode;
 import me.copimine.dungeon.domain.SecretDefinition;
+import me.copimine.dungeon.domain.SecretTrigger;
 import me.copimine.dungeon.domain.SpawnAnchor;
 import me.copimine.dungeon.domain.UnlockMode;
 import me.copimine.dungeon.domain.WaveSpec;
@@ -403,9 +404,45 @@ public final class DungeonCommandDispatcher {
                 return secretMutate(route.argument("secretId"), lines, secret -> secret
                         .style(GateStyle.fromToken(route.argument("gateStyle"))));
             }
+            case "secret trigger" -> {
+                String id = route.argument("secretId");
+                var secret = store.catalog().secret(id);
+                if (secret == null) return CommandResponse.fail("Секрет не найден.");
+                var prior = secret.trigger();
+                var action = SecretTrigger.Action.parse(route.argument("trigger"));
+                var cell = selectionInWorld(actor, secret.world());
+                if (action != SecretTrigger.Action.AUTO && (cell == null || !cell.enclosesExactlyOneBlock())) {
+                    return CommandResponse.fail("Выделите ровно один блок активации обеими точками.");
+                }
+                var point = action == SecretTrigger.Action.AUTO ? null
+                        : new SecretTrigger.BlockPoint(cell.minX(), cell.minY(), cell.minZ());
+                var trigger = new SecretTrigger(action, point, prior.milestoneRoom());
+                return secretMutate(id, lines, b -> b.entryRule(trigger.encode()).unlock(
+                        secret.unlock() == UnlockMode.ON_SPECIFIC_MILESTONE ? secret.unlock()
+                        : action == SecretTrigger.Action.AUTO ? UnlockMode.ON_ROOM_CLEAR
+                        : UnlockMode.MANUAL_AFTER_ROOM_CLEAR));
+            }
+            case "secret milestone" -> {
+                String id = route.argument("secretId");
+                var secret = store.catalog().secret(id);
+                if (secret == null) return CommandResponse.fail("Секрет не найден.");
+                var prior = secret.trigger();
+                var trigger = new SecretTrigger(prior.action(), prior.block(), route.argument("milestoneRoom"));
+                return secretMutate(id, lines, b -> b.entryRule(trigger.encode()).unlock(UnlockMode.ON_SPECIFIC_MILESTONE));
+            }
             case "secret unlock" -> {
-                return secretMutate(route.argument("secretId"), lines, secret -> secret
-                        .unlock(UnlockMode.fromToken(route.argument("mode"))));
+                String id = route.argument("secretId");
+                var secret = store.catalog().secret(id);
+                var mode = UnlockMode.fromToken(route.argument("mode"));
+                if (secret == null) return CommandResponse.fail("Секрет не найден.");
+                var prior = secret.trigger();
+                return secretMutate(id, lines, builder -> {
+                    builder.unlock(mode);
+                    if (mode == UnlockMode.MANUAL_AFTER_ROOM_CLEAR && prior.action() == SecretTrigger.Action.AUTO) {
+                        builder.entryRule(new SecretTrigger(SecretTrigger.Action.RUNE, null,
+                                prior.milestoneRoom()).encode());
+                    }
+                });
             }
             case "spawn add" -> {
                 return spawnAdd(actor, route, lines);
@@ -497,11 +534,7 @@ public final class DungeonCommandDispatcher {
                 }, "Режим награды обновлён.");
             }
             case "reward anchor" -> {
-                String anchorId = selectionOrActorAnchorId(actor);
-                return roomMutate(route.argument("roomId"), lines, builder -> {
-                    RewardSpec current = builder.reward();
-                    builder.reward(new RewardSpec(current.mode(), anchorId, current.lootTableId()));
-                }, "Якорь награды обновлён: " + anchorId);
+                return setRewardAnchor(actor, route.argument("roomId"));
             }
             case "reward loot" -> {
                 String loot = route.argument("lootTableId");
@@ -859,12 +892,29 @@ public final class DungeonCommandDispatcher {
         return sessions.open(actor.id(), actor.name());
     }
 
-    private String selectionOrActorAnchorId(CommandActor actor) {
-        EditorSession session = sessions.session(actor.id());
-        if (session != null && session.selectedRoomId() != null) {
-            return session.selectedRoomId() + "_reward";
+    private CommandResponse setRewardAnchor(CommandActor actor, String roomId) {
+        var room = store.catalog().room(roomId);
+        if (room == null || room.bounds() == null) return CommandResponse.fail("Комната не найдена.");
+        Cuboid cell = selectionInWorld(actor, room.world());
+        if (cell == null || !cell.enclosesExactlyOneBlock() || !room.bounds().contains(cell)) {
+            return CommandResponse.fail("Выделите один блок внутри комнаты обеими точками жезла.");
         }
-        return "reward_anchor";
+        String id = roomId + "_reward";
+        var old = store.catalog().spawn(id);
+        if (old != null && (!old.roomId().equals(roomId) || room.spawnAnchorIds().contains(id))) {
+            return CommandResponse.fail("Идентификатор " + id + " занят точкой спавна.");
+        }
+        try {
+            var anchor = new SpawnAnchor(id, roomId, room.world(), cell.minX(), cell.minY(), cell.minZ(), 0);
+            var reward = room.reward();
+            store.applyEdit(catalog -> {
+                catalog.putSpawn(anchor);
+                catalog.putRoom(room.toBuilder().reward(new RewardSpec(reward.mode(), id, reward.lootTableId())).build());
+            });
+        } catch (RuntimeException error) {
+            return CommandResponse.fail(error.getMessage());
+        }
+        return CommandResponse.ok("Якорь награды — " + cell.describe());
     }
 
     private List<String> overlaySummary(DungeonRoomDefinition room) {

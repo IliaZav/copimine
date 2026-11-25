@@ -11,6 +11,7 @@ import me.copimine.dungeon.domain.PhysicalGatePolicy;
 import me.copimine.dungeon.domain.PhysicalGateTransaction;
 import me.copimine.dungeon.domain.RoomState;
 import me.copimine.dungeon.domain.SpawnAnchor;
+import me.copimine.dungeon.domain.SecretTrigger;
 import me.copimine.dungeon.domain.UnlockMode;
 import me.copimine.dungeon.store.DungeonDefinitionStore;
 
@@ -122,6 +123,7 @@ public final class DungeonRuntime implements Listener {
             return false;
         }
         plugin.getServer().getPluginManager().registerEvents(this, plugin);
+        plugin.getServer().getPluginManager().registerEvents(mailbox, plugin);
         task = plugin.getServer().getScheduler().runTaskTimer(plugin, this::onTick, 1L, INTERVAL);
         return true;
     }
@@ -146,6 +148,7 @@ public final class DungeonRuntime implements Listener {
             PhysicalGatePolicy.doorMask(gate);
             gates.add(gate);
         }
+        Map<String, SecretTrigger> secrets = new LinkedHashMap<>();
         for (String id : room.secretIds()) {
             var secret = store.catalog().secret(id);
             if (secret == null || !secret.roomId().equals(room.id()) || !secret.world().equals(room.world())
@@ -155,8 +158,15 @@ public final class DungeonRuntime implements Listener {
             GateDefinition gate = secret.physicalGate();
             PhysicalGatePolicy.doorMask(gate);
             gates.add(gate);
+            secrets.put(gate.id(), secret.trigger());
         }
-        return new RoomRuntime(room, List.copyOf(anchors), List.copyOf(gates), mailbox.pending(room.id()));
+        var rewardAnchor = store.catalog().spawn(room.reward().anchorId());
+        if (room.reward().mode() != me.copimine.dungeon.domain.RewardMode.PERSONAL
+                && (rewardAnchor == null || !room.id().equals(rewardAnchor.roomId())
+                    || !room.world().equals(rewardAnchor.world()) || !room.bounds().contains(rewardAnchor.bounds()))) {
+            throw new IOException("Invalid physical reward anchor for " + room.id());
+        }
+        return new RoomRuntime(room, List.copyOf(anchors), List.copyOf(gates), mailbox.pending(room.id()), rewardAnchor, Map.copyOf(secrets));
     }
 
     public Runnable prepareRevision(DungeonDefinitionStore published, String roomId) throws IOException {
@@ -203,6 +213,7 @@ public final class DungeonRuntime implements Listener {
             }
         }
         rooms.clear();
+        mailbox.stop();
     }
 
     public int roomCount() {
@@ -225,23 +236,65 @@ public final class DungeonRuntime implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onGateInteract(PlayerInteractEvent event) {
-        if (event.getAction() != org.bukkit.event.block.Action.RIGHT_CLICK_BLOCK
-                || event.getClickedBlock() == null || event.getHand() != org.bukkit.inventory.EquipmentSlot.HAND) {
+        var action = event.getAction();
+        var block = event.getClickedBlock();
+        if (block == null || action != org.bukkit.event.block.Action.PHYSICAL
+                && event.getHand() != org.bukkit.inventory.EquipmentSlot.HAND) return;
+        if (action == org.bukkit.event.block.Action.LEFT_CLICK_BLOCK) {
+            activateSecret(event.getPlayer(), block, SecretTrigger.Action.HIT);
             return;
         }
-        Location at = event.getClickedBlock().getLocation();
+        if (action == org.bukkit.event.block.Action.PHYSICAL) {
+            activateSecret(event.getPlayer(), block, SecretTrigger.Action.PLATE);
+            return;
+        }
+        if (action != org.bukkit.event.block.Action.RIGHT_CLICK_BLOCK) return;
+        if (activateSecret(event.getPlayer(), block, SecretTrigger.Action.BUTTON)
+                || activateSecret(event.getPlayer(), block, SecretTrigger.Action.LEVER)
+                || activateSecret(event.getPlayer(), block, SecretTrigger.Action.RUNE)) return;
+        Location at = block.getLocation();
         for (RoomRuntime room : rooms.values()) {
             if (!room.cleared || !room.activeParticipant(event.getPlayer())) {
                 continue;
             }
             for (GateRuntime gate : room.gates) {
-                if (gate.gate().unlock() == UnlockMode.MANUAL_AFTER_ROOM_CLEAR
-                        && inside(at, gate.gate().world(), gate.gate().bounds())) {
+                if (!room.secrets.containsKey(gate.gate().id())
+                        && gate.gate().unlock() == UnlockMode.MANUAL_AFTER_ROOM_CLEAR && inside(at, gate.gate().world(), gate.gate().bounds())) {
                     room.open(gate, true);
                     return;
                 }
             }
         }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onSecretProjectile(ProjectileHitEvent event) {
+        if (event.getHitBlock() != null && event.getEntity() instanceof org.bukkit.entity.AbstractArrow arrow
+                && arrow.getShooter() instanceof Player player) {
+            activateSecret(player, event.getHitBlock(), SecretTrigger.Action.TARGET);
+        }
+    }
+
+    private boolean activateSecret(Player player, org.bukkit.block.Block block, SecretTrigger.Action action) {
+        if (!eligible(player) || !BukkitSecretTrigger.compatible(action, block)) return false;
+        for (RoomRuntime room : rooms.values()) {
+            if (room.boundWorld != block.getWorld() || !inside(player.getLocation(), room.room.world(), room.room.bounds())) continue;
+            for (GateRuntime gate : room.gates) {
+                SecretTrigger rule = room.secrets.get(gate.gate().id());
+                if (rule == null || rule.action() != action) continue;
+                boolean authorized = switch (gate.gate().unlock()) {
+                    case ON_ROOM_CLEAR -> false;
+                    case MANUAL_AFTER_ROOM_CLEAR -> room.cleared && room.activeParticipant(player);
+                    case ON_SPECIFIC_MILESTONE -> (room.life == null || room.cleared)
+                            && mailbox.cleared(rule.milestoneRoom());
+                };
+                if (!authorized) continue;
+                boolean match = rule.block() != null ? rule.block().at(block.getX(), block.getY(), block.getZ())
+                        : inside(block.getLocation(), gate.gate().world(), gate.gate().bounds());
+                if (match && room.open(gate, true)) return true;
+            }
+        }
+        return false;
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -361,7 +414,8 @@ public final class DungeonRuntime implements Listener {
     @EventHandler
     public void onEntitiesLoad(EntitiesLoadEvent event) {
         for (Entity entity : event.getEntities()) {
-            if (entity.getPersistentDataContainer().has(ownerKey, PersistentDataType.LONG) && owned(entity) == null) {
+            if (mailbox.tagged(entity)
+                    || entity.getPersistentDataContainer().has(ownerKey, PersistentDataType.LONG) && owned(entity) == null) {
                 entity.remove();
             }
         }
@@ -402,9 +456,7 @@ public final class DungeonRuntime implements Listener {
                 }
                 return false;
             });
-            for (Player player : Bukkit.getOnlinePlayers()) {
-                mailbox.deliver(player);
-            }
+            mailbox.tick(Bukkit.getOnlinePlayers());
         }
     }
 
@@ -413,6 +465,8 @@ public final class DungeonRuntime implements Listener {
         private final List<SpawnAnchor> anchors;
         private final List<GateDefinition> gateDefinitions;
         private final List<Long> pendingRewards;
+        private final SpawnAnchor rewardAnchor;
+        private final Map<String, SecretTrigger> secrets;
         private final List<GateRuntime> gates = new ArrayList<>();
         private final Set<UUID> roster = new LinkedHashSet<>();
         private final Map<UUID, DungeonMobCombat> live = new LinkedHashMap<>();
@@ -431,11 +485,14 @@ public final class DungeonRuntime implements Listener {
         private World boundWorld;
 
         private RoomRuntime(DungeonRoomDefinition room, List<SpawnAnchor> anchors,
-                            List<GateDefinition> gates, List<Long> pendingRewards) {
+                            List<GateDefinition> gates, List<Long> pendingRewards, SpawnAnchor rewardAnchor,
+                            Map<String, SecretTrigger> secrets) {
             this.room = room;
             this.anchors = anchors;
             gateDefinitions = gates;
             this.pendingRewards = pendingRewards;
+            this.rewardAnchor = rewardAnchor;
+            this.secrets = secrets;
         }
 
         private void enter(Player player) {
@@ -471,7 +528,10 @@ public final class DungeonRuntime implements Listener {
                 roster.addAll(players.stream().map(Player::getUniqueId).toList());
             }
             DungeonEncounterPlanPolicy.Plan plan = DungeonEncounterPlanPolicy.plan(room, anchors, roster.size());
-            if (!plan.viable() || DungeonRewardMailbox.lootTable(room) == null) {
+            boolean rewardSiteReady = room.reward().mode() == me.copimine.dungeon.domain.RewardMode.PERSONAL
+                    || rewardAnchor != null && DungeonRewardSite.valid(room.reward().mode(), boundWorld,
+                            rewardAnchor.x(), rewardAnchor.y(), rewardAnchor.z());
+            if (!plan.viable() || !rewardSiteReady || DungeonRewardMailbox.lootTable(room) == null) {
                 report("Dungeon " + room.id() + " cannot start: "
                         + (plan.viable() ? "unsupported reward mode or missing loot table" : plan.reason()));
                 roster.clear();
@@ -522,6 +582,14 @@ public final class DungeonRuntime implements Listener {
                     if (!baselineReady) {
                         retryAt = tick + 20;
                         return;
+                    }
+                }
+                if (tick % 20 == 0) {
+                    for (GateRuntime gate : gates) {
+                        SecretTrigger rule = secrets.get(gate.gate().id());
+                        if (rule != null && rule.action() == SecretTrigger.Action.AUTO
+                                && gate.gate().unlock() == UnlockMode.ON_SPECIFIC_MILESTONE
+                                && mailbox.cleared(rule.milestoneRoom())) open(gate, true);
                     }
                 }
                 if (!candidates.isEmpty() && tick >= cooldownUntil) {
@@ -753,7 +821,7 @@ public final class DungeonRuntime implements Listener {
         @Override
         public boolean commitClear() {
             try {
-                mailbox.prepare(room, life.generation(), boundWorld, roster);
+                mailbox.prepare(room, life.generation(), boundWorld, roster, rewardAnchor);
                 return true;
             } catch (IOException | RuntimeException error) {
                 report("Dungeon clear checkpoint pending for " + room.id() + ": " + error.getMessage());

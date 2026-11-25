@@ -273,6 +273,8 @@ public final class CommandRegistry {
             case MOB_TEMPLATE -> membership(token, ids.mobTemplateIds(), "шаблон моба");
             case LOOT_TABLE -> token.matches("(?:[a-z0-9_.-]+:)?[a-z0-9_./-]+") ? null
                     : "Некорректный ключ таблицы добычи: " + token;
+            case SECRET_TRIGGER -> me.copimine.dungeon.domain.SecretTrigger.Action.parse(token) == null
+                    ? "Неизвестный способ активации секрета." : null;
             case GATE_STYLE -> GateStyle.fromToken(token) == null
                     ? "Неизвестный стиль шлюза '" + token + "'. Доступно: " + GateStyle.tokens() + "."
                     : null;
@@ -391,6 +393,7 @@ public final class CommandRegistry {
             case MOB_TEMPLATE -> safe(ids.mobTemplateIds());
             case LOOT_TABLE -> safe(ids.lootTableIds());
             case PLAYER -> safe(ids.playerNames());
+            case SECRET_TRIGGER -> me.copimine.dungeon.domain.SecretTrigger.Action.tokens();
             case GATE_STYLE -> List.of(GateStyle.tokens().split("\\|"));
             case UNLOCK_MODE -> List.of(UnlockMode.tokens().split("\\|"));
             case SCALING_MODE -> List.of(ScalingMode.tokens().split("\\|"));

@@ -174,6 +174,13 @@ public final class CopiMineDungeon extends JavaPlugin {
             }
             catalog.putSpawn(spawn);
         }
+        String rewardAnchorId = definition.reward().anchorId();
+        if (!rewardAnchorId.isEmpty() && !definition.spawnAnchorIds().contains(rewardAnchorId)) {
+            var anchor = source.spawn(rewardAnchorId);
+            if (anchor == null || !anchor.roomId().equals(roomId) || catalog.spawn(rewardAnchorId) != null
+                    || !anchor.world().equals(definition.world())) throw new IOException("Неверный якорь награды.");
+            catalog.putSpawn(anchor);
+        }
         var masks = new java.util.ArrayList<>(catalog.gates().values());
         catalog.secrets().values().stream().map(me.copimine.dungeon.domain.SecretDefinition::physicalGate)
                 .forEach(masks::add);
@@ -213,6 +220,21 @@ public final class CopiMineDungeon extends JavaPlugin {
                 }
             }
         }
+        for (String id : room.secretIds()) {
+            var secret = catalog.secret(id);
+            var trigger = secret.trigger();
+            if (secret.unlock() == me.copimine.dungeon.domain.UnlockMode.ON_SPECIFIC_MILESTONE
+                    && catalog.room(trigger.milestoneRoom()) == null) {
+                throw new IOException("Выберите существующую комнату как веху секрета " + id);
+            }
+            var point = trigger.block();
+            if (point != null && (!bounds.contains(point.x(), point.y(), point.z())
+                    || !world.isChunkLoaded(point.x() >> 4, point.z() >> 4)
+                    || !me.copimine.dungeon.runtime.BukkitSecretTrigger.compatible(trigger.action(),
+                            world.getBlockAt(point.x(), point.y(), point.z())))) {
+                throw new IOException("Блок активации секрета " + id + " не соответствует выбранному способу.");
+            }
+        }
         for (String id : room.spawnAnchorIds()) {
             var spawn = catalog.spawn(id);
             var zone = spawn.bounds();
@@ -235,7 +257,13 @@ public final class CopiMineDungeon extends JavaPlugin {
         }
         var reward = room.reward();
         if (reward.mode() != me.copimine.dungeon.domain.RewardMode.PERSONAL) {
-            throw new IOException("Выберите личную выдачу. Физическая выдача в этой версии недоступна.");
+            var anchor = catalog.spawn(reward.anchorId());
+            if (anchor == null || !bounds.contains(anchor.bounds())
+                    || masks.stream().anyMatch(gate -> gate.bounds().intersects(anchor.bounds()))
+                    || !me.copimine.dungeon.runtime.DungeonRewardSite.valid(reward.mode(), world,
+                            anchor.x(), anchor.y(), anchor.z())) {
+                throw new IOException("Для сундука нужен пустой одиночный сундук, для дропа — воздух над полом.");
+            }
         }
         var key = org.bukkit.NamespacedKey.fromString(reward.lootTableId());
         if (key == null || org.bukkit.Bukkit.getLootTable(key) == null) {

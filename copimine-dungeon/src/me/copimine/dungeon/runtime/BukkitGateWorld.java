@@ -8,6 +8,7 @@ import me.copimine.dungeon.domain.PhysicalGateTransaction;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Sound;
+import org.bukkit.Particle;
 import org.bukkit.entity.BlockDisplay;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.util.Transformation;
@@ -82,7 +83,14 @@ public final class BukkitGateWorld implements PhysicalGateTransaction.GateWorld 
         List<int[]> mask = PhysicalGatePolicy.doorMask(gate);
         List<BlockDisplay> displays = new ArrayList<>();
         int stride = Math.max(1, (mask.size() + 63) / 64);
-        int duration = 16;
+        int duration = switch (gate.style()) {
+            case ASSEMBLING_SEAL -> 22;
+            case RISING_PORTCULLIS -> 25;
+            case LIFTING_STONE_WALL -> 34;
+            case SPLIT_SLIDING_WALL -> 27;
+            case COLLAPSING_BARRIER -> 32;
+            case SECRET_DISGUISED -> 29;
+        };
         for (int i = 0; i < mask.size(); i += stride) {
             int[] cell = mask.get(i);
             var block = Bukkit.createBlockData(keys.get(i));
@@ -98,44 +106,85 @@ public final class BukkitGateWorld implements PhysicalGateTransaction.GateWorld 
             displays.add(display);
             owned.add(display.getUniqueId());
         }
-        world.playSound(new Location(world, gate.bounds().minX(), gate.bounds().minY(), gate.bounds().minZ()),
-                Sound.BLOCK_PISTON_EXTEND, 0.9f, 0.65f);
-        if (displays.isEmpty()) {
-            return;
-        }
+        Cuboid bounds = gate.bounds();
+        Location center = new Location(world, (bounds.minX() + bounds.maxX() + 1.0) / 2,
+                bounds.minY() + .25, (bounds.minZ() + bounds.maxZ() + 1.0) / 2);
+        Sound onset = switch (gate.style()) {
+            case ASSEMBLING_SEAL -> Sound.BLOCK_RESPAWN_ANCHOR_DEPLETE;
+            case RISING_PORTCULLIS -> Sound.BLOCK_CHAIN_PLACE;
+            case LIFTING_STONE_WALL -> Sound.BLOCK_PISTON_EXTEND;
+            case SPLIT_SLIDING_WALL -> Sound.BLOCK_DEEPSLATE_BRICKS_BREAK;
+            case COLLAPSING_BARRIER -> Sound.BLOCK_DEEPSLATE_BREAK;
+            case SECRET_DISGUISED -> Sound.BLOCK_STONE_BUTTON_CLICK_ON;
+        };
+        world.playSound(center, onset, .96f, .72f);
+        if (displays.isEmpty()) return;
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
             for (BlockDisplay display : displays) {
-                if (!owned.contains(display.getUniqueId()) || !display.isValid()) {
-                    continue;
-                }
+                if (!owned.contains(display.getUniqueId()) || !display.isValid()) continue;
                 Vector3f shift = animationOffset(gate, display.getLocation());
                 float scale = switch (gate.style()) {
-                    case COLLAPSING_BARRIER, ASSEMBLING_SEAL -> 0.08f;
+                    case COLLAPSING_BARRIER, ASSEMBLING_SEAL -> 0.12f;
                     default -> 1.0f;
                 };
+                Quaternionf turn = new Quaternionf();
+                if (gate.style() == me.copimine.dungeon.domain.GateStyle.COLLAPSING_BARRIER) {
+                    float rotation = ((display.getLocation().getBlockX() * 19
+                            + display.getLocation().getBlockZ() * 37) & 7) * .31f - 1f;
+                    turn.rotateXYZ(.8f + rotation, rotation, -.5f);
+                } else if (gate.style() == me.copimine.dungeon.domain.GateStyle.ASSEMBLING_SEAL) {
+                    turn.rotateY(1.1f);
+                }
                 display.setInterpolationDelay(0);
-                display.setTransformation(new Transformation(shift, new Quaternionf(),
-                        new Vector3f(scale), new Quaternionf()));
+                display.setTransformation(new Transformation(shift, turn, new Vector3f(scale), new Quaternionf()));
             }
-        }, 1L);
+        }, 2L);
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (displays.stream().noneMatch(display -> owned.contains(display.getUniqueId()))) return;
+            Particle accent = switch (gate.style()) {
+                case ASSEMBLING_SEAL -> Particle.REVERSE_PORTAL;
+                case RISING_PORTCULLIS -> Particle.ELECTRIC_SPARK;
+                case SECRET_DISGUISED -> Particle.ENCHANT;
+                default -> Particle.CLOUD;
+            };
+            world.spawnParticle(accent, center, 14, Math.min(2, bounds.sizeX() / 2.0),
+                    .13, Math.min(2, bounds.sizeZ() / 2.0), .03);
+            world.playSound(center, gate.style().isSecretFamily() ? Sound.BLOCK_AMETHYST_BLOCK_CHIME
+                    : Sound.BLOCK_PISTON_CONTRACT, .62f, .62f);
+        }, duration - 3L);
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
             for (BlockDisplay display : displays) {
-                if (owned.remove(display.getUniqueId())) {
-                    display.remove();
-                }
+                if (owned.remove(display.getUniqueId())) display.remove();
             }
-        }, duration + 2L);
+        }, duration + 4L);
     }
 
     private static Vector3f animationOffset(GateDefinition gate, Location at) {
         Cuboid bounds = gate.bounds();
         return switch (gate.style()) {
-            case COLLAPSING_BARRIER -> new Vector3f(0.35f, -1.35f, -0.25f);
+            case COLLAPSING_BARRIER -> {
+                float x = at.getBlockX() - (bounds.minX() + bounds.maxX()) / 2f;
+                float z = at.getBlockZ() - (bounds.minZ() + bounds.maxZ()) / 2f;
+                yield new Vector3f(Math.clamp(x * .34f, -1.5f, 1.5f),
+                        -1.5f - Math.min(3, at.getBlockY() - bounds.minY()) * .45f,
+                        Math.clamp(z * .34f, -1.5f, 1.5f));
+            }
             case ASSEMBLING_SEAL -> new Vector3f(0.45f, 0.45f, 0.45f);
-            case SECRET_DISGUISED -> new Vector3f(0, -bounds.sizeY(), 0);
-            case RISING_PORTCULLIS, LIFTING_STONE_WALL -> new Vector3f(0, bounds.sizeY(), 0);
+            case SECRET_DISGUISED -> new Vector3f(0, -Math.min(bounds.sizeY(), 6), 0);
+            case RISING_PORTCULLIS, LIFTING_STONE_WALL -> switch (gate.direction()) {
+                case "down" -> new Vector3f(0, -Math.min(bounds.sizeY(), 6), 0);
+                case "north" -> new Vector3f(0, 0, -Math.min(bounds.sizeZ() + 1, 6));
+                case "south" -> new Vector3f(0, 0, Math.min(bounds.sizeZ() + 1, 6));
+                case "west" -> new Vector3f(-Math.min(bounds.sizeX() + 1, 6), 0, 0);
+                case "east" -> new Vector3f(Math.min(bounds.sizeX() + 1, 6), 0, 0);
+                default -> new Vector3f(0, Math.min(bounds.sizeY(), 6), 0);
+            };
             case SPLIT_SLIDING_WALL -> {
-                boolean alongX = bounds.sizeX() >= bounds.sizeZ();
+                boolean alongX = switch (gate.direction()) {
+                    case "east", "west" -> true;
+                    case "north", "south" -> false;
+                    default -> bounds.sizeX() >= bounds.sizeZ();
+                };
                 double min = alongX ? bounds.minX() : bounds.minZ();
                 double max = alongX ? bounds.maxX() : bounds.maxZ();
                 double position = alongX ? at.getX() : at.getZ();

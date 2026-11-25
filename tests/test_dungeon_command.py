@@ -148,6 +148,8 @@ public class DungeonCommandProbe {
                 {"secret add rose_secret2", "secret add"},
                 {"secret style rose_secret secret", "secret style"},
                 {"secret unlock rose_secret milestone", "secret unlock"},
+                {"secret trigger rose_secret hit", "secret trigger"},
+                {"secret milestone rose_secret tulip", "secret milestone"},
                 {"spawn add rose_spawn2 rift_breeze", "spawn add"},
                 {"spawn list rose", "spawn list"},
                 {"spawn remove rose_spawn", "spawn remove"},
@@ -170,9 +172,21 @@ public class DungeonCommandProbe {
             check(route.canonicalPath().equals(entry[1]),
                     "/cmdungeon " + entry[0] + " resolved to '" + route.canonicalPath()
                             + "', expected '" + entry[1] + "'");
+            EditorSession session = rig.sessions.session(BUILDER);
+            if (entry[0].equals("reward anchor rose") || entry[0].startsWith("secret trigger ")) {
+                session.setCorner1(1, 2, 3);
+                session.setCorner2(1, 2, 3);
+            }
             CommandResponse response = rig.run(entry[0]);
             check(response.success(), "/cmdungeon " + entry[0] + " failed: " + response.lines());
+            if (entry[0].equals("reward anchor rose") || entry[0].startsWith("secret trigger "))
+                session.setCorner2(4, 5, 6);
         }
+        var trigger = rig.store.catalog().secret("rose_secret").trigger();
+        check(trigger.action() == SecretTrigger.Action.HIT && trigger.block().at(1, 2, 3)
+                && trigger.milestoneRoom().equals("tulip"), "secret trigger lost its exact cell or milestone");
+        check(rig.store.catalog().spawn("rose_reward").bounds().equals(Cuboid.of(1, 2, 3, 1, 2, 3)),
+                "reward anchor must retain the exact selected block");
         check(registry.usageLines().size() >= 60,
                 "documented tree is incomplete: " + registry.usageLines().size() + " usage lines");
         check(registry.usageLines().contains("/cmdungeon room reset <roomId> confirm"),

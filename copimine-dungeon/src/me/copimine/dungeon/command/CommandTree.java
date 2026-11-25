@@ -122,6 +122,12 @@ public final class CommandTree {
                         argCmd(CommandNode.ArgType.GATE_ID, "gateId", builder)));
 
         CommandNode secret = CommandNode.literal("secret", builder, false, false, false,
+                CommandNode.literal("trigger", builder, false, false, true,
+                        CommandNode.argument(CommandNode.ArgType.SECRET_ID, "secretId", builder)
+                                .with(argCmd(CommandNode.ArgType.SECRET_TRIGGER, "trigger", builder))),
+                CommandNode.literal("milestone", builder, false, false, false,
+                        CommandNode.argument(CommandNode.ArgType.SECRET_ID, "secretId", builder)
+                                .with(argCmd(CommandNode.ArgType.ROOM_ID, "milestoneRoom", builder))),
                 CommandNode.literal("add", builder, false, false, false,
                         argCmd(CommandNode.ArgType.SECRET_ID_NEW, "secretId", builder)),
                 CommandNode.literal("bounds", builder, false, false, true,

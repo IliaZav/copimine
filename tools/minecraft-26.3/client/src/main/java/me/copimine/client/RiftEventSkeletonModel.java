@@ -181,8 +181,11 @@ public final class RiftEventSkeletonModel extends SkeletonModel<SkeletonRenderSt
         head.addOrReplaceChild("marksman_sight", cube(48, 16,
                         -2.0F, -10.0F, -4.25F, 4.0F, 2.0F, 0.75F),
                 PartPose.ZERO);
-        body.addOrReplaceChild("marksman_quiver", cube(40, 20,
-                        1.8F, 1.0F, 1.9F, 2.4F, 8.0F, 2.0F),
+        body.addOrReplaceChild("marksman_quiver", ModelUvBounds.boxes(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                        new ModelUvBounds.Box(40, 20, 1.8F, 1F, 1.9F, 2.4F, 8F, 2F),
+                        new ModelUvBounds.Box(45, 23, 1.48F, .45F, 1.7F, 3.1F, 1.2F, 2.45F),
+                        new ModelUvBounds.Box(48, 16, 2F, -2.3F, 2.2F, .52F, 3F, 1F),
+                        new ModelUvBounds.Box(48, 16, 3.25F, -3.2F, 2.8F, .52F, 3.85F, 1F)),
                 PartPose.ZERO);
         head.addOrReplaceChild("spire_crown", ModelUvBounds.boxes(TEXTURE_WIDTH, TEXTURE_HEIGHT,
                 new ModelUvBounds.Box(42, 0, -4.4F, -9F, -3F, 8.8F, 2F, 2F),

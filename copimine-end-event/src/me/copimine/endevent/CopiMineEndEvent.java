@@ -26331,7 +26331,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         event.setDamage(switch (attack) {
             case MARKSMAN_QUICK_SHOT -> 4.5D;
             case MARKSMAN_HEAVY_SHOT, ARCHMAGE_SPEAR -> 8.0D;
-            case MARKSMAN_SPREAD_SHOT -> 3.25D;
+            case MARKSMAN_SPREAD_SHOT, MARKSMAN_PAIRED_CROSSFIRE -> 3.25D;
             case ARCHMAGE_FANGS -> ArchmageV5CombatPolicy.FANG_LINE_DAMAGE;
             case ARCHMAGE_CIRCLE -> ArchmageV5CombatPolicy.CIRCLE_FANG_DAMAGE;
             case ARCHMAGE_CROWN -> ArchmageV5CombatPolicy.CROWN_TOOTH_DAMAGE;
@@ -26344,9 +26344,53 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = false)
     public void onNamedTrialProjectileHit(ProjectileHitEvent event) {
-        if (isNamedTrialProjectile(event.getEntity())) {
-            removeRealitySplitTrialEntity(event.getEntity().getUniqueId(), "named-trial-projectile-hit");
+        Projectile projectile = event.getEntity();
+        if (!isNamedTrialProjectile(projectile) || event.isCancelled()) return;
+        long attempt = generation;
+        String ownerEvent = eventId;
+        Location hit = projectile.getLocation().clone();
+        boolean blockContact = event.getHitBlock() != null;
+        // Paper calls ProjectileHitEvent before applying native entity damage.
+        // Preserve chamber admission until that same native hit has finished.
+        Bukkit.getScheduler().runTask(this, () -> {
+            if (attempt != generation || !Objects.equals(ownerEvent, eventId)) return;
+            if (blockContact) renderNamedTrialShotContact(projectile, hit, false);
+            removeRealitySplitTrialEntity(projectile.getUniqueId(), "named-trial-projectile-hit");
+        });
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onNamedTrialShotContact(EntityDamageByEntityEvent event) {
+        if (event.getFinalDamage() > 0.0D && event.getDamager() instanceof Projectile shot
+                && isNamedTrialProjectile(shot) && event.getEntity() instanceof Player) {
+            renderNamedTrialShotContact(shot, shot.getLocation(), true);
         }
+    }
+
+    private void renderNamedTrialShotContact(Projectile shot, Location at, boolean playerHit) {
+        UUID owner = parseUuidOrNull(readString(shot, namedTrialProjectileSourceKey()));
+        Entity actor = owner == null ? null : Bukkit.getEntity(owner);
+        if (!(actor instanceof LivingEntity caster) || !ownedBySession(caster, eventId, generation)) return;
+        String attack = readString(shot, namedTrialProjectileAttackKey());
+        boolean heavy = "MARKSMAN_HEAVY_SHOT".equals(attack);
+        boolean magic = "ARCHMAGE_SPEAR".equals(attack);
+        Vector axis = shot.getVelocity();
+        if (axis.lengthSquared() < .0001D) axis = shot.getLocation().getDirection();
+        axis.normalize();
+        Vector side = axis.clone().crossProduct(Math.abs(axis.getY()) < .95 ? new Vector(0, 1, 0) : new Vector(1, 0, 0)).normalize();
+        Vector normal = side.clone().crossProduct(axis).normalize();
+        int segments = heavy ? 12 : magic ? 8 : 5;
+        Particle sparks = heavy ? Particle.ELECTRIC_SPARK : magic ? Particle.END_ROD : Particle.CRIT;
+        for (int i = 0; i < segments; i++) {
+            double angle = 2 * Math.PI * i / segments;
+            Vector radial = side.clone().multiply(Math.cos(angle)).add(normal.clone().multiply(Math.sin(angle)));
+            Location point = at.clone().add(radial.multiply(heavy ? .43D : .28D))
+                    .subtract(axis.clone().multiply((i & 1) == 0 ? .16D : .37D));
+            emitTrialParticle(caster, point, sparks, 1, .018D, .018D, .018D, .03D);
+        }
+        playTrialSound(caster, at, magic ? Sound.BLOCK_AMETHYST_BLOCK_HIT
+                        : heavy ? Sound.BLOCK_CHAIN_HIT : Sound.ENTITY_ARROW_HIT,
+                heavy ? .75F : .48F, playerHit ? 1.22F : .87F);
     }
 
     /**
@@ -38447,6 +38491,24 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return null;
     }
 
+    private void renderEchoDuelStrike(Player owner, Location contact, Vector forward, boolean critical) {
+        if (forward.lengthSquared() < 1.0E-4D) forward = new Vector(0, 0, 1);
+        Vector side = new Vector(-forward.getZ(), 0, forward.getX());
+        int facets = critical ? 12 : 8;
+        for (int i = 0; i <= facets; i++) {
+            double t = i / (double) facets;
+            double angle = (t - .5D) * 2.25D;
+            double radius = .45D + .4D * Math.sin(Math.PI * t);
+            Location edge = contact.clone().add(forward.clone().multiply(-Math.cos(angle) * radius))
+                    .add(side.clone().multiply(Math.sin(angle) * radius))
+                    .add(0, (t - .5D) * (critical ? 1.2D : .7D), 0);
+            owner.spawnParticle(i % 3 == 0 ? Particle.END_ROD : Particle.WITCH,
+                    edge, 1, .018D, .018D, .018D, .015D);
+        }
+        owner.playSound(contact, critical ? Sound.ENTITY_PLAYER_ATTACK_CRIT : Sound.ENTITY_PLAYER_ATTACK_SWEEP,
+                SoundCategory.HOSTILE, .56F, critical ? .8F : .65F);
+    }
+
     private boolean executeNamedEchoCombatAction(World world, Player owner, Pillager carrier,
             me.copimine.endevent.runtime.wave7.EchoReplicaInventory replica,
             EchoDuelCombatRuntimeAdapter.Decision decision) {
@@ -38487,6 +38549,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 if (!listener.consumeAcceptedOwnerCombatAction(pair, owner.getUniqueId(),
                         owner.getLastDamageCause())) return false;
                 carrier.swingMainHand();
+                Location contact = owner.getLocation().add(0, .9D, 0);
+                renderEchoDuelStrike(owner, contact, horizontalDirection(carrier.getLocation(), contact), critical);
             }
             case RANGED -> {
                 if (decision.actionItem().kind() != me.copimine.endevent.domain.wave7.EchoLoadoutState.Kind.BOW
@@ -39615,7 +39679,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 away.clone().add(side.clone().multiply(0.25D)),
                 away.clone().subtract(side.clone().multiply(0.25D)));
         boolean currentlyVisible = hasNamedTrialLineOfSight(actor.getEyeLocation(), target.getEyeLocation());
-        boolean seekCover = currentlyVisible && mob.getHealth() <= mob.getMaxHealth() * 0.55D;
+        double gapSquared = horizontalDistanceSquared(actor.getLocation(), target.getLocation());
+        boolean seekCover = currentlyVisible && gapSquared > 25
+                && mob.getHealth() <= mob.getMaxHealth() * 0.55D;
         Vector selected = null;
         Vector safeFallback = null;
         for (Vector movement : movements) {
@@ -39623,6 +39689,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (!isRealitySplitDestinationAllowed(target.getUniqueId(), next,
                     realitySplitChamberController.assignment())
                     || !isSafeCombatEntityLocation(next, actor)) continue;
+            if (gapSquared <= 9 && movement.dot(toward) > .04D) continue;
             if (safeFallback == null) safeFallback = movement;
             Location projectedEye = actor.getEyeLocation().clone().add(movement);
             boolean projectedVisible = hasNamedTrialLineOfSight(projectedEye, target.getEyeLocation());
@@ -39807,7 +39874,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             case MARKSMAN_QUICK_SHOT -> {
                 renderNamedTrialAim(actor, actor.getEyeLocation(), direction, 9.0D, 0.45D,
                         Particle.CRIT);
-                emitTrialParticle(actor, target.getLocation().add(0.0D, 1.0D, 0.0D), Particle.CRIT, 3,
+                emitTrialParticle(actor, namedTrialAim(actor, target), Particle.CRIT, 3,
                         0.12D, 0.2D, 0.12D, 0.0D);
                 if (playWarningSound) playTrialSound(actor, actor.getLocation(),
                         Sound.BLOCK_AMETHYST_BLOCK_CHIME, 0.45F, 1.45F);
@@ -40157,15 +40224,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Location origin = actor.getEyeLocation();
         Vector direction = namedTrialAim(actor, target).toVector().subtract(origin.toVector());
         double distanceSquared = direction.lengthSquared();
-        // A coincident target is a harmless miss that consumes this cast's
-        // cooldown; it must not spawn NaN velocity or abort the entire trial.
-        if (!Double.isFinite(distanceSquared) || distanceSquared < 0.01D) return true;
+        if (!Double.isFinite(distanceSquared) || distanceSquared < 0.01D) return false;
         direction.multiply(1.0D / Math.sqrt(distanceSquared));
         if (spread != 0.0F) direction.rotateAroundY(spread);
         if (spear) {
             Entity raw = actor.getWorld().spawnEntity(origin, EntityType.SNOWBALL);
             if (!(raw instanceof org.bukkit.entity.Snowball projectile)) return false;
-            if (!projectile.isValid()) return true; // A cancelled spawn resolves as a missed cast.
+            if (!projectile.isValid()) return false;
             projectile.setShooter(actor);
             projectile.setGravity(false); projectile.setPersistent(false);
             projectile.setItem(overlayItem(MODEL_ELITE_RIFT_BOLT, "end_rift_rift_bolt"));
@@ -40178,9 +40243,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return true;
         }
         org.bukkit.entity.Arrow arrow = actor.getWorld().spawnArrow(origin, direction, speed, 0.0F);
-        if (!arrow.isValid()) return true; // Respect launch cancellation without losing the trial actor.
-        // The Warden trial fan is the shot the player has to dodge, so it must
-        // be rendered from the first tick like every other event arrow.
+        if (!arrow.isValid()) return false;
+        // Keep the physical projectile visible even without the custom client.
         arrow.setVisibleByDefault(true);
         arrow.setGravity(false); arrow.setPersistent(false);
         arrow.setShooter(actor);
@@ -40427,6 +40491,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     return;
                 }
                 actor.setVelocity(new Vector(0.0D, actor.getVelocity().getY(), 0.0D));
+                if (elapsed > 0) {
+                    sendTrialPose(actor, "ARCHMAGE_CROWN", "CHANNEL", lock.cast(), standardChannel * 50, elapsed * 50);
+                    if (elapsed % 45 == 0) playTrialSound(actor, base, Sound.BLOCK_RESPAWN_ANCHOR_AMBIENT, .62F, .62F);
+                }
                 activeFangs.removeIf(id -> Bukkit.getEntity(id) == null);
                 List<Location> spawned = new ArrayList<>();
                 for (Location at : namedTrialCrownPoints(actor, base, elapsed)) {
@@ -40448,6 +40516,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 if (generation == ownerGeneration && Objects.equals(eventId, ownerEvent)) {
                     clearTrialFangCast(casterId, "crown");
                     activeCrownChannels.remove(casterId);
+                    sendTrialFollowupPose(actor, "RECOVERY", 720);
                 }
                 for (UUID id : activeFangs) removeRealitySplitTrialEntity(id, "crown-finished");
                 cancel();
@@ -40714,9 +40783,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         freezeWardenCast(warden, state);
         state.phaseUntilTick = eventTickCounter + WARDEN_SLAM_TELEGRAPH_TICKS;
         state.hitPlayers.clear();
-        renderWardenSlamTelegraph(warden.getLocation(), cueSeedFor(warden.getUniqueId()));
-        warden.getWorld().playSound(warden.getLocation(), Sound.ENTITY_WARDEN_ROAR,
-                SoundCategory.HOSTILE, 0.85F, 0.55F);
+        broadcastSpellVisualCue("sphere", cueSeedFor(warden.getUniqueId()),
+                state.castOrigin.clone(), state.castOrigin.clone().add(WARDEN_SLAM_RADIUS, 0, 0), 0x62FFE0);
+        renderWardenSlamTelegraph(state.castOrigin, 0.0D);
+        playTrialSound(warden, state.castOrigin, Sound.ENTITY_WARDEN_ROAR, .85F, .55F);
         getLogger().info("WAVE7_WARDEN_SLAM event=" + eventId + " generation=" + generation
                 + " reason=" + decision.reason() + " pile=" + decision.pileSize()
                 + " coverage=" + String.format(java.util.Locale.ROOT, "%.2f", decision.coverage())
@@ -40730,23 +40800,23 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return true;
     }
 
-    /** The radial shockwave warning: a full ground ring plus a rising crown. */
-    private void renderWardenSlamTelegraph(Location center, long seed) {
+    /** Draw the fixed hazard boundary and three contracting, inclined pressure fronts. */
+    private void renderWardenSlamTelegraph(Location center, double progress) {
         if (center == null || center.getWorld() == null) return;
-        Vector axisA = new Vector(1.0D, 0.0D, 0.0D);
-        Vector axisB = new Vector(0.0D, 0.0D, 1.0D);
-        broadcastSpellVisualCue("sphere", seed,
-                center.clone().add(0.0D, 0.1D, 0.0D),
-                center.clone().add(6.0D, 0.1D, 0.0D), 0x62FFE0);
+        double t = Math.clamp(progress, 0, 1);
+        double reach = WARDEN_SLAM_RADIUS;
         for (Player viewer : eventAudience()) {
             if (!isEventParticleViewer(viewer, center)) continue;
-            spawnPatternRing(viewer, center.clone().add(0.0D, 0.12D, 0.0D),
-                    axisA, axisB, WARDEN_SLAM_RADIUS, 40, 0.0D, Particle.SOUL);
-            spawnPatternRing(viewer, center.clone().add(0.0D, 0.55D, 0.0D),
-                    axisA, axisB, WARDEN_SLAM_RADIUS * 0.62D, 28,
-                    eventTickCounter * 0.08D, Particle.SCULK_SOUL);
-            viewer.spawnParticle(Particle.SONIC_BOOM, center.clone().add(0.0D, 1.4D, 0.0D),
-                    1, 0.0D, 0.0D, 0.0D, 0.0D);
+            spawnPatternRing(viewer, center.clone().add(0, .12D, 0), new Vector(1, 0, 0),
+                    new Vector(0, 0, 1), reach, 24, 0, Particle.SOUL);
+            for (int front = 0; front < 3; front++) {
+                double angle = front * Math.PI / 3 + t * .5D;
+                Vector horizontal = new Vector(Math.cos(angle), 0, Math.sin(angle));
+                Vector incline = new Vector(-Math.sin(angle) * .68D, .74D, Math.cos(angle) * .68D);
+                double radius = Math.max(.3D, reach * (1 - t) - front * .7D);
+                spawnPatternRing(viewer, center.clone().add(0, .82D, 0), horizontal, incline,
+                        radius, 13, t * 2.5D, front == 0 ? Particle.SCULK_SOUL : Particle.SCULK_CHARGE_POP);
+            }
         }
     }
 
@@ -41140,12 +41210,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             warden.setVelocity(new Vector(0, warden.getVelocity().getY(), 0));
             long telegraph = wardenTelegraphTicks(state.attackPattern);
             String clip = state.attackPattern == WARDEN_SWEEP_PATTERN ? "WARDEN_WIDE_STRIKE"
-                    : state.attackPattern == WARDEN_SLAM_PATTERN ? "WARDEN_SLAM" : "WARDEN_SONIC_LUNGE";
+                    : state.attackPattern == WARDEN_SLAM_PATTERN ? "WARDEN_SLAM" : "WARDEN_SCULK_TRACE";
             sendTrialPose(warden, clip, "WINDUP", state.phaseUntilTick * 50L, (int) telegraph * 50,
                     (int) Math.max(0L, telegraph - (state.phaseUntilTick - eventTickCounter)) * 50);
             if (eventTickCounter < state.phaseUntilTick) {
                 if (state.attackPattern == WARDEN_SLAM_PATTERN && eventTickCounter % 4 == 0) {
-                    renderWardenSlamTelegraph(state.castOrigin, cueSeedFor(warden.getUniqueId()));
+                    renderWardenSlamTelegraph(state.castOrigin, 1.0D
+                            - (state.phaseUntilTick - eventTickCounter) / (double) WARDEN_SLAM_TELEGRAPH_TICKS);
                 } else if (state.attackPattern == WARDEN_SWEEP_PATTERN && eventTickCounter % 3 == 0) {
                     renderWardenSweepTelegraph(warden, state);
                 } else if (state.attackPattern == WARDEN_TRACE_PATTERN) {
@@ -41159,6 +41230,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 resolveWardenFrontalSweep(warden, state);
                 state.lastSweepTick = eventTickCounter;
             }
+            sendTrialFollowupPose(warden, "RELEASE", 450);
             finishWardenSpecial(nativeWarden, state);
             return;
         }
@@ -43144,7 +43216,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (actor == null || !actor.isValid() || !ownedBySession(actor, eventId, generation)
                 || !isRealitySplitTrialRuntimeActive()) return;
         String instance = entityBindingInstances.get(actor.getUniqueId());
-        duration = Math.max(1, Math.min(10_000, duration));
+        duration = Math.max(1, Math.min("CHANNEL".equals(stage)
+                ? me.copimine.protocol.Wave7AnimationFrame.MAX_CHANNEL_MILLIS : 10_000, duration));
         elapsed = Math.max(0, Math.min(duration, elapsed));
         TrialPoseEmission previous = trialPoseEmissions.get(actor.getUniqueId());
         boolean same = previous != null && previous.generation() == generation && previous.event().equals(eventId)

@@ -226,6 +226,12 @@ public final class EditorSessionListener implements Listener {
             }
             if (session.selection() != null) menu.button(27, Material.TARGET, "Заменить объём выделением",
                     p -> runAndReturn(p, session, prefix + " bounds " + target.id()));
+            if (prefix.equals("secret")) {
+                menu.button(23, Material.TARGET, "Блок и жест активации",
+                        p -> openSecretTriggers(p, session, target));
+                menu.button(25, Material.BOOK, "Веха · зачистка выбранной комнаты",
+                        p -> openSecretMilestones(p, session, target, 0));
+            }
             if (prefix.equals("gate")) {
                 menu.button(22, Material.IRON_DOOR, "Сделать входом",
                         p -> runAndReturn(p, session, "gate role " + target.id() + " entrance"));
@@ -244,6 +250,50 @@ public final class EditorSessionListener implements Listener {
                     p -> openSelectionMenu(p, session));
         }
         menu.button(31, Material.ARROW, "Назад", p -> openToolMenu(p, session));
+        player.openInventory(menu.inventory);
+    }
+
+    private void openSecretTriggers(Player player, EditorSession session, Inspect target) {
+        var secret = store.catalog().secret(target.id());
+        if (secret == null) { openToolMenu(player, session); return; }
+        var menu = new Menu(player.getUniqueId(), 27, "Активация · " + secret.id());
+        Material[] icons = {Material.REDSTONE, Material.CHISELED_STONE_BRICKS, Material.STONE,
+                Material.STONE_BUTTON, Material.LEVER, Material.STONE_PRESSURE_PLATE, Material.TARGET};
+        String[] labels = {"Автоматически", "ПКМ по блоку", "Удар по блоку", "Нажать кнопку",
+                "Переключить рычаг", "Наступить на плиту", "Выстрел в мишень"};
+        var actions = me.copimine.dungeon.domain.SecretTrigger.Action.values();
+        for (int i = 0; i < actions.length; i++) {
+            var action = actions[i];
+            menu.button(i + 1, icons[i], (secret.trigger().action() == action ? "✓ " : "") + labels[i], p -> {
+                p.performCommand("cmdungeon secret trigger " + secret.id() + " " + action.token());
+                openSecretTriggers(p, session, target);
+            });
+        }
+        if (secret.trigger().block() != null) {
+            menu.button(13, Material.PAPER, "Блок · " + secret.trigger().block().x() + " "
+                    + secret.trigger().block().y() + " " + secret.trigger().block().z(), p -> {});
+        }
+        menu.button(22, Material.ARROW, "Назад", p -> openObjectMenu(p, session, target));
+        player.openInventory(menu.inventory);
+    }
+
+    private void openSecretMilestones(Player player, EditorSession session, Inspect target, int page) {
+        var secret = store.catalog().secret(target.id());
+        if (secret == null) { openToolMenu(player, session); return; }
+        var menu = new Menu(player.getUniqueId(), 54, "Веха · подтверждённая зачистка");
+        var rooms = store.catalog().rooms().values().stream().sorted(Comparator.comparing(DungeonRoomDefinition::id)).toList();
+        for (int index = page * 45; index < Math.min((page + 1) * 45, rooms.size()); index++) {
+            var room = rooms.get(index);
+            menu.button(index % 45, Material.BOOK, (room.id().equals(secret.trigger().milestoneRoom()) ? "✓ " : "")
+                    + room.id(), p -> {
+                p.performCommand("cmdungeon secret milestone " + secret.id() + " " + room.id());
+                openSecretMilestones(p, session, target, page);
+            });
+        }
+        if (page > 0) menu.button(45, Material.ARROW, "Предыдущая", p -> openSecretMilestones(p, session, target, page - 1));
+        if ((page + 1) * 45 < rooms.size()) menu.button(53, Material.ARROW, "Следующая",
+                p -> openSecretMilestones(p, session, target, page + 1));
+        menu.button(49, Material.ARROW, "Назад", p -> openObjectMenu(p, session, target));
         player.openInventory(menu.inventory);
     }
 
@@ -336,11 +386,20 @@ public final class EditorSessionListener implements Listener {
         }
         Menu menu = new Menu(player.getUniqueId(), 27, "Добыча · " + room.id());
         menu.button(0, Material.CHEST, "Таблица · " + room.reward().lootTableId(), p -> openLootTables(p, session, 0));
-        menu.button(4, Material.ENDER_CHEST, "Способ · " + room.reward().mode().token(), p ->
-                runAndReturn(p, session, "reward mode " + room.id() + " personal"));
-        menu.button(8, Material.PAPER, "Личная выдача · инвентарь или почта",
-                p -> p.sendMessage("Таблицу датапака можно указать командой /cmdungeon reward loot "
-                        + room.id() + " namespace:path"));
+        menu.button(8, Material.TARGET, "Якорь из одного выделенного блока", p -> {
+            p.performCommand("cmdungeon reward anchor " + room.id());
+            openRewards(p, session);
+        });
+        var modes = me.copimine.dungeon.domain.RewardMode.values();
+        Material[] icons = {Material.CHEST, Material.ITEM_FRAME, Material.ENDER_CHEST};
+        String[] labels = {"Сундук", "Дропы над полом", "Личная выдача"};
+        for (int i = 0; i < modes.length; i++) {
+            var mode = modes[i];
+            menu.button(11 + i * 2, icons[i], (mode == room.reward().mode() ? "✓ " : "") + labels[i], p -> {
+                p.performCommand("cmdungeon reward mode " + room.id() + " " + mode.token());
+                openRewards(p, session);
+            });
+        }
         menu.button(22, Material.ARROW, "Назад", p -> openToolMenu(p, session));
         player.openInventory(menu.inventory);
     }
@@ -525,8 +584,17 @@ public final class EditorSessionListener implements Listener {
         }
         for (var secret : catalog.secrets().values()) {
             if (!world.equals(secret.world())) continue;
-            entries.add(new Inspect(OverlayType.SECRET, secret.id(), secret.roomId(), secret.bounds(),
-                    secret.unlock().token() + " · " + secret.style().token(), false));
+            var trigger = secret.trigger();
+            String details = secret.unlock().token() + " · " + secret.style().token()
+                    + " · " + trigger.action().token()
+                    + (trigger.milestoneRoom().isBlank() ? "" : " · веха " + trigger.milestoneRoom());
+            entries.add(new Inspect(OverlayType.SECRET, secret.id(), secret.roomId(), secret.bounds(), details, false));
+            if (trigger.block() != null) {
+                var cell = trigger.block();
+                entries.add(new Inspect(OverlayType.SECRET, secret.id(), secret.roomId(),
+                        Cuboid.of(cell.x(), cell.y(), cell.z(), cell.x(), cell.y(), cell.z()),
+                        "Блок активации · " + details, false));
+            }
         }
         for (var anchor : catalog.spawns().values()) {
             if (!world.equals(anchor.world())) continue;

@@ -177,7 +177,7 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     profile = json.loads((ROOT / 'tools/minecraft-26.3/profile.lock.json').read_text(encoding='utf-8'))
     artifact = profile['clientArtifact']
 
-    assert artifact['filename'] == 'CopiMineClient-0.1.4+26.3.jar'
+    assert artifact['filename'] == 'CopiMineClient-0.1.5+26.3.jar'
     # Measured from the repeatable build output and recorded in the lock.
     # Re-measured after Wave 5 stopped dropping fog cycles four and five, which
     # changed validCycle and therefore the compiled bytes, and again after
@@ -306,10 +306,10 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # ignition curve that scales material brightness only, never the silhouette.
     # Repinned from two clean `--rerun-tasks gradle test jar` runs that agreed
     # byte for byte on the same JDK.
-    assert artifact['size'] == 30_685_728
+    assert artifact['size'] == 30_714_431
     assert artifact['sha512'] == (
-        '03620f76e57f315ca7ad84977b7468378446e5ec05135f3ec7199bb95cb4c647'
-        '783f5696d3a1acfef14ceb88378b9e3116ec39edcaf6108da90e4d193805c811'
+        '78eef9c2a1c3b486a9094553d91fe90a35ab909809ad48b11c17db63f22cdf2b'
+        'd23025e3164b0d883630fdbe6ac16464e0362a4a54b5287e4848671d563dc0cd'
     )
 
 

@@ -9,7 +9,7 @@ import java.util.Objects;
  * {@code DungeonRoomController}; verification R01/R04).
  *
  * <p>One authoritative room generation owns the actor schedule. Scaling is
- * deterministic and clamped by the room's live cap, so any number of eligible
+ * deterministic and bounded independently of the room's simultaneous live cap, so any number of eligible
  * players may participate without ever spawning an unbounded wave, and a
  * simultaneous or duplicated join recomputes exactly the same plan instead of
  * standing up a second controller generation. End Rift's own seven-wave owner
@@ -66,7 +66,7 @@ public final class RoomWaveSchedulePolicy {
 
     /**
      * Plans the room's waves for an eligible roster. Scaling never drops a
-     * legitimate player and is always clamped to the live cap, and the result is
+     * legitimate player and bounds total work per wave, and the result is
      * a pure function of its inputs so a replayed activation is idempotent.
      */
     public static Plan plan(DungeonRoomDefinition room, int eligiblePlayers) {
@@ -78,8 +78,8 @@ public final class RoomWaveSchedulePolicy {
         int total = 0;
         for (int index = 0; index < room.waves().size(); index++) {
             WaveSpec spec = room.waves().get(index);
-            int scaled = scale(spec.totalCount(), room.scalingMode(), players);
-            int bounded = Math.min(scaled, cap);
+            long scaled = scale(spec.totalCount(), room.scalingMode(), players);
+            int bounded = (int) Math.min(scaled, MAX_LIVE_CAP);
             waves.add(new WavePlan(index, spec.delayTicks(), startTick, bounded, bounded != scaled));
             startTick += spec.delayTicks();
             total += bounded;
@@ -87,10 +87,10 @@ public final class RoomWaveSchedulePolicy {
         return new Plan(waves, total, cap);
     }
 
-    private static int scale(int configured, ScalingMode mode, int players) {
+    private static long scale(int configured, ScalingMode mode, int players) {
         return switch (mode) {
             case FIXED -> configured;
-            case PER_PLAYER, ADAPTIVE -> configured * players;
+            case PER_PLAYER, ADAPTIVE -> (long) configured * players;
         };
     }
 }

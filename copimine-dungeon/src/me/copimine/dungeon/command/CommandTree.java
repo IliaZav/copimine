@@ -62,10 +62,10 @@ public final class CommandTree {
                 // Preview is explicitly NO block mutations: never world-mutating.
                 CommandNode.literal("preview", builder, false, false, false,
                         argCmd(CommandNode.ArgType.ROOM_ID, "roomId", builder)),
-                // Publish is admin-only and carries a dry-run receipt.
-                CommandNode.literal("publish", admin, true, false, false,
+                // Publication activates a durable definition; the command itself changes no blocks.
+                CommandNode.literal("publish", admin, false, false, false,
                         argCmd(CommandNode.ArgType.ROOM_ID, "roomId", admin)),
-                CommandNode.literal("disable", admin, true, false, false,
+                CommandNode.literal("disable", admin, false, false, false,
                         argCmd(CommandNode.ArgType.ROOM_ID, "roomId", admin)),
                 CommandNode.literal("reset", admin, true, true, false,
                         CommandNode.argument(CommandNode.ArgType.ROOM_ID, "roomId", admin)
@@ -94,6 +94,9 @@ public final class CommandTree {
                 CommandNode.literal("style", builder, false, false, false,
                         CommandNode.argument(CommandNode.ArgType.GATE_ID, "gateId", builder)
                                 .with(argCmd(CommandNode.ArgType.GATE_STYLE, "style", builder))),
+                CommandNode.literal("role", builder, false, false, false,
+                        CommandNode.argument(CommandNode.ArgType.GATE_ID, "gateId", builder)
+                                .with(cmd("entrance", builder), cmd("exit", builder))),
                 CommandNode.literal("unlock", builder, false, false, false,
                         CommandNode.argument(CommandNode.ArgType.GATE_ID, "gateId", builder)
                                 .with(argCmd(CommandNode.ArgType.UNLOCK_MODE, "mode", builder))),

@@ -69,6 +69,8 @@ public class OccludedArchmageProbe {
     // presentation, so the probe stubs them and asserts only server semantics.
     void renderWave7AbilityEffect(Object a,Object b,String c){}
     void renderWave7AbilityBurst(Object a,String b){}
+    final Set<UUID> activeCrownChannels=new HashSet<>();
+    void clearTrialFangCast(UUID actor,String spell){}
     boolean summonWave7MarksmanDefender(Object a,int b){return false;}
     // MARK-005 / MAGE7-004 seams added with the invisibility and Vex support.
     void tickWave7ArchmageVexes(Object a,int b){}

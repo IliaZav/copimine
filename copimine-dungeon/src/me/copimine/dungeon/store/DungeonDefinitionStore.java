@@ -78,6 +78,10 @@ public final class DungeonDefinitionStore {
         return store;
     }
 
+    public static DungeonDefinitionStore snapshot(DungeonCatalog catalog) {
+        return new DungeonDefinitionStore(parse(serializeCatalog(catalog)).catalog());
+    }
+
     public int schemaVersion() {
         return schemaVersion;
     }
@@ -95,6 +99,9 @@ public final class DungeonDefinitionStore {
     // ------------------------------------------------------------------
 
     public void save(Path file) throws IOException {
+        if (!loadProblems.isEmpty()) {
+            throw new IOException("Cannot overwrite an incompletely parsed dungeon definition file");
+        }
         atomicWrite(file, serialize());
     }
 
@@ -129,7 +136,9 @@ public final class DungeonDefinitionStore {
         problems.addAll(validateCatalog(parsed.catalog(), null));
         int count = parsed.catalog().totalDefinitions();
         if (!dryRun && problems.isEmpty()) {
-            undoStack.push(serialize());
+            // A partial catalogue cannot re-enter history after a valid import.
+            if (loadProblems.isEmpty()) undoStack.push(serialize());
+            else undoStack.clear();
             redoStack.clear();
             catalog = parsed.catalog();
             loadProblems = List.of();
@@ -174,7 +183,7 @@ public final class DungeonDefinitionStore {
         throw new IllegalArgumentException("Файл определений пуст: отсутствует заголовок " + HEADER + ".");
     }
 
-    private static void atomicWrite(Path file, String content) throws IOException {
+    public static void atomicWrite(Path file, String content) throws IOException {
         Path absolute = file.toAbsolutePath();
         Path parent = absolute.getParent();
         if (parent != null) {
@@ -186,11 +195,14 @@ public final class DungeonDefinitionStore {
         byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
         try (FileChannel channel = FileChannel.open(tmp, StandardOpenOption.CREATE,
                 StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING)) {
-            channel.write(ByteBuffer.wrap(bytes));
+            ByteBuffer buffer = ByteBuffer.wrap(bytes);
+            while (buffer.hasRemaining()) {
+                channel.write(buffer);
+            }
             channel.force(true);
         }
         try {
-            Files.move(tmp, absolute, StandardCopyOption.ATOMIC_MOVE);
+            Files.move(tmp, absolute, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
         } catch (AtomicMoveNotSupportedException unsupported) {
             Files.move(tmp, absolute, StandardCopyOption.REPLACE_EXISTING);
         }
@@ -295,9 +307,14 @@ public final class DungeonDefinitionStore {
 
     public void applyEdit(Consumer<DungeonCatalog> mutator) {
         Objects.requireNonNull(mutator, "mutator");
-        undoStack.push(serialize());
+        if (!loadProblems.isEmpty()) throw new IllegalStateException("Dungeon catalogue is unreadable");
+        String previous = serialize();
+        DungeonCatalog candidate = parse(previous).catalog();
+        mutator.accept(candidate);
+        candidate.rebuildRoomLinks();
+        undoStack.push(previous);
         redoStack.clear();
-        mutator.accept(catalog);
+        catalog = candidate;
     }
 
     public boolean canUndo() {
@@ -425,6 +442,7 @@ public final class DungeonDefinitionStore {
         if (!headerSeen) {
             problems.add("Отсутствует заголовок файла определений " + HEADER + ".");
         }
+        catalog.rebuildRoomLinks();
         return new Parsed(catalog, problems);
     }
 

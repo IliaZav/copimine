@@ -105,6 +105,8 @@ public final class RiftRamEncounter {
     private final Set<UUID> chargeHits = new HashSet<>(), trampleHits = new HashSet<>(), trampleRoster = new HashSet<>(), trampleBeatResolved = new HashSet<>();
     /** Bounded multi-footfall state for the N23-P1-10 moving earthquake. */
     private int trampleBeats, trampleBeat = -1, trampleWarnedBeat = -1;
+    private int trampleFootfallTick;
+    private Location priorTrampleFootfall;
     private final Set<Endermite> mites = new HashSet<>();
     /**
      * The elite marksman that holds the final pillar.
@@ -769,15 +771,23 @@ public final class RiftRamEncounter {
             return;
         }
         if(phase==RamMovingEarthquakePolicy.BeatPhase.GAP) return;
-        if(beat!=trampleBeat) {
-            // One owned front per foot contact, released from where the foot fell.
-            trampleBeat=beat; trampleOrigin=ram.getLocation().clone(); trampleRadius=0;
+        if (beat != trampleBeat) {
+            Location contact = ram.getLocation();
+            boolean moved = beat == 0 || priorTrampleFootfall == null
+                    || priorTrampleFootfall.getWorld() != contact.getWorld()
+                    || priorTrampleFootfall.distanceSquared(contact) >= 0.36D;
+            if (!ram.isOnGround() || !moved) return;
+            trampleBeat = beat;
+            trampleOrigin = contact.clone();
+            priorTrampleFootfall = contact;
+            trampleFootfallTick = tick;
+            trampleRadius = 0;
             trampleBeatResolved.clear();
-            dust(trampleOrigin,90,1.5,.3);
-            ram.getWorld().playSound(trampleOrigin,Sound.ENTITY_RAVAGER_STEP,2.1f,.5f);
-            ram.getWorld().playSound(trampleOrigin,Sound.BLOCK_ANVIL_LAND,1.4f,.55f);
+            dust(trampleOrigin, 90, 1.5, .3);
+            ram.getWorld().playSound(trampleOrigin, Sound.ENTITY_RAVAGER_STEP, 2.1f, .5f);
+            ram.getWorld().playSound(trampleOrigin, Sound.BLOCK_ANVIL_LAND, 1.4f, .55f);
         }
-        int intoFront=within-RamMovingEarthquakePolicy.BEAT_WARNING_TICKS+1;
+        int intoFront = tick - trampleFootfallTick + 1;
         double radius=RamMovingEarthquakePolicy.frontRadius(intoFront);
         drawTrampleFront(players,radius);
         double damage=RamMovingEarthquakePolicy.damageFor(beat,trampleBeats);

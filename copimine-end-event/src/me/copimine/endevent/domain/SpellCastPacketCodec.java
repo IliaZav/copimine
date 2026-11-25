@@ -32,6 +32,9 @@ public final class SpellCastPacketCodec {
     public static final int MAX_LANES = 3;
     /** Bytes a lane always occupies on the wire. */
     private static final int LANE_BYTES = 32;
+    private static final byte POINT_VERSION = 2;
+    private static final int POINT_BYTES = 12;
+    public static final int MAX_FANG_POINTS = 15;
     /** Bytes a minimal (no-id-length-yet) header plus trailer needs. */
     private static final int MIN_BYTES = 1 + 1 + 1 + 1 + 1 + 1 + 4 + 8 + 4 + 2 + 1 + 16 + 1;
 
@@ -51,12 +54,14 @@ public final class SpellCastPacketCodec {
         if (id.length > MAX_SPELL_ID_BYTES) {
             throw new IllegalArgumentException("spell id exceeds " + MAX_SPELL_ID_BYTES + " bytes");
         }
-        if (packet.lanes().size() > MAX_LANES) {
-            throw new IllegalArgumentException("more than " + MAX_LANES + " lanes");
+        boolean points = isFangGeometry(packet.spellId());
+        if (packet.lanes().size() > (points ? MAX_FANG_POINTS : MAX_LANES)) {
+            throw new IllegalArgumentException("too many spell geometry elements");
         }
+        validateGeometry(packet);
         ByteBuffer buffer = ByteBuffer.allocate(MAX_BYTES);
         buffer.put(MAGIC);
-        buffer.put(VERSION);
+        buffer.put(points ? POINT_VERSION : VERSION);
         buffer.put((byte) packet.phase().ordinal());
         buffer.put((byte) packet.vfxLod());
         buffer.put((byte) packet.style());
@@ -76,6 +81,7 @@ public final class SpellCastPacketCodec {
             buffer.putFloat(lane.x());
             buffer.putFloat(lane.y());
             buffer.putFloat(lane.z());
+            if (points) continue;
             buffer.putFloat(lane.dx());
             buffer.putFloat(lane.dy());
             buffer.putFloat(lane.dz());
@@ -103,7 +109,9 @@ public final class SpellCastPacketCodec {
             if (buffer.get() != MAGIC) {
                 throw new IllegalArgumentException("bad cast packet magic");
             }
-            if (buffer.get() != VERSION) {
+            byte schema = buffer.get();
+            boolean points = schema == POINT_VERSION;
+            if (!points && schema != VERSION) {
                 throw new IllegalArgumentException("unsupported cast packet version");
             }
             int phaseOrdinal = buffer.get() & 0xFF;
@@ -130,20 +138,72 @@ public final class SpellCastPacketCodec {
             float z = buffer.getFloat();
             float yaw = buffer.getFloat();
             int laneCount = buffer.get() & 0xFF;
-            if (laneCount > MAX_LANES || buffer.remaining() < laneCount * LANE_BYTES) {
-                throw new IllegalArgumentException("bad cast packet lane count: " + laneCount);
+            if (points != isFangGeometry(spellId)
+                    || laneCount > (points ? MAX_FANG_POINTS : MAX_LANES)
+                    || buffer.remaining() != laneCount * (points ? POINT_BYTES : LANE_BYTES)) {
+                throw new IllegalArgumentException("bad cast geometry length");
             }
             List<SpellCastPacket.Lane> lanes = new ArrayList<>(laneCount);
             for (int i = 0; i < laneCount; i++) {
-                lanes.add(new SpellCastPacket.Lane(
-                        buffer.getFloat(), buffer.getFloat(), buffer.getFloat(),
-                        buffer.getFloat(), buffer.getFloat(), buffer.getFloat(),
-                        buffer.getFloat(), buffer.getFloat()));
+                float lx = buffer.getFloat();
+                float ly = buffer.getFloat();
+                float lz = buffer.getFloat();
+                lanes.add(points ? new SpellCastPacket.Lane(lx, ly, lz, 0, 1, 0, 0.5f, 0)
+                        : new SpellCastPacket.Lane(lx, ly, lz, buffer.getFloat(), buffer.getFloat(),
+                                buffer.getFloat(), buffer.getFloat(), buffer.getFloat()));
             }
-            return new SpellCastPacket(phases[phaseOrdinal], generation, spellId, seed, startTick,
-                    durationTicks, stage, style, vfxLod, x, y, z, yaw, lanes);
+            SpellCastPacket packet = new SpellCastPacket(phases[phaseOrdinal], generation, spellId,
+                    seed, startTick, durationTicks, stage, style, vfxLod, x, y, z, yaw, lanes);
+            validateGeometry(packet);
+            return packet;
         } catch (BufferUnderflowException underflow) {
             throw new IllegalArgumentException("truncated cast packet", underflow);
         }
     }
+
+    public static boolean isFangGeometry(String spellId) {
+        return "circle".equals(spellId) || "crown".equals(spellId);
+    }
+
+    private static void validateGeometry(SpellCastPacket packet) {
+        if (!Float.isFinite(packet.x()) || !Float.isFinite(packet.y()) || !Float.isFinite(packet.z())
+                || !Float.isFinite(packet.yaw()) || packet.startTick() < 0
+                || !packet.spellId().matches("[a-z0-9_]{1,32}")) {
+            throw new IllegalArgumentException("invalid cast origin, tick or spell id");
+        }
+        for (SpellCastPacket.Lane lane : packet.lanes()) {
+            if (!Float.isFinite(lane.x()) || !Float.isFinite(lane.y()) || !Float.isFinite(lane.z())
+                    || !Float.isFinite(lane.dx()) || !Float.isFinite(lane.dy()) || !Float.isFinite(lane.dz())
+                    || !Float.isFinite(lane.radius()) || !Float.isFinite(lane.length())
+                    || lane.radius() < 0 || lane.radius() > 32 || lane.length() < 0 || lane.length() > 256) {
+                throw new IllegalArgumentException("invalid cast lane");
+            }
+            if (isFangGeometry(packet.spellId()) && (lane.length() != 0 || lane.radius() != 0.5f
+                    || lane.dx() != 0 || lane.dy() != 1 || lane.dz() != 0)) {
+                throw new IllegalArgumentException("fang geometry requires canonical points");
+            }
+        }
+    }
+
+    public static boolean inside(SpellCastPacket packet, long minX, long minY, long minZ,
+                                 long maxX, long maxY, long maxZ) {
+        if (!insidePoint(packet.x(), packet.y(), packet.z(), minX, minY, minZ, maxX, maxY, maxZ)) {
+            return false;
+        }
+        for (SpellCastPacket.Lane lane : packet.lanes()) {
+            if (!insidePoint(lane.x(), lane.y(), lane.z(), minX, minY, minZ, maxX, maxY, maxZ)
+                    || !insidePoint(lane.x() + lane.dx() * lane.length(), lane.y() + lane.dy() * lane.length(),
+                            lane.z() + lane.dz() * lane.length(), minX, minY, minZ, maxX, maxY, maxZ)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean insidePoint(double x, double y, double z, long minX, long minY, long minZ,
+                                       long maxX, long maxY, long maxZ) {
+        return x >= minX && y >= minY && z >= minZ
+                && x <= maxX + 1.0 && y <= maxY + 1.0 && z <= maxZ + 1.0;
+    }
+
 }

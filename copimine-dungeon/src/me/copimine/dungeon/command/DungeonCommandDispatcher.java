@@ -46,6 +46,16 @@ public final class DungeonCommandDispatcher {
     private final List<String> extraLootTables = new ArrayList<>();
     private final List<String> playerNames = new ArrayList<>();
     private WandGateway wandGateway;
+    private PublicationGateway publicationGateway;
+
+    @FunctionalInterface
+    public interface PublicationGateway {
+        void publish(String roomId, boolean enabled) throws java.io.IOException;
+    }
+
+    public void setPublicationGateway(PublicationGateway gateway) {
+        publicationGateway = gateway;
+    }
 
     public DungeonCommandDispatcher(DungeonDefinitionStore store, EditorSessionManager sessions,
                                     AuditLog audit) {
@@ -74,6 +84,7 @@ public final class DungeonCommandDispatcher {
 
     /** Tab completion over real registered ids and enumerated styles. */
     public List<String> complete(CommandActor actor, List<String> args) {
+        if (!EditorPermissions.isBuilder(actor.permissions())) return List.of();
         return registry.complete(args);
     }
 
@@ -188,8 +199,8 @@ public final class DungeonCommandDispatcher {
                 if (session == null) {
                     return CommandResponse.fail(lines);
                 }
-                session.setCorner1(actor.x(), actor.y(), actor.z());
                 session.setWorld(actor.world());
+                session.setCorner1(actor.x(), actor.y(), actor.z());
                 lines.add("Точка 1: " + format(actor.position()) + " в мире '" + actor.world() + "'.");
                 return CommandResponse.ok(lines);
             }
@@ -198,8 +209,8 @@ public final class DungeonCommandDispatcher {
                 if (session == null) {
                     return CommandResponse.fail(lines);
                 }
-                session.setCorner2(actor.x(), actor.y(), actor.z());
                 session.setWorld(actor.world());
+                session.setCorner2(actor.x(), actor.y(), actor.z());
                 lines.add("Точка 2: " + format(actor.position()) + " в мире '" + actor.world() + "'.");
                 return CommandResponse.ok(lines);
             }
@@ -254,9 +265,7 @@ public final class DungeonCommandDispatcher {
                 return publishRoom(route.argument("roomId"), lines);
             }
             case "room disable" -> {
-                lines.add("Комната '" + route.argument("roomId")
-                        + "' помечена как отключённая. Безопасное сворачивание: без изменения мира.");
-                return CommandResponse.ok(lines);
+                return commitPublication(route.argument("roomId"), false, lines);
             }
             case "room reset confirm" -> {
                 lines.add("Preflight: сброс '" + route.argument("roomId")
@@ -323,6 +332,10 @@ public final class DungeonCommandDispatcher {
             case "gate style" -> {
                 return gateMutate(route.argument("gateId"), lines, gate -> gate
                         .style(GateStyle.fromToken(route.argument("style"))));
+            }
+            case "gate role entrance", "gate role exit" -> {
+                return gateMutate(route.argument("gateId"), lines,
+                        gate -> gate.initialOpen(path.endsWith("entrance")));
             }
             case "gate unlock" -> {
                 return gateMutate(route.argument("gateId"), lines, gate -> gate
@@ -528,12 +541,12 @@ public final class DungeonCommandDispatcher {
         List<String> problems = new ArrayList<>(store.loadProblems());
         problems.addAll(DungeonDefinitionStore.validateCatalog(store.catalog(), null).stream()
                 .filter(problem -> problem.contains("'" + id + "'")).toList());
-        if (problems.isEmpty()) {
-            lines.add("Комната '" + id + "': проверка пройдена, проблем нет.");
-        } else {
+        if (!problems.isEmpty()) {
             lines.add("Комната '" + id + "': найдено проблем: " + problems.size());
             lines.addAll(problems);
+            return CommandResponse.fail(lines);
         }
+        lines.add("Комната '" + id + "': проверка пройдена, проблем нет.");
         return CommandResponse.ok(lines);
     }
 
@@ -544,17 +557,34 @@ public final class DungeonCommandDispatcher {
         }
         List<String> problems = DungeonDefinitionStore.validateCatalog(store.catalog(), null);
         List<String> relevant = problems.stream().filter(p -> p.contains("'" + id + "'")).toList();
-        lines.add("Отчёт публикации (dry-run) для '" + id + "':");
-        lines.add("  границы: " + room.bounds() + ", триггер: " + room.trigger());
-        lines.add("  шлюзов: " + room.gateIds().size() + ", секретов: " + room.secretIds().size());
-        lines.add("  проблем: " + relevant.size());
-        lines.addAll(relevant);
-        lines.add("Публикация не изменяет блоки мира; требуется отдельное подтверждение администратора.");
-        return CommandResponse.ok(lines);
+        if (!relevant.isEmpty()) {
+            lines.addAll(relevant);
+            return CommandResponse.fail(lines);
+        }
+        if (room.trigger() == null || room.spawnAnchorIds().isEmpty()) {
+            return CommandResponse.fail("Для публикации задайте триггер и точку спавна комнаты.");
+        }
+        return commitPublication(id, true, lines);
+    }
+
+    private CommandResponse commitPublication(String id, boolean enabled, List<String> lines) {
+        if (publicationGateway == null) {
+            return CommandResponse.fail("Хранилище опубликованных подземелий недоступно.");
+        }
+        try {
+            publicationGateway.publish(id, enabled);
+            lines.add("Комната '" + id + (enabled ? "' опубликована." : "' отключена."));
+            return CommandResponse.ok(lines);
+        } catch (java.io.IOException | RuntimeException error) {
+            return CommandResponse.fail("Публикация не выполнена: " + error.getMessage());
+        }
     }
 
     private CommandResponse gateAdd(CommandActor actor, CommandRegistry.Route route, List<String> lines) {
         String gateId = route.argument("gateId");
+        if (store.catalog().gate(gateId) != null) {
+            return CommandResponse.fail("Этот идентификатор уже занят: " + gateId);
+        }
         EditorSession session = sessions.session(actor.id());
         Cuboid mask = session == null ? null : session.selection();
         if (mask == null) {
@@ -597,6 +627,9 @@ public final class DungeonCommandDispatcher {
 
     private CommandResponse secretAdd(CommandActor actor, CommandRegistry.Route route, List<String> lines) {
         String secretId = route.argument("secretId");
+        if (store.catalog().secret(secretId) != null) {
+            return CommandResponse.fail("Этот идентификатор уже занят: " + secretId);
+        }
         EditorSession session = sessions.session(actor.id());
         Cuboid mask = session == null ? null : session.selection();
         if (mask == null) {
@@ -637,6 +670,9 @@ public final class DungeonCommandDispatcher {
 
     private CommandResponse spawnAdd(CommandActor actor, CommandRegistry.Route route, List<String> lines) {
         String spawnId = route.argument("spawnId");
+        if (store.catalog().spawn(spawnId) != null) {
+            return CommandResponse.fail("Этот идентификатор уже занят: " + spawnId);
+        }
         MobTemplate template = MobTemplate.fromId(route.argument("mobTemplate"));
         if (template == null) {
             return CommandResponse.fail("Неизвестный шаблон моба: " + route.argument("mobTemplate"));

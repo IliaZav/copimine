@@ -21,6 +21,9 @@ def test_crushing_gravity_moves_real_players_and_arrows_and_restores(tmp_path):
         "private void releaseCrushingGravityPull(",
         "private void endCrushingGravityStateOnly(",
     ))
+    production = (production.replace("org.bukkit.util.BoundingBox", "BoundingBox")
+                  .replace("org.bukkit.entity.AbstractArrow", "AbstractArrow")
+                  .replace("org.bukkit.entity.SpectralArrow", "SpectralArrow"))
     java = r"""
 import java.util.*;
 import me.copimine.endevent.domain.CrushingGravityPolicy;
@@ -45,7 +48,7 @@ public class CrushingGravityProbe {
         double x,y,z;Vector velocity=new Vector(0,0,0);
         Entity(World world){this.world=world;}
         UUID getUniqueId(){return id;}boolean isValid(){return valid&&!dead;}boolean isDead(){return dead;}
-        boolean isOnGround(){return onGround;}
+        boolean isOnGround(){return onGround;} World getWorld(){return world;}
         double getX(){return x;}double getY(){return y;}double getZ(){return z;}
         Location getLocation(){return new Location(world,x,y,z);}
         Vector getVelocity(){return velocity.clone();}
@@ -53,10 +56,20 @@ public class CrushingGravityProbe {
         void place(double x,double y,double z){this.x=x;this.y=y;this.z=z;}
     }
     static final class Player extends Entity {Player(World w){super(w);}}
-    static final class Arrow extends Entity {Arrow(World w){super(w);}}
+    static class AbstractArrow extends Entity {
+        Player shooter;
+        AbstractArrow(World w){super(w);}
+        Player getShooter(){return shooter;}
+        boolean isInBlock(){return onGround;}
+    }
+    static final class Arrow extends AbstractArrow {Arrow(World w){super(w);}}
+    static final class SpectralArrow extends AbstractArrow {SpectralArrow(World w){super(w);}}
+    record BoundingBox(double xMin,double yMin,double zMin,double xMax,double yMax,double zMax) {}
     static final class World {
         final List<Entity> entities=new ArrayList<>();
-        List<Entity> getNearbyEntities(Location center,double x,double y,double z){return entities;}
+        List<Entity> getNearbyEntities(BoundingBox box,java.util.function.Predicate<Entity> filter){
+            return entities.stream().filter(filter).toList();
+        }
     }
     // --- production fields the sliced bodies touch ---------------------------
     CrushingGravityPolicy.Bounds crushingGravityBounds;
@@ -68,6 +81,7 @@ public class CrushingGravityProbe {
     final Set<UUID> crushingGravityPlayers=new HashSet<>();
     final List<Player> players=new ArrayList<>();
     List<Player> activeLivingPlayers(){return players;}
+    boolean isActiveBossParticipant(Player player){return players.contains(player);}
 
 """ + production + r"""
     static void require(boolean yes,String message){if(!yes)throw new AssertionError(message);}
@@ -90,8 +104,10 @@ public class CrushingGravityProbe {
         Player outside=new Player(world);outside.place(100,5,5);outside.velocity=new Vector(0,0.10,0);
         Arrow inArrow=new Arrow(world);inArrow.place(7,7,7);inArrow.velocity=new Vector(2.0,0.5,0.0);
         Arrow outArrow=new Arrow(world);outArrow.place(100,7,7);outArrow.velocity=new Vector(2.0,0.5,0.0);
+        SpectralArrow spectral=new SpectralArrow(world);spectral.place(9,7,7);spectral.velocity=new Vector(2,0.5,0);
+        inArrow.shooter=airborne; outArrow.shooter=airborne; spectral.shooter=airborne;
         p.players.addAll(List.of(airborne,jumping,outside));
-        world.entities.addAll(List.of(inArrow,outArrow));
+        world.entities.addAll(List.of(inArrow,outArrow,spectral));
 
         p.applyCrushingGravityPull();
         close(airborne.velocity.getY(),0.10-CrushingGravityPolicy.PLAYER_DOWNWARD_ACCELERATION,
@@ -105,7 +121,8 @@ public class CrushingGravityProbe {
                 "an in-flight arrow bleeds horizontal speed once");
         close(outArrow.velocity.getY(),0.5,"an arrow outside the bounds is untouched");
         require(p.crushingGravityPlayers.size()==2,"only in-bounds players enter the restore ledger");
-        require(p.crushingGravityArrows.size()==1,"only in-bounds arrows enter the restore ledger");
+        close(spectral.velocity.getY(),inArrow.velocity.getY(),"spectral arrows use the same real physics");
+        require(p.crushingGravityArrows.size()==2,"only in-bounds arrows enter the restore ledger");
 
         p.applyCrushingGravityPull();
         close(inArrow.velocity.getX(),2.0*(1.0D-CrushingGravityPolicy.ARROW_INFLIGHT_BLEED),

@@ -62,7 +62,7 @@ public class GuardianMeleeProbe {
         boolean isValid(){return true;}boolean isDead(){return false;}
     }
     static final class Player extends LivingEntity {
-        int hurts;
+        int hurts; boolean covered;
         Player(World world){super(world);}
         void playEffect(EntityEffect effect){hurts++;}
     }
@@ -77,6 +77,7 @@ public class GuardianMeleeProbe {
     long guardianMoveEndAtMillis,nextGuardianPhysicalMillis;
     static final long GUARDIAN_INTER_MOVE_MILLIS=400L;
     boolean damageLanded=true;
+    boolean guardianContactHasCoverClear(LivingEntity boss,Player player,Location origin){return !player.covered;}
     java.util.logging.Logger getLogger(){return java.util.logging.Logger.getLogger("GuardianMeleeProbe");}
     boolean applyBossAbilityDamage(LivingEntity boss,Player player,double damage){return damageLanded;}
     void renderBossContactImpact(LivingEntity boss,Player player,EndRiftAiPolicy.BossSpell spell){}
@@ -103,6 +104,7 @@ public class GuardianMeleeProbe {
         Player behind=player(world,0,70,-4);
         Player far=player(world,0,70,5.5);
         Player high=player(world,0,72.5,3);
+        Player covered=player(world,1,70,3); covered.covered=true;
         int hits=resolveGuardianFan(boss,origin,facing);
         require(hits==2,"the 125-degree ground fan catches the near pair only, got "+hits);
         require(ahead.velocity.lengthSquared()>0.0,"a caught player receives a real push");

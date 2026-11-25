@@ -103,6 +103,20 @@ public final class DungeonCatalog {
         return new ArrayList<>(spawns.keySet());
     }
 
+    public void rebuildRoomLinks() {
+        for (Map.Entry<String, DungeonRoomDefinition> entry : rooms.entrySet()) {
+            String roomId = entry.getKey();
+            entry.setValue(entry.getValue().toBuilder()
+                    .gateIds(gates.values().stream().filter(gate -> gate.roomId().equals(roomId))
+                            .map(GateDefinition::id).toList())
+                    .secretIds(secrets.values().stream().filter(secret -> secret.roomId().equals(roomId))
+                            .map(SecretDefinition::id).toList())
+                    .spawnAnchorIds(spawns.values().stream().filter(spawn -> spawn.roomId().equals(roomId))
+                            .map(SpawnAnchor::id).toList())
+                    .build());
+        }
+    }
+
     public void clear() {
         rooms.clear();
         gates.clear();

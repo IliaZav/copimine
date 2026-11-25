@@ -103,8 +103,10 @@ public class DungeonControllerProbe {
         check(!two.truncated(), "a plan exactly at the cap is not truncated");
         check(two.totalEnemies() == 12, "the total counts every scheduled enemy");
 
-        RoomWaveSchedulePolicy.Plan big = RoomWaveSchedulePolicy.plan(twoWave, 50);
-        check(big.waves().get(0).enemyCount() == 6, "a huge roster is clamped to the live cap");
+        RoomWaveSchedulePolicy.Plan big = RoomWaveSchedulePolicy.plan(twoWave, 100);
+        check(big.liveCap() == 6, "concurrency cap stays six");
+        check(big.waves().get(0).enemyCount() == RoomWaveSchedulePolicy.MAX_LIVE_CAP,
+                "total queued work has a separate hard ceiling");
         check(big.truncated(), "a clamped plan is flagged truncated");
 
         DungeonRoomDefinition fixed = DungeonRoomDefinition.builder("room-a")
@@ -327,7 +329,7 @@ public class DungeonGateTransactionProbe {
         // ---- a clear doorway restores the original builder blocks ----
         check(tx.close(List.of()) == PhysicalGateTransaction.Result.APPLIED, "an empty doorway closes");
         check(world.allStone(bounds), "close restores the exact snapshot");
-        check(!tx.journaled(), "a clean close consumes the journal");
+        check(tx.journaled(), "the exact builder mask survives closing");
         check(tx.state() == GateState.CLOSED, "state is CLOSED");
         check(tx.close(List.of()) == PhysicalGateTransaction.Result.ALREADY_CLOSED,
                 "double close is idempotent");
@@ -347,12 +349,13 @@ public class DungeonGateTransactionProbe {
                 "an unloaded chunk must not be mutated");
         check(blocked.state() == GateState.RECOVERY_REQUIRED, "the refusal is explicit");
 
-        // ---- an initially-open gate captured a snapshot at construction ----
+        // ---- an initially-open doorway requires a real authored mask ----
         GateDefinition openGate = GateDefinition.of("g-open", "room-a",
                 GateStyle.ASSEMBLING_SEAL, UnlockMode.ON_ROOM_CLEAR, "world", bounds, "auto", true);
         FakeWorld openWorld = new FakeWorld();
         PhysicalGateTransaction alwaysOpen = new PhysicalGateTransaction(openGate, openWorld);
-        check(alwaysOpen.journaled(), "an initially-open gate snapshots immediately");
+        check(!alwaysOpen.journaled(), "constructing a controller does not mutate the world");
+        check(alwaysOpen.open() == PhysicalGateTransaction.Result.APPLIED, "opening first journals the authored mask");
         check(alwaysOpen.close(List.of()) == PhysicalGateTransaction.Result.APPLIED,
                 "an initially-open gate can be closed");
         check(openWorld.allStone(bounds), "closing it restores the captured blocks");
@@ -403,14 +406,14 @@ public class DungeonEncounterPlanProbe {
         check(plan.waveCount() == 2, "both waves are planned");
         check(plan.liveCap() == 6, "the live cap is honoured");
         check(plan.eligibleParticipants() == 3, "the roster is recorded");
-        check(plan.truncated(), "a capped wave reports truncation");
-        check(plan.totalAssignments() == 12,
+        check(!plan.truncated(), "a small concurrent cap keeps the pending enemy count");
+        check(plan.totalAssignments() == 15,
                 "assignments match the bounded schedule: " + plan.totalAssignments());
 
-        // The clamped wave keeps the configured 2:1 proportion (4 + 2), and the
+        // The queued wave keeps the configured 2:1 proportion (6 + 3), and the
         // foreign-room anchor is never used.
         List<DungeonEncounterPlanPolicy.Assignment> first = plan.wave(0);
-        check(first.size() == 6, "wave 0 holds six bounded enemies");
+        check(first.size() == 9, "wave 0 queues nine enemies");
         int silver = 0;
         int breeze = 0;
         for (DungeonEncounterPlanPolicy.Assignment a : first) {
@@ -418,7 +421,7 @@ public class DungeonEncounterPlanProbe {
             if (a.template() == MobTemplate.RIFT_BREEZE) breeze++;
             check(!a.anchorId().equals("s-foreign"), "a foreign-room anchor is ignored");
         }
-        check(silver == 4 && breeze == 2, "the clamped wave preserves 2:1 proportion");
+        check(silver == 6 && breeze == 3, "the queue preserves 2:1 proportion");
         check(first.get(0).ordinalInWave() == 0, "ordinals start at zero");
         check(first.get(0).anchorId().equals("s-a"), "anchors are used in stable id order");
 
@@ -472,6 +475,7 @@ public class DungeonLifecycleProbe {
         boolean sealOk = true;
         boolean openOk = true;
         boolean rewardOk = true;
+        boolean spawnOk = true;
         boolean sealed;
         boolean opened;
         int spawnCalls;
@@ -482,6 +486,7 @@ public class DungeonLifecycleProbe {
         public boolean openExit() { opened = true; return openOk; }
         public int spawnWave(int index, List<DungeonEncounterPlanPolicy.Assignment> assignments) {
             spawnCalls++;
+            if (!spawnOk) return 0;
             spawnedWaves.add(index);
             live += assignments.size();
             return assignments.size();
@@ -534,7 +539,7 @@ public class DungeonLifecycleProbe {
         check(life.state() == RoomState.FIGHTING, "still fighting");
 
         // ---- the delayed wave spawns on schedule ----
-        check(life.advance(20) == DungeonRoomLifecycle.Signal.FIGHTING, "wave 1 spawns at tick 20");
+        check(life.advance(20) == DungeonRoomLifecycle.Signal.FIGHTING, "second wave spawns at tick 20");
         check(ports.spawnCalls == 2, "exactly two waves spawned");
         check(ports.spawnedWaves.equals(List.of(0, 1)), "waves spawn in order");
         check(ports.live == 1, "wave 1 is live");
@@ -584,6 +589,32 @@ public class DungeonLifecycleProbe {
         DungeonRoomLifecycle never = new DungeonRoomLifecycle(bare, unviable, noSpawn);
         check(never.tryActivate(1, 0) == DungeonRoomLifecycle.Signal.REJECTED,
                 "a room without anchors must not start");
+
+        DungeonRoomDefinition capped = room().toBuilder().maxConcurrentEnemies(1).build();
+        var anchors = List.of(SpawnAnchor.of("s-a", "room-a", "world", 1, 64, 1, 1.0D));
+        FakePorts overlap = new FakePorts();
+        var cappedLife = new DungeonRoomLifecycle(capped, DungeonEncounterPlanPolicy.plan(capped, anchors, 1), overlap);
+        cappedLife.tryActivate(1, 0);
+        cappedLife.advance(20);
+        check(overlap.live == 1 && overlap.spawnCalls == 1, "due waves cannot exceed the shared live cap");
+        overlap.live = 0;
+        cappedLife.advance(21);
+        check(overlap.live == 1 && overlap.spawnCalls == 2, "a freed slot admits the queued enemy");
+        overlap.live = 0;
+        check(cappedLife.advance(22) == DungeonRoomLifecycle.Signal.OPENED, "all queued enemies were defeated");
+        overlap.rewardOk = false;
+        check(cappedLife.advance(23) == DungeonRoomLifecycle.Signal.WAITING
+                && cappedLife.state() == RoomState.REWARD_READY, "failed reward remains recoverable");
+        overlap.rewardOk = true;
+        check(cappedLife.advance(24) == DungeonRoomLifecycle.Signal.REWARDED, "retry delivers once");
+
+        FakePorts emptySpawn = new FakePorts();
+        emptySpawn.spawnOk = false;
+        var rejectedSpawn = lifecycle(emptySpawn);
+        rejectedSpawn.tryActivate(1, 0);
+        rejectedSpawn.advance(20);
+        check(rejectedSpawn.advance(40) == DungeonRoomLifecycle.Signal.ABORTED
+                && emptySpawn.rewardCalls == 0, "exhausted spawn retries cannot clear the room");
 
         System.out.println("PASS dungeon room lifecycle");
     }

@@ -33,6 +33,7 @@ public class DungeonCommandProbe {
                 .displayName(id)
                 .world("world")
                 .bounds(bounds)
+                .trigger(bounds)
                 .scalingMode(ScalingMode.FIXED)
                 .maxConcurrentEnemies(8)
                 .addWave(new WaveSpec(List.of(new EnemyGroup(MobTemplate.RIFT_BREEZE, 2)), 20))
@@ -69,10 +70,11 @@ public class DungeonCommandProbe {
                 Set.of(EditorPermissions.ADMIN), false);
 
         Rig() {
+            dispatcher.setPublicationGateway((id, enable) -> check(id.equals("rose"), "wrong publication owner"));
             EditorSession session = sessions.open(BUILDER, "Builder");
+            session.setWorld("world");
             session.setCorner1(1, 2, 3);
             session.setCorner2(4, 5, 6);
-            session.setWorld("world");
             session.selectRoom("rose");
         }
 
@@ -179,10 +181,8 @@ public class DungeonCommandProbe {
                 "usage rendering lost the gate preview form");
 
         CommandResponse publish = rig.run("room publish rose");
-        check(publish.success(), "publish dry-run failed: " + publish.lines());
-        check(String.join("\n", publish.lines()).contains("DRY-RUN"),
-                "publish must emit a dry-run receipt, never mutate the world");
-        check(rig.store.catalog().room("rose") != null, "publish must not remove the definition");
+        check(!publish.success(), "publication must reject an incomplete second wave");
+        check(rig.store.catalog().room("rose") != null, "a refused publication preserves the draft");
 
         CommandResponse reset = rig.run("room reset rose confirm");
         check(reset.success(), "reset dry-run failed: " + reset.lines());
@@ -266,8 +266,8 @@ public class DungeonCommandProbe {
                 List.of("room", "reset", "rose", "confirm"));
         check(reset.matched() && reset.requiresConfirm(),
                 "reset must require an explicit confirm token");
-        check(registry.resolve(List.of("room", "publish", "rose")).worldMutating(),
-                "publish must be flagged world-mutating (dry-run only)");
+        check(!registry.resolve(List.of("room", "publish", "rose")).worldMutating(),
+                "publication stages a real definition without touching world blocks");
 
         System.out.println("PASS dungeon permissions and safety flags");
     }

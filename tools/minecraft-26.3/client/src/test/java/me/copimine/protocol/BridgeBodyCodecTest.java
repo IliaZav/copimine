@@ -37,7 +37,7 @@ class BridgeBodyCodecTest {
     @Test
     void everySupportedEndEventTypeMatchesAnIndependentExactBinaryFixture() throws Exception {
         List<EndEventBridgeBodyCodec.Body> fixtures = endEventFixtures();
-        assertEquals(22, fixtures.size());
+        assertEquals(23, fixtures.size());
         for (EndEventBridgeBodyCodec.Body body : fixtures) {
             byte[] expected = endEventFixture(body);
             byte[] actual = EndEventBridgeBodyCodec.encode(body);
@@ -350,6 +350,13 @@ class BridgeBodyCodecTest {
                 case END_PRISONER_CLEAR -> body(type, uuid(PLAYER), "", "", 0, 0, 0, 0, "", "", "");
                 case END_WORLD_BEAM -> body(type, EVENT + ":1:world:beam_1", "", "RIFT_BEAM", 1_000, 0.1f,
                         0, 0, "the_end|beam_1|1.000,64.000,-1.500", "2.000,70.000,3.500|AABBCC", "");
+                case END_SPELL_CAST -> body(type, EVENT + ":1:spell:1", "", "CANCEL", 0, 0, 0, 0,
+                        "the_end", java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(
+                                me.copimine.endevent.domain.SpellCastPacketCodec.encode(
+                                        new me.copimine.endevent.domain.SpellCastPacket(
+                                                me.copimine.endevent.domain.SpellCastPacket.Phase.CANCEL,
+                                                1, "beam", 1, 0, 0, 0, 0, 0, 1, 64, 1, 0, java.util.List.of()))),
+                        "0");
                 case END_WORLD_VFX_CLEAR -> body(type, EVENT + ":1:world:beam_1", "", "RIFT_BEAM", 0, 0,
                         0, 0, "", "", "");
                 case END_ECHO_BIND, END_ECHO_STATE, END_ECHO_REMOVE -> body(type,

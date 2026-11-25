@@ -176,7 +176,7 @@ public class ArchmageFangsProbe {
     // the probe reproduces that ledger: a cast with no lock spawns no fangs, and a
     // lock names exactly the victims whose lines are painted.
     record TrialAimLock(long generation,UUID event,long cast,Location point,
-            Map<UUID,Location> fangMarks){}
+            Map<UUID,Location> fangMarks,Location floor,Location casterOrigin){}
     final Map<UUID,TrialAimLock> trialAimLocks=new HashMap<>();
     Location namedTrialAim(LivingEntity a,Player p){
         TrialAimLock lock=trialAimLocks.get(a.getUniqueId());

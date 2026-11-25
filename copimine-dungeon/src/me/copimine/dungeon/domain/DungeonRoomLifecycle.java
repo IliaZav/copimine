@@ -1,5 +1,7 @@
 package me.copimine.dungeon.domain;
 
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.List;
 import java.util.Objects;
 
@@ -28,6 +30,7 @@ public final class DungeonRoomLifecycle {
         FIGHTING,
         OPENED,
         REWARDED,
+        WAITING,
         ABORTED,
         REJECTED
     }
@@ -51,6 +54,26 @@ public final class DungeonRoomLifecycle {
 
         /** Operator-readable diagnostic (never a gameplay shortcut). */
         void report(String message);
+
+        default long reserveGeneration(long previous) {
+            return Math.incrementExact(previous);
+        }
+
+        default boolean hasCombatFailure() {
+            return false;
+        }
+
+        default boolean commitClear() {
+            return true;
+        }
+
+        default boolean recoverAttempt() {
+            return openExit();
+        }
+
+        default boolean resetAfterClear() {
+            return true;
+        }
     }
 
     private final DungeonRoomDefinition room;
@@ -61,7 +84,13 @@ public final class DungeonRoomLifecycle {
     private long generation;
     private long fightStartTick = -1L;
     private int nextWave;
-    private boolean rewarded;
+    private static final int MAX_SPAWN_ATTEMPTS = 3;
+    private static final int SPAWN_RETRY_TICKS = 20;
+
+    private final Deque<DungeonEncounterPlanPolicy.Assignment> pending = new ArrayDeque<>();
+    private int spawnFailures;
+    private long nextSpawnTick;
+    private boolean aborted;
 
     public DungeonRoomLifecycle(DungeonRoomDefinition room,
                                 DungeonEncounterPlanPolicy.Plan plan,
@@ -107,7 +136,12 @@ public final class DungeonRoomLifecycle {
         if (eligibleParticipants < 1 || !plan.viable() || plan.waveCount() == 0) {
             return Signal.REJECTED;
         }
-        generation++;
+        long reserved = ports.reserveGeneration(generation);
+        if (reserved <= generation) {
+            return Signal.REJECTED;
+        }
+        generation = reserved;
+        aborted = false;
         move(RoomState.ARMING);
         move(RoomState.SEALING);
         if (!ports.sealEntrance()) {
@@ -118,73 +152,116 @@ public final class DungeonRoomLifecycle {
         move(RoomState.FIGHTING);
         fightStartTick = tick;
         nextWave = 0;
-        rewarded = false;
-        spawnDueWaves(tick);
-        return Signal.FIGHTING;
+        spawnFailures = 0;
+        nextSpawnTick = tick;
+        return advance(tick);
     }
 
-    /**
-     * Advances the room on the adapter's tick. Spawns due waves, commits a real
-     * clear, opens the exit and requests the reward once before resetting.
-     */
     public Signal advance(long tick) {
         if (state == RoomState.FIGHTING) {
-            spawnDueWaves(tick);
-            if (nextWave >= plan.waveCount() && ports.liveEnemies() == 0) {
-                move(RoomState.CLEAR_COMMITTED);
-                move(RoomState.OPENING);
-                if (!ports.openExit()) {
-                    ports.report("room " + room.id() + " could not open its exit; aborting generation "
-                            + generation);
-                    return abortToIdle();
-                }
-                move(RoomState.REWARD_READY);
-                return Signal.OPENED;
+            int live = ports.liveEnemies();
+            if (ports.hasCombatFailure()) {
+                return abortToIdle();
             }
-            return Signal.FIGHTING;
+            enqueueDueWaves(tick);
+            if (!spawnPending(tick, Math.max(0, plan.liveCap() - live))) {
+                return abortToIdle();
+            }
+            if (nextWave < plan.waveCount() || !pending.isEmpty() || ports.liveEnemies() != 0) {
+                return Signal.FIGHTING;
+            }
+            if (ports.hasCombatFailure()) {
+                return abortToIdle();
+            }
+            move(RoomState.CLEAR_COMMITTED);
+        }
+        if (state == RoomState.CLEAR_COMMITTED) {
+            if (!ports.commitClear()) {
+                return Signal.WAITING;
+            }
+            move(RoomState.OPENING);
+        }
+        if (state == RoomState.OPENING) {
+            if (!ports.openExit()) {
+                return Signal.WAITING;
+            }
+            move(RoomState.REWARD_READY);
+            return Signal.OPENED;
         }
         if (state == RoomState.REWARD_READY) {
-            if (!rewarded) {
-                rewarded = true;
-                if (!ports.grantReward()) {
-                    ports.report("room " + room.id() + " reward deferred for generation " + generation);
-                }
+            if (!ports.grantReward()) {
+                return Signal.WAITING;
             }
             move(RoomState.RESETTING);
+        }
+        if (state == RoomState.RESETTING && !aborted) {
+            if (!ports.resetAfterClear()) {
+                return Signal.WAITING;
+            }
             move(RoomState.PUBLISHED_IDLE);
             return Signal.REWARDED;
+        }
+        if (state == RoomState.RECOVERY_REQUIRED) {
+            return recover();
         }
         return Signal.IDLE;
     }
 
-    /** Aborts a running room, opening the exit so nobody is trapped. */
     public Signal abort() {
-        if (!state.isActive()) {
+        if (state != RoomState.ARMING && state != RoomState.SEALING
+                && state != RoomState.FIGHTING) {
             return Signal.REJECTED;
         }
         return abortToIdle();
     }
 
     private Signal abortToIdle() {
+        aborted = true;
         move(RoomState.ABORTING);
-        ports.openExit();
-        move(RoomState.RESETTING);
-        move(RoomState.PUBLISHED_IDLE);
+        pending.clear();
         fightStartTick = -1L;
         nextWave = 0;
+        return recover();
+    }
+
+    private Signal recover() {
+        if (!ports.recoverAttempt()) {
+            move(RoomState.RECOVERY_REQUIRED);
+            return Signal.WAITING;
+        }
+        move(RoomState.RESETTING);
+        move(RoomState.PUBLISHED_IDLE);
         return Signal.ABORTED;
     }
 
-    private void spawnDueWaves(long tick) {
-        if (fightStartTick < 0L) {
-            return;
-        }
+    private void enqueueDueWaves(long tick) {
         while (nextWave < plan.waveCount()
                 && tick - fightStartTick >= startTickOf(nextWave)) {
-            int index = nextWave;
-            ports.spawnWave(index, plan.wave(index));
+            pending.addAll(plan.wave(nextWave));
             nextWave++;
         }
+    }
+
+    private boolean spawnPending(long tick, int capacity) {
+        if (tick < nextSpawnTick) {
+            return true;
+        }
+        while (capacity > 0 && !pending.isEmpty()) {
+            DungeonEncounterPlanPolicy.Assignment assignment = pending.getFirst();
+            if (ports.spawnWave(assignment.waveIndex(), List.of(assignment)) != 1) {
+                nextSpawnTick = tick + SPAWN_RETRY_TICKS;
+                if (++spawnFailures >= MAX_SPAWN_ATTEMPTS) {
+                    ports.report("room " + room.id() + " exhausted spawn retries at "
+                            + assignment.anchorId() + " for generation " + generation);
+                    return false;
+                }
+                break;
+            }
+            pending.removeFirst();
+            spawnFailures = 0;
+            capacity--;
+        }
+        return true;
     }
 
     /** Cumulative start tick of a wave, matching {@link RoomWaveSchedulePolicy}. */

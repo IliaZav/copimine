@@ -327,6 +327,7 @@ public final class EndEventBridgeBodyCodec {
                 requireRecipient(body.instanceId(), envelopeRecipient);
             }
             case END_WORLD_BEAM -> validateWorldBeam(body);
+            case END_SPELL_CAST -> validateSpellCast(body);
             case END_WORLD_VFX_CLEAR -> {
                 requireWorldBeamInstance(body);
                 if (!"RIFT_BEAM".equals(body.visualId())) {
@@ -336,6 +337,22 @@ public final class EndEventBridgeBodyCodec {
             }
             case END_ECHO_BIND, END_ECHO_STATE, END_ECHO_REMOVE -> validateEcho(body);
         }
+    }
+
+    private static void validateSpellCast(Body body) {
+        String prefix = body.eventUuid() + ":" + body.generation() + ":spell:";
+        if (!body.instanceId().startsWith(prefix)
+                || !CANONICAL_POSITIVE.matcher(body.instanceId().substring(prefix.length())).matches()
+                || !Set.of("START", "STAGE", "CANCEL").contains(body.visualId())
+                || !body.clearPolicy().matches("[A-Za-z0-9_-]{56,342}")
+                || !CANONICAL_NONNEGATIVE.matcher(body.status()).matches()
+                || body.status().length() > 3 || Integer.parseInt(body.status()) > 600
+                || !body.controlId().isEmpty() || body.health() != 0L
+                || body.maxHealth() != 0L || body.progressOrIntensity() != 0.0f
+                || body.durationMillis() > 30_000L) {
+            throw new IllegalArgumentException("Invalid signed spell cast");
+        }
+        requireDimension(body.subjectOrMode());
     }
 
     private static void validateContextBind(Body body) {
@@ -970,6 +987,7 @@ public final class EndEventBridgeBodyCodec {
         END_PRISONER_CLEAR(52),
         END_WORLD_BEAM(60),
         END_WORLD_VFX_CLEAR(61),
+        END_SPELL_CAST(62),
         END_ECHO_BIND(70),
         END_ECHO_STATE(71),
         END_ECHO_REMOVE(72);

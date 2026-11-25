@@ -19,8 +19,12 @@ def test_warden_sweep_echo_and_cc_are_the_committed_geometry(tmp_path):
     production = "\n".join(extract_method(source, signature) for signature in (
         "private void resolveWardenFrontalSweep(",
         "private void applyWardenSweepStunAndSlow(",
+        "private void clearWardenControl(",
         "private void finishWardenSlam(",
     ))
+    production = (production.replace("org.bukkit.damage.DamageSource", "DamageSource")
+                  .replace("org.bukkit.damage.DamageType", "DamageType")
+                  .replace("org.bukkit.attribute.AttributeModifier", "AttributeModifier"))
     # Through-wall proof: the echo resolver must contain no cover test at all.
     echo_body = extract_method(source, "private void finishWardenSlam(")
     assert "hasLineOfSight" not in echo_body and "rayTrace" not in echo_body
@@ -56,23 +60,36 @@ public class WardenV5RuntimeProbe {
     enum Sound { ENTITY_WARDEN_ATTACK_IMPACT, ENTITY_WARDEN_SONIC_BOOM }
     enum SoundCategory { HOSTILE }
     enum Particle { SOUL_FIRE_FLAME, SCULK_SOUL, SONIC_BOOM, EXPLOSION, SOUL }
-    enum PotionEffectType { SLOWNESS }
+    enum Attribute { GENERIC_MOVEMENT_SPEED }
+    enum DamageType { SONIC_BOOM }
+    record NamespacedKey(Object plugin,String key){}
+    record AttributeModifier(NamespacedKey key,double amount,Operation operation) {
+        enum Operation { MULTIPLY_SCALAR_1 }
+    }
+    static final class AttributeInstance {
+        AttributeModifier slow;
+        void addTransientModifier(AttributeModifier value){slow=value;}
+        void removeModifier(AttributeModifier value){if(value.equals(slow))slow=null;}
+    }
+    static final class DamageSource {
+        final DamageType type;
+        DamageSource(DamageType type){this.type=type;}
+        static DamageSource builder(DamageType type){return new DamageSource(type);}
+        DamageSource withCausingEntity(LivingEntity value){return this;}
+        DamageSource withDirectEntity(LivingEntity value){return this;}
+        DamageSource build(){return this;}
+    }
     static final class World {
         int sounds;
         void playSound(Location at,Sound s,SoundCategory c,float v,float p){sounds++;}
     }
-    static final class PotionEffect {
-        final PotionEffectType type; final int ticks; final int amplifier;
-        PotionEffect(PotionEffectType t,int ticks,int amplifier,boolean a,boolean b,boolean c){
-            this.type=t;this.ticks=ticks;this.amplifier=amplifier;}
-    }
-    static final class BukkitTask {final Runnable callback;final long ticks;
-        BukkitTask(Runnable r,long t){callback=r;ticks=t;} void cancel(){}}
+    static final class BukkitTask {final Runnable callback;BukkitTask(Runnable r){callback=r;}}
     abstract static class BukkitRunnable implements Runnable {
-        BukkitTask runTaskLater(Object plugin,long ticks){
-            BukkitTask t=new BukkitTask(this,ticks); schedulerTasks.add(t); return t;}
+        BukkitTask runTaskTimer(Object plugin,long delay,long period){
+            BukkitTask task=new BukkitTask(this);schedulerTasks.add(task);return task;}
+        void cancel(){}
     }
-    static final class Scheduler {final List<BukkitTask> tasks=new ArrayList<>();}
+    record Box(double getMinY,double getMaxY){}
     static class LivingEntity {
         final World world; final UUID id=UUID.randomUUID();
         double x,y,z; Vector velocity=new Vector(0,0,0);
@@ -84,17 +101,21 @@ public class WardenV5RuntimeProbe {
         void setVelocity(Vector v){velocity=v.clone();}
         UUID getUniqueId(){return id;}
         boolean isValid(){return true;} boolean isDead(){return false;}
+        double getEyeHeight(){return 2.5;}
     }
     static final class Player extends LivingEntity {
-        final List<PotionEffect> effects=new ArrayList<>();
+        final AttributeInstance speed=new AttributeInstance();
+        boolean covered;
         Player(World world){super(world);}
         boolean isOnline(){return true;}
         @Override boolean isDead(){return false;}
-        void addPotionEffect(PotionEffect e,boolean force){effects.add(e);}
+        double getHeight(){return 1.8;}
+        Box getBoundingBox(){return new Box(y,y+getHeight());}
+        AttributeInstance getAttribute(Attribute type){return speed;}
         void spawnParticle(Particle p,Location at,int n,double a,double b,double c,double d){}
     }
     static final class RealitySplitTrialRuntimeState {
-        Vector direction; UUID target; final Set<UUID> hitPlayers=new HashSet<>();
+        Vector direction; UUID target; Location castOrigin; final Set<UUID> hitPlayers=new HashSet<>();
     }
     static final class Bukkit {
         static Player nextPlayer;
@@ -106,7 +127,9 @@ public class WardenV5RuntimeProbe {
     final List<Player> targets=new ArrayList<>();
     final Set<UUID> stale=new HashSet<>();
     boolean damageLanded=true;
-    long generation=7L;
+    long generation=7L,eventTickCounter;
+    record WardenControl(UUID caster,String event,long generation,long stunEnds,long slowEnds,AttributeModifier slow){}
+    final Map<UUID,WardenControl> wardenControls=new HashMap<>();
     String eventId="event-7";
     static final List<BukkitTask> schedulerTasks=new ArrayList<>();
     int audience;
@@ -119,7 +142,17 @@ public class WardenV5RuntimeProbe {
     boolean isCurrentRealitySplitTrialTarget(LivingEntity warden,Player p){
         return !stale.contains(p.getUniqueId());}
     boolean applyWaveAbilityDamage(LivingEntity warden,Player p,double d){return damageLanded;}
-    void registerEncounterTask(BukkitTask t){}
+    boolean applyWaveAbilityDamage(LivingEntity warden,Player p,double d,DamageSource source){
+        require(source.type==DamageType.SONIC_BOOM && d==WARDEN_SLAM_DAMAGE,"native sonic source and undiluted damage");
+        return damageLanded;
+    }
+    boolean wardenControlValid(Player p,WardenControl lease){
+        return wardenControls.get(p.id)==lease && generation==lease.generation();
+    }
+    boolean hasNamedTrialLineOfSight(Location from,Location to){
+        return targets.stream().noneMatch(p->p.covered && p.x==to.x && p.z==to.z);
+    }
+    void registerEncounterTask(BukkitTask t,Runnable cleanup){}
     void renderWave7AbilityEffect(LivingEntity warden,Player p,String id){}
     List<Player> eventAudience(){return new ArrayList<>();}
     boolean isEventParticleViewer(Player viewer,Location at){return true;}
@@ -139,18 +172,19 @@ public class WardenV5RuntimeProbe {
         targets.clear(); stale.clear(); schedulerTasks.clear(); damageLanded=landed;
         LivingEntity warden=new LivingEntity(world);warden.x=0;warden.y=70;warden.z=0;
         RealitySplitTrialRuntimeState state=new RealitySplitTrialRuntimeState();
-        state.direction=new Vector(0,0,1);
+        state.direction=new Vector(0,0,1);state.castOrigin=warden.getLocation();
         Player front=player(0,70,3);
         Player edge=player(2.4,70,2);
         Player past=player(0,70,4.5);
         Player wide=player(2.6,70,2);
         Player behind=player(0,70,-2);
         Player high=player(0,72.5,2);
+        Player cover=player(1,70,3);cover.covered=true;
         resolveWardenFrontalSweep(warden,state);
         if(!landed){
             require(state.hitPlayers.isEmpty(),"an immune sweep must accept nobody");
             require(schedulerTasks.isEmpty(),"an immune sweep must schedule no crowd control");
-            for(Player p:targets) require(p.effects.isEmpty(),"an immune sweep must apply no effect");
+            for(Player p:targets) require(!wardenControls.containsKey(p.id),"an immune sweep must apply no effect");
             return;
         }
         require(state.hitPlayers.size()==2,"the committed 5x4 volume catches the near pair, got "+state.hitPlayers.size());
@@ -160,39 +194,36 @@ public class WardenV5RuntimeProbe {
         require(!state.hitPlayers.contains(wide.getUniqueId()),"past 2.5 blocks across is a lateral dodge");
         require(!state.hitPlayers.contains(behind.getUniqueId()),"behind the committed heading is never hit");
         require(!state.hitPlayers.contains(high.getUniqueId()),"2.5 blocks up is a vertical dodge");
-        require(front.effects.size()==1&&front.effects.get(0).type==PotionEffectType.SLOWNESS
-                &&front.effects.get(0).amplifier==WardenV5CombatPolicy.SWEEP_STUN_SLOW_AMPLIFIER
-                &&front.effects.get(0).ticks==WardenV5CombatPolicy.SWEEP_STUN_TICKS,
-                "an accepted hit locks movement for the 20-tick stun immediately");
-        require(schedulerTasks.size()==2,"each accepted hit schedules exactly one slow tail");
-        for(BukkitTask t:schedulerTasks)
-            require(t.ticks==WardenV5CombatPolicy.SWEEP_STUN_TICKS,"the slow tail waits out the whole stun");
-        for(BukkitTask t:schedulerTasks) t.callback.run();
-        require(front.effects.size()==2,"the fenced tail applies the 60-tick slow after the stun");
-        require(front.effects.get(1).amplifier==WardenV5CombatPolicy.SWEEP_SLOW_AMPLIFIER
-                &&front.effects.get(1).ticks==WardenV5CombatPolicy.SWEEP_SLOW_TICKS,
-                "the tail is the lighter 60-tick 2nd-level slow");
-        for(Player p:new Player[]{past,wide,behind,high})
-            require(p.effects.isEmpty(),"a dodged target receives no crowd control");
+        require(!state.hitPlayers.contains(cover.id),"solid cover blocks the frontal sweep");
+        var lease=wardenControls.get(front.id);
+        require(lease.stunEnds()==WardenV5CombatPolicy.SWEEP_STUN_TICKS,"exactly 20 ticks of owned stun");
+        require(lease.slowEnds()-lease.stunEnds()==WardenV5CombatPolicy.SWEEP_SLOW_TICKS,"exactly 60 ticks of slow");
+        require(front.speed.slow==null,"slow starts after the stun");
+        eventTickCounter=lease.stunEnds();
+        for(BukkitTask t:schedulerTasks)t.callback.run();
+        require(front.speed.slow==lease.slow(),"the slow is scoped to this hit");
+        eventTickCounter=lease.slowEnds();
+        for(BukkitTask t:schedulerTasks)t.callback.run();
+        require(front.speed.slow==null&&!wardenControls.containsKey(front.id),"the slow expires cleanly");
     }
 
     void sweepStaleTail(){
         targets.clear(); stale.clear(); schedulerTasks.clear(); damageLanded=true;
         LivingEntity warden=new LivingEntity(world);warden.x=0;warden.y=70;warden.z=0;
         RealitySplitTrialRuntimeState state=new RealitySplitTrialRuntimeState();
-        state.direction=new Vector(0,0,1);
+        state.direction=new Vector(0,0,1);state.castOrigin=warden.getLocation();
         Player front=player(0,70,3);
         resolveWardenFrontalSweep(warden,state);
         generation++;
         for(BukkitTask t:schedulerTasks) t.callback.run();
-        require(front.effects.size()==1,"a tail from a dead generation must not debuff");
+        require(front.speed.slow==null,"a tail from a dead generation must not debuff");
     }
 
     void echo(boolean landed){
         targets.clear(); stale.clear(); damageLanded=landed;
         LivingEntity warden=new LivingEntity(world);warden.x=0;warden.y=70;warden.z=0;
         RealitySplitTrialRuntimeState state=new RealitySplitTrialRuntimeState();
-        state.direction=new Vector(0,0,1);
+        state.direction=new Vector(0,0,1);state.castOrigin=warden.getLocation();
         Player inside=player(0,70,0);
         Player wall=player(5.9,70,0);
         Player outside=player(6.2,70,0);
@@ -210,7 +241,7 @@ public class WardenV5RuntimeProbe {
         require(state.hitPlayers.contains(wall.getUniqueId()),"5.9 blocks through cover is still inside the sphere");
         require(!state.hitPlayers.contains(outside.getUniqueId()),"past the 6-block sphere is a real dodge");
         require(!state.hitPlayers.contains(high.getUniqueId()),"6.5 blocks above the centre is a real dodge");
-        require(state.hitPlayers.contains(already.getUniqueId())&&already.effects.isEmpty(),
+        require(state.hitPlayers.contains(already.getUniqueId())&&!wardenControls.containsKey(already.id),
                 "a target already hit this cast is not hit twice");
         require(inside.getVelocity().lengthSquared()>0.0,"a caught target is shoved");
         require(outside.getVelocity().lengthSquared()==0.0,"a dodged target is not shoved");

@@ -2,6 +2,8 @@ package me.copimine.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import me.copimine.endevent.domain.SpellCastPacket;
+import me.copimine.endevent.domain.SpellCastPacketCodec;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.client.renderer.rendertype.RenderTypes;
 import net.minecraft.client.renderer.texture.OverlayTexture;
@@ -10,31 +12,16 @@ import net.minecraft.world.phys.Vec3;
 
 import java.util.List;
 
-/**
- * Draws the authored V5.1 spell meshes from a single server cue (26.3 client).
- *
- * <p>It consumes the bounded {@code v51-<spell>-<seed>} world cue, derives the
- * whole rotating arm / jaw / shell geometry locally and never mutates state.
- * The server remains the only owner of hitboxes, damage, targets and cleanup;
- * this renderer only disappears when the cue disappears.</p>
- *
- * <p>Each ribbon samples the authored arc texture across its width (bright core,
- * dark feathered edges) and runs a travelling brightness wave along its length,
- * so the mesh reads as flowing energy instead of a static decal.</p>
- */
+/** Draws authored End Rift meshes and signed hazard outlines in world space. */
 public final class SpellVisualRenderer {
-
     public static final Identifier TEXTURE = Identifier.fromNamespaceAndPath(
             "copimineclient", "textures/entity/end_rift_spell_arc.png");
 
     private static final int FULL_BRIGHT = 0x00F000F0;
-    /**
-     * The orthogonal twin ribbon is drawn slightly inset so the two crossed
-     * blends do not stack into a blown-out seam along the shared centre line.
-     * The outer silhouette is still exactly the authored half-width.
-     */
-    private static final float CROSS_VOLUME_INSET = 0.86F;
     private static final Vec3 UP = new Vec3(0.0D, 1.0D, 0.0D);
+    private static final double[][] SECTIONS_6 = section(6);
+    private static final double[][] SECTIONS_8 = section(8);
+    private static final double[][] SECTIONS_12 = section(12);
     private static volatile SpellVisualGeometry.Quality quality =
             SpellVisualGeometry.Quality.BALANCED;
     private static volatile boolean reducedMotion;
@@ -78,90 +65,306 @@ public final class SpellVisualRenderer {
         return RenderTypes.entityTranslucentEmissive(TEXTURE);
     }
 
-    /**
-     * Submit one cue's quads. The caller's {@code matrices} already carry the
-     * camera translation, so the emitted points are absolute world positions.
-     */
     public static void draw(PoseStack matrices, VertexConsumer buffer,
                             EndEventWorldVfxManager.BeamSnapshot beam, long now) {
-        if (matrices == null || buffer == null || beam == null
-                || beam.start() == null || beam.end() == null) {
-            return;
+        drawLegacy(matrices, buffer, beam, now, 22_000);
+    }
+
+    static int drawLegacy(PoseStack matrices, VertexConsumer buffer,
+                          EndEventWorldVfxManager.BeamSnapshot beam, long now, int budget) {
+        if (matrices == null || buffer == null || beam == null || beam.start() == null || beam.end() == null) {
+            return 0;
         }
         SpellVisualGeometry.Spell spell = spellOf(beam.instanceId());
-        if (spell == null || now < beam.startedAtMillis() || beam.expiresAtMillis() <= beam.startedAtMillis()) {
-            return;
+        return spell == null ? 0 : drawAuthored(matrices, buffer, spell, seedOf(beam.instanceId()),
+                beam.start(), beam.end(), beam.color(), beam.startedAtMillis(), beam.expiresAtMillis(),
+                now, quality, budget);
+    }
+
+    static int drawCast(PoseStack matrices, VertexConsumer buffer, SpellCastPacket cast,
+                        long start, long expires, long now, int budget) {
+        SpellVisualGeometry.Spell spell = SpellVisualGeometry.Spell.fromToken(cast.spellId());
+        if (spell == null || now < start || now >= expires || budget <= 0) return 0;
+        SpellVisualGeometry.Quality tier = SpellVisualGeometry.Quality.values()[
+                Math.max(quality.ordinal(), cast.vfxLod())];
+        if (SpellCastPacketCodec.isFangGeometry(cast.spellId())) {
+            return drawFangs(matrices.last(), buffer, cast, (now - start) / (double) (expires - start), tier, budget);
         }
-        long elapsed = now - beam.startedAtMillis();
-        long remaining = beam.expiresAtMillis() - now;
-        double vx = beam.end().x - beam.start().x;
-        double vy = beam.end().y - beam.start().y;
-        double vz = beam.end().z - beam.start().z;
-        double length = Math.sqrt(vx * vx + vy * vy + vz * vz);
-        double dirX;
-        double dirY;
-        double dirZ;
-        if (!Double.isFinite(length) || length < 0.05D) {
-            dirX = 0.0D;
-            dirY = 0.0D;
-            dirZ = 1.0D;
-            length = 0.0D;
-        } else {
-            dirX = vx / length;
-            dirY = vy / length;
-            dirZ = vz / length;
+        if (spell == SpellVisualGeometry.Spell.GRAVITY && cast.lanes().size() == 3) {
+            return drawGravity(matrices.last(), buffer, cast, now - start, tier, budget);
         }
-        // A full orthonormal frame: forward along the cast, right = forward x up,
-        // up' = right x forward. For a horizontal cast this is exactly the old
-        // frame (right lateral, up' world-up); for a diagonal or near-vertical
-        // beam it keeps the cross-section perpendicular to the real axis.
-        double rightX = -dirZ;
-        double rightZ = dirX;
-        double rightLen = Math.hypot(rightX, rightZ);
-        if (!Double.isFinite(rightLen) || rightLen < 1.0E-6D) {
-            rightX = 1.0D;
-            rightZ = 0.0D;
-            rightLen = 1.0D;
+        int drawn = 0;
+        for (SpellCastPacket.Lane lane : cast.lanes()) {
+            Vec3 from = new Vec3(lane.x(), lane.y(), lane.z());
+            Vec3 to = from.add(lane.dx() * lane.length(), lane.dy() * lane.length(), lane.dz() * lane.length());
+            drawn += drawAuthored(matrices, buffer, spell, cast.seed(), from, to, color(spell),
+                    start, expires, now, tier, budget - drawn);
         }
-        rightX /= rightLen;
-        rightZ /= rightLen;
-        double upX = -rightZ * dirY;
-        double upY = rightZ * dirX - rightX * dirZ;
-        double upZ = rightX * dirY;
+        return drawn;
+    }
+
+    private static int drawAuthored(PoseStack matrices, VertexConsumer buffer, SpellVisualGeometry.Spell spell,
+                                    long seed, Vec3 origin, Vec3 end, int color, long start, long expires,
+                                    long now, SpellVisualGeometry.Quality tier, int budget) {
+        if (now < start || now >= expires || budget <= 0) return 0;
+        long elapsed = now - start;
+        Vec3 axis = end.subtract(origin);
+        double length = axis.length();
+        Vec3 forward = length < 0.05 ? new Vec3(0, 0, 1) : axis.scale(1 / length);
+        Vec3 right = new Vec3(-forward.z, 0, forward.x);
+        right = right.lengthSqr() < 1.0e-10 ? new Vec3(1, 0, 0) : right.normalize();
+        Vec3 up = right.cross(forward);
         double reach = Math.max(1.0D, Math.min(SpellVisualGeometry.maxReach(spell), length));
-        List<SpellVisualGeometry.Stroke> strokes = SpellVisualGeometry.build(
-                spell, elapsed, seedOf(beam.instanceId()), reach, quality);
-        float fade = (float) (Math.min(1.0D, elapsed / 160.0D) * Math.min(1.0D, remaining / 260.0D));
-        if (fade <= 0.01F) {
-            return;
-        }
-        int base = beam.color() & 0xFFFFFF;
+        List<SpellVisualGeometry.Stroke> strokes = SpellVisualGeometry.build(spell, elapsed, seed, reach, tier);
+        float fade = (float) (Math.min(1.0D, elapsed / 130.0D) * Math.min(1.0D, (expires - now) / 180.0D));
+        if (fade <= 0.01F) return 0;
         PoseStack.Pose pose = matrices.last();
-        // One global phase makes the wave travel along every stroke in unison;
-        // the style offset keeps neighbouring families from pulsing as clones.
-        // Reduced motion freezes both the phase and the per-vertex throb.
         boolean calm = reducedMotion;
         double flowPhase = SpellVisualMotionPolicy.flowPhase(elapsed, calm);
+        int count = 0;
         for (SpellVisualGeometry.Stroke stroke : strokes) {
-            int tint = SpellVisualToneMap.tone(base, stroke.brightness());
-            int alpha = Math.max(0, Math.min(255, Math.round(255.0F * stroke.alpha() * fade)));
-            if (alpha == 0) {
-                continue;
-            }
-            double stylePhase = flowPhase - stroke.style().ordinal() * 0.9D;
             List<SpellVisualGeometry.Point> points = stroke.points();
-            for (int index = 0; index < points.size() - 1; index++) {
-                Vec3 from = world(beam.start(), dirX, dirY, dirZ, rightX, rightZ,
-                        upX, upY, upZ, points.get(index));
-                Vec3 to = world(beam.start(), dirX, dirY, dirZ, rightX, rightZ,
-                        upX, upY, upZ, points.get(index + 1));
-                float pulseFrom = SpellVisualMotionPolicy.alphaScale(index, stylePhase, calm);
-                float pulseTo = SpellVisualMotionPolicy.alphaScale(index + 1, stylePhase, calm);
-                int argbFrom = (scaleAlpha(alpha, pulseFrom) << 24) | tint;
-                int argbTo = (scaleAlpha(alpha, pulseTo) << 24) | tint;
-                emit(buffer, pose, from, to, stroke.style(), stroke.halfWidths().get(index),
-                        stroke.halfWidths().get(index + 1), argbFrom, argbTo);
+            if (points.size() < 2) continue;
+            int tint = SpellVisualToneMap.tone(color, stroke.brightness());
+            int alpha = Math.max(0, Math.min(255, Math.round(255.0F * stroke.alpha() * fade)));
+            if (alpha == 0) continue;
+            double stylePhase = flowPhase - stroke.style().ordinal() * 0.9D;
+            Vec3[] curve = new Vec3[points.size()];
+            int[] colors = new int[points.size()];
+            for (int i = 0; i < curve.length; i++) {
+                SpellVisualGeometry.Point point = points.get(i);
+                curve[i] = origin.add(forward.scale(point.x())).add(up.scale(point.y())).add(right.scale(point.z()));
+                colors[i] = (scaleAlpha(alpha, SpellVisualMotionPolicy.alphaScale(i, stylePhase, calm)) << 24) | tint;
             }
+            if (stroke.style().volumetric()) {
+                double[][] section = profile(tier, spell == SpellVisualGeometry.Spell.BEAM
+                        || spell == SpellVisualGeometry.Spell.GEYSER);
+                int required = curve.length * section.length * 4 + section.length * 4;
+                if (count + required <= budget) {
+                    count += tube(buffer, pose, curve, stroke.halfWidths(), colors, section);
+                    continue;
+                }
+            }
+            // Flat ground outlines are inexpensive and retain their complete footprint at every tier.
+            for (int i = 0; i + 1 < curve.length && count + 8 <= budget; i++) {
+                Vec3 tangent = curve[i + 1].subtract(curve[i]).normalize();
+                if (tangent.lengthSqr() < 1.0e-8) continue;
+                ribbon(buffer, pose, curve[i], curve[i + 1], initialNormal(tangent),
+                        stroke.halfWidths().get(i), stroke.halfWidths().get(i + 1), colors[i], colors[i + 1]);
+                count += 8;
+            }
+        }
+        return count;
+    }
+
+    private static int drawFangs(PoseStack.Pose pose, VertexConsumer buffer, SpellCastPacket cast, double p,
+                                 SpellVisualGeometry.Quality tier, int budget) {
+        // Spend the budget on the exact ground marks before decorative spokes.
+        int count = 0;
+        for (SpellCastPacket.Lane lane : cast.lanes()) {
+            Vec3 root = new Vec3(lane.x(), lane.y() + 0.06, lane.z());
+            int tint = cast.spellId().equals("crown") ? 0xC289FF : 0xE0BBFF;
+            if (budget - count < 12 * 8) break;
+            for (int i = 0; i < SECTIONS_12.length; i++) {
+                double[] a = SECTIONS_12[i];
+                double[] b = SECTIONS_12[(i + 1) % SECTIONS_12.length];
+                double r = lane.radius();
+                Vec3 from = root.add(r * a[0], 0, r * a[1]);
+                Vec3 to = root.add(r * b[0], 0, r * b[1]);
+                Vec3 side = to.subtract(from).cross(UP).normalize();
+                ribbon(buffer, pose, from, to, side, 0.035f, 0.035f, 0xe8000000 | tint, 0xe8000000 | tint);
+                count += 8;
+            }
+            if (cast.stage() == 0 || budget - count < 400) continue;
+            double height = Math.min(1, p * 5) * Math.min(1, (1 - p) * 4) * 1.5;
+            int[] colors = {0xa06b2ba6, 0xe0000000 | tint, 0xfff8edff};
+            for (int sign : new int[]{-1, 1}) {
+                Vec3[] curve = {root.add(sign * 0.35, 0, 0), root.add(sign * 0.24, height * 0.52, 0.13),
+                        root.add(sign * 0.09, height, 0.04)};
+                count += tube(buffer, pose, curve, List.of(0.18f, 0.12f, 0.015f), colors, profile(tier, true));
+            }
+        }
+        if (cast.spellId().equals("crown")) {
+            double[][] section = profile(tier, true);
+            Vec3 base = new Vec3(cast.x(), cast.y(), cast.z());
+            double yaw = cast.yaw() + 90.0;
+            int samples = tier == SpellVisualGeometry.Quality.REDUCED ? 5 : 9;
+            double[] angles = me.copimine.endevent.domain.ArchmageV5CombatPolicy.crownSpokeAnglesDegrees(0, 10, yaw);
+            for (double angle : angles) {
+                if (budget - count < (samples + 2) * section.length * 4) break;
+                var points = me.copimine.endevent.domain.ArchmageV5CombatPolicy.crownArmPoints(angle,
+                        me.copimine.endevent.domain.ArchmageV5CombatPolicy.CROWN_LENGTH_MAX, samples);
+                Vec3[] centers = new Vec3[points.size()];
+                int[] colors = new int[points.size()];
+                var radii = new java.util.ArrayList<Float>(points.size());
+                for (int i = 0; i < points.size(); i++) {
+                    double[] pt = points.get(i);
+                    double t = i / (double) samples;
+                    centers[i] = base.add(pt[0], Math.max(0.06, pt[1]), pt[2]);
+                    radii.add((float) (0.06 + 0.14 * Math.sin(Math.PI * t)));
+                    colors[i] = cast.stage() == 0 ? 0x88704bbd : 0xa8753bbe;
+                }
+                count += tube(buffer, pose, centers, radii, colors, section);
+            }
+        }
+        return count;
+    }
+
+    private static int drawGravity(PoseStack.Pose pose, VertexConsumer buffer, SpellCastPacket cast,
+                                   long tickMillis, SpellVisualGeometry.Quality tier, int budget) {
+        if (budget < 128) return 0;
+        double rx = cast.lanes().get(0).length();
+        double rz = cast.lanes().get(1).length();
+        double height = cast.lanes().get(2).length();
+        double x = cast.x(), y = cast.y(), z = cast.z();
+        Vec3[] floor = {new Vec3(x - rx, y, z - rz), new Vec3(x + rx, y, z - rz),
+                new Vec3(x + rx, y, z + rz), new Vec3(x - rx, y, z + rz)};
+        int ink = cast.stage() == 1 ? 0xc8ba9cff : 0xb48468e8;
+        int count = 0;
+        for (int i = 0; i < floor.length; i++) {
+            Vec3 from = floor[i], to = floor[(i + 1) & 3];
+            Vec3 side = to.subtract(from).cross(UP).normalize();
+            ribbon(buffer, pose, from, to, side, 0.08f, 0.08f, ink, ink);
+            count += 8;
+        }
+        if (height < 0.2) return count;
+        int columns = switch (tier) {
+            case FULL -> 16;
+            case BALANCED -> 12;
+            case REDUCED -> 8;
+        };
+        double[][] section = profile(tier, false);
+        if (budget - count < section.length * 24) return count;
+        double flow = reducedMotion ? 0.5 : (tickMillis / 650.0) % 1.0;
+        double extent = switch (cast.stage()) {
+            case 0 -> Math.min(1.0, tickMillis / 2000.0) * 0.30;
+            case 2 -> Math.max(0.12, 1.0 - tickMillis / 650.0) * 0.38;
+            default -> 1.0;
+        };
+        int[] shades = {0x309b73e7, 0xb0c5a9ff, 0xc8ecdcff, 0x688d69e0, 0x186642c8};
+        List<Float> radii = List.of(0.045f, 0.15f, 0.19f, 0.12f, 0.045f);
+        for (int column = 0; column < columns && budget - count >= section.length * 24; column++) {
+            double angle = column * (Math.PI * 2.0 / columns);
+            double radial = 0.50 + (column % 3) * 0.19;
+            double localPhase = (flow + column * 0.618) % 1;
+            double low = cast.stage() == 0 ? 0 : height * (1 - localPhase) * 0.37;
+            Vec3[] path = new Vec3[5];
+            for (int i = 0; i < path.length; i++) {
+                double t = i / (double) (path.length - 1);
+                double turn = angle + t * 0.30;
+                path[i] = new Vec3(x + Math.cos(turn) * radial * rx,
+                        y + Math.min(height, low + height * t * extent),
+                        z + Math.sin(turn) * radial * rz);
+            }
+            count += tube(buffer, pose, path, radii, shades, section);
+        }
+        return count;
+    }
+
+    private static int color(SpellVisualGeometry.Spell spell) {
+        return switch (spell) {
+            case CROWN, CIRCLE, FANG_LINE -> 0xB070FF;
+            case WARDEN_SWEEP, ECHO_SPHERE, SCULK_TRACE -> 0x62FFE0;
+            case GEYSER -> 0xFF8A2B;
+            case GRAVITY -> 0x9677F7;
+            case GUARDIAN_FAN, GUARDIAN_HEAVY, SEPARATION -> 0x88DDFC;
+            case BEAM -> 0xE58BFF;
+        };
+    }
+
+    private static double[][] profile(SpellVisualGeometry.Quality tier, boolean hero) {
+        return switch (tier) {
+            case FULL -> hero ? SECTIONS_12 : SECTIONS_8;
+            case BALANCED -> SECTIONS_8;
+            case REDUCED -> SECTIONS_6;
+        };
+    }
+
+    private static double[][] section(int sides) {
+        double[][] values = new double[sides][2];
+        for (int i = 0; i < sides; i++) {
+            double angle = 2 * Math.PI * i / sides;
+            values[i][0] = Math.cos(angle);
+            values[i][1] = Math.sin(angle);
+        }
+        return values;
+    }
+
+    private static Vec3 initialNormal(Vec3 tangent) {
+        Vec3 normal = tangent.cross(UP);
+        return (normal.lengthSqr() > 1.0e-8 ? normal : tangent.cross(new Vec3(1, 0, 0))).normalize();
+    }
+
+    private static Vec3 transport(Vec3 normal, Vec3 from, Vec3 to) {
+        Vec3 rotationAxis = from.cross(to);
+        double step = 1.0 + from.dot(to);
+        if (step > 1.0e-6) {
+            Vec3 first = rotationAxis.cross(normal);
+            normal = normal.add(first).add(rotationAxis.cross(first).scale(1.0 / step));
+        }
+        Vec3 projected = normal.subtract(to.scale(normal.dot(to)));
+        return projected.lengthSqr() > 1.0e-8 ? projected.normalize() : initialNormal(to);
+    }
+
+    private static int tube(VertexConsumer buffer, PoseStack.Pose pose, Vec3[] centers,
+                            List<Float> radii, int[] colors, double[][] section) {
+        int sides = section.length;
+        Vec3[] previousRing = new Vec3[sides];
+        Vec3[] previousNormals = new Vec3[sides];
+        Vec3[] ring = new Vec3[sides];
+        Vec3[] normals = new Vec3[sides];
+        Vec3 oldTangent = null;
+        Vec3 normal = null;
+        int emitted = 0;
+        for (int i = 0; i < centers.length; i++) {
+            int before = Math.max(0, i - 1);
+            int after = Math.min(centers.length - 1, i + 1);
+            Vec3 tangent = centers[after].subtract(centers[before]).normalize();
+            if (tangent.lengthSqr() < 1.0e-8) tangent = oldTangent == null ? UP : oldTangent;
+            normal = normal == null ? initialNormal(tangent) : transport(normal, oldTangent, tangent);
+            Vec3 binormal = tangent.cross(normal);
+            double path = centers[after].distanceTo(centers[before]);
+            double slope = path > 1.0e-5 ? (radii.get(after) - radii.get(before)) / path : 0;
+            double radius = Math.max(0.008, radii.get(i));
+            for (int j = 0; j < sides; j++) {
+                Vec3 radial = normal.scale(section[j][0]).add(binormal.scale(section[j][1]));
+                ring[j] = centers[i].add(radial.scale(radius));
+                normals[j] = radial.subtract(tangent.scale(slope)).normalize();
+            }
+            if (i > 0) {
+                float u0 = (float) (i - 1) / (centers.length - 1);
+                float u1 = (float) i / (centers.length - 1);
+                for (int j = 0; j < sides; j++) {
+                    int next = (j + 1) % sides;
+                    float v0 = (float) j / sides;
+                    float v1 = (float) (j + 1) / sides;
+                    vertex(buffer, pose, previousRing[j], u0, v0, previousNormals[j], colors[i - 1]);
+                    vertex(buffer, pose, previousRing[next], u0, v1, previousNormals[next], colors[i - 1]);
+                    vertex(buffer, pose, ring[next], u1, v1, normals[next], colors[i]);
+                    vertex(buffer, pose, ring[j], u1, v0, normals[j], colors[i]);
+                    emitted += 4;
+                }
+            }
+            if (i == 0 || i == centers.length - 1) {
+                cap(buffer, pose, centers[i], ring, i == 0 ? tangent.scale(-1) : tangent,
+                        colors[i], i == 0);
+                emitted += sides * 4;
+            }
+            Vec3[] swap = previousRing; previousRing = ring; ring = swap;
+            swap = previousNormals; previousNormals = normals; normals = swap;
+            oldTangent = tangent;
+        }
+        return emitted;
+    }
+
+    private static void cap(VertexConsumer buffer, PoseStack.Pose pose, Vec3 center, Vec3[] ring,
+                            Vec3 normal, int color, boolean reverse) {
+        for (int i = 0; i < ring.length; i++) {
+            int next = (i + 1) % ring.length;
+            vertex(buffer, pose, center, 0.5f, 0.5f, normal, color);
+            vertex(buffer, pose, ring[reverse ? next : i], 0.5f, 0.15f, normal, color);
+            vertex(buffer, pose, ring[reverse ? i : next], 0.5f, 0.85f, normal, color);
+            vertex(buffer, pose, center, 0.5f, 0.5f, normal, color);
         }
     }
 
@@ -169,56 +372,6 @@ public final class SpellVisualRenderer {
         int scaled = Math.round(alpha * Math.max(0.0F, Math.min(1.0F, pulse)));
         return Math.max(0, Math.min(255, scaled));
     }
-    private static Vec3 world(Vec3 origin, double dirX, double dirY, double dirZ,
-                              double rightX, double rightZ,
-                              double upX, double upY, double upZ,
-                              SpellVisualGeometry.Point point) {
-        return new Vec3(
-                origin.x + dirX * point.x() + rightX * point.z() + upX * point.y(),
-                origin.y + dirY * point.x() + upY * point.y(),
-                origin.z + dirZ * point.x() + rightZ * point.z() + upZ * point.y());
-    }
-
-    /**
-     * One tapered, double-sided emissive ribbon segment. Hero strokes also get an
-     * orthogonal twin ribbon rotated 90 degrees about the segment axis, so the
-     * mesh keeps real volume instead of collapsing edge-on; the twin never
-     * reaches past the authored half-width, so the warning silhouette is intact.
-     */
-    private static void emit(VertexConsumer buffer, PoseStack.Pose pose, Vec3 from, Vec3 to,
-                             SpellVisualGeometry.Style style, float halfWidthFrom, float halfWidthTo,
-                             int argbFrom, int argbTo) {
-        Vec3 delta = to.subtract(from);
-        if (delta.lengthSqr() < 1.0E-8D) {
-            return;
-        }
-        Vec3 direction = delta.normalize();
-        Vec3 side = direction.cross(UP);
-        if (side.lengthSqr() < 1.0E-6D) {
-            side = direction.cross(new Vec3(1.0D, 0.0D, 0.0D));
-        }
-        if (side.lengthSqr() < 1.0E-6D) {
-            return;
-        }
-        side = side.normalize();
-        // The authored chest-beam cross-section legitimately reaches the real
-        // damage capsule radius; every other family stays well under 0.2. The
-        // ceiling matches BEAM_RADIUS so a coarse mesh can never overshoot it.
-        float wa = Math.max(0.01F, Math.min(1.72F, halfWidthFrom));
-        float wb = Math.max(0.01F, Math.min(1.72F, halfWidthTo));
-        ribbon(buffer, pose, from, to, side, wa, wb, argbFrom, argbTo);
-        if (style != null && style.volumetric()) {
-            Vec3 cross = side.cross(direction);
-            if (cross.lengthSqr() > 1.0E-8D) {
-                // Slightly inset so the shared centre line does not double-expose
-                // into a hard seam, while the outer silhouette stays exact.
-                float inset = CROSS_VOLUME_INSET;
-                ribbon(buffer, pose, from, to, cross.normalize(),
-                        wa * inset, wb * inset, argbFrom, argbTo);
-            }
-        }
-    }
-
     private static void ribbon(VertexConsumer buffer, PoseStack.Pose pose, Vec3 from, Vec3 to,
                                Vec3 side, float wa, float wb, int argbFrom, int argbTo) {
         Vec3 normal = side.cross(to.subtract(from).normalize()).normalize();

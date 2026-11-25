@@ -38,6 +38,10 @@ public interface EndEventBridgeV4Access extends AutoCloseable {
 
     boolean isReady(UUID playerUuid);
 
+    default boolean supportsSpellCasts(UUID playerUuid) {
+        return false;
+    }
+
     /** Safe diagnostic for why the authenticated V4 mutation gate is currently closed. */
     default ReadinessReason readinessReason(UUID playerUuid) {
         return isReady(playerUuid) ? ReadinessReason.READY : ReadinessReason.READINESS_UNAVAILABLE;

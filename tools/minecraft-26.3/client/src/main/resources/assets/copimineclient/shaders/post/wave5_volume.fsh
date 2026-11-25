@@ -89,15 +89,26 @@ void main() {
         if (nearGain <= 0.0001) continue;
         vec3 point = EyeTime.xyz + direction * distanceAlongRay;
         if (any(lessThan(point, ArenaMin.xyz)) || any(greaterThan(point, ArenaMax.xyz))) continue;
-        // World-locked three-dimensional rolling eddies, not screen-space grain or particles.
-        vec3 drift = vec3(EyeTime.w * 0.065, -EyeTime.w * 0.025, EyeTime.w * 0.04);
-        float eddy = 0.72 * cloudNoise(point * 0.54 + drift)
-                + 0.28 * cloudNoise(point * 1.47 - drift * 1.6);
-        float density = VolumeState.y * mix(0.72, 1.38, eddy) * nearGain;
+        // Floor ash, eye-height streamers and a broader upper veil share a world-space flow.
+        // The field stays coherent when the camera turns or crosses a chunk boundary.
+        float height = max(0.0, point.y - ArenaMin.y);
+        vec3 drift = vec3(EyeTime.w * 0.045, 0.0, -EyeTime.w * 0.070);
+        float ash = cloudNoise(point * vec3(0.45, 2.0, 0.52) + drift);
+        float veil = cloudNoise(point * vec3(0.24, 0.38, 0.21) - drift * 0.55);
+        float streamer = cloudNoise(point * vec3(1.32, 0.76, 0.53) + drift * 2.05);
+        float floorLayer = exp(-height * 1.4) * smoothstep(0.20, 0.74, ash);
+        float eyeLayer = exp(-abs(height - 1.40) * 1.25) * smoothstep(0.49, 0.79, streamer);
+        float upperLayer = smoothstep(1.1, 2.75, height) * smoothstep(0.12, 0.78, veil);
+        float density = VolumeState.y * nearGain
+                * clamp(0.68 + floorLayer * 0.54 + eyeLayer * 0.37 + upperLayer * 0.35, 0.68, 1.70);
         float extinction = 1.0 - exp(-density * stride);
-        float soul = pow(cloudNoise(point * 1.9 - drift * 2.1), 9.0);
-        vec3 ink = mix(vec3(0.005,0.003,0.008), vec3(0.043,0.024,0.044), eddy * eddy);
-        ink += soul * vec3(0.085, 0.022, 0.095);
+        vec3 charcoal = vec3(0.010, 0.006, 0.011);
+        vec3 coalAsh = vec3(0.080, 0.041, 0.026);
+        vec3 violet = vec3(0.052, 0.023, 0.069);
+        vec3 ink = mix(charcoal, coalAsh, floorLayer * 0.67);
+        ink = mix(ink, violet, clamp(upperLayer * 0.65 + eyeLayer * 0.55, 0.0, 0.7));
+        float wispCore = pow(streamer, 8.0) * eyeLayer;
+        ink += wispCore * vec3(0.11, 0.036, 0.14);
         scattered += transmittance * extinction * ink;
         transmittance *= 1.0 - extinction;
         if (transmittance < 0.004) break;

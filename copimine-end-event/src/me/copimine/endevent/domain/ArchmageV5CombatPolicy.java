@@ -90,7 +90,7 @@ public final class ArchmageV5CombatPolicy {
      * Warning window. The contract allows 0.7..1.0 s; 0.8 s (40 ticks) keeps a
      * readable tell without turning a frequent spell into a cutscene.
      */
-    public static final int FANG_LINE_WARNING_TICKS = 40;
+    public static final int FANG_LINE_WARNING_TICKS = 18;
     /** Per-fang damage before party scaling. */
     public static final double FANG_LINE_DAMAGE = 7.0D;
 
@@ -146,7 +146,7 @@ public final class ArchmageV5CombatPolicy {
     /** Smallest gap the owner accepts as a real escape route. */
     public static final double CIRCLE_GAP_BLOCKS_MIN = 2.0D;
     /** 1.0..1.3 s; 1.1 s keeps the ring readable under a 2-player pile. */
-    public static final int CIRCLE_WARNING_TICKS = 55;
+    public static final int CIRCLE_WARNING_TICKS = 24;
     public static final double CIRCLE_FANG_DAMAGE = 8.0D;
 
     /** Clamp an authored radius into the ratified band. */
@@ -352,7 +352,7 @@ public final class ArchmageV5CombatPolicy {
     // ------------------------------------------------------------------
 
     /** 0.5..0.7 s; 0.6 s is the readable middle of the band. */
-    public static final int REPULSE_WARNING_TICKS = 30;
+    public static final int REPULSE_WARNING_TICKS = 12;
     public static final double REPULSE_RADIUS_MIN = 3.5D;
     public static final double REPULSE_RADIUS_MAX = 4.5D;
     public static final double REPULSE_PUSH_MIN = 2.5D;

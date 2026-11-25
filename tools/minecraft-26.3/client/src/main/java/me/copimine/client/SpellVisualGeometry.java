@@ -180,8 +180,31 @@ public final class SpellVisualGeometry {
     public static final double GEYSER_MAX_HEIGHT = 12.0D;
     public static final double GEYSER_MIN_HEIGHT = 6.0D;
     public static final double GEYSER_VISUAL_RADIUS = 1.58D;
-    /** One authored eruption cycle; the clock loops so the column keeps living. */
+    /**
+     * Detail loop only: fissures, flame lash, ash and shard launches keep
+     * cycling on this shorter clock so the standing column is never static.
+     * The macroscopic warning / bloom / collapse timing is the staged clock
+     * below, not this period.
+     */
     public static final long GEYSER_PERIOD_MILLIS = 2400L;
+    /**
+     * Authored warning length, taken from the contract floor of
+     * {@code RiftFractureEruptionPolicy.MIN_WARNING_TICKS} (20 ticks / 1000 ms).
+     * The client cannot know the exact seeded warning, so the marker is fully
+     * grown by the shortest legal one: a longer warning only holds it, and the
+     * column can therefore never be shown later than the real eruption.
+     */
+    public static final long GEYSER_WARNING_MILLIS = 1_000L;
+    /** Time for the column to reach its authored height after the warning. */
+    public static final long GEYSER_BLOOM_MILLIS = 420L;
+    /**
+     * Collapse starts no earlier than the longest legal stage
+     * ({@code MAX_WARNING_TICKS} + {@code ERUPT_TICKS} = 24 + 60 ticks), so the
+     * column always still stands at the last tick that can damage a latecomer.
+     */
+    public static final long GEYSER_COLLAPSE_START_MILLIS = 4_200L;
+    /** Warning + eruption + collapse; after this the hazard is already restored. */
+    public static final long GEYSER_STAGE_MILLIS = 4_700L;
 
     /** Prefix of the compact authored-cast cue carried by the beam transport. */
     public static final String CUE_PREFIX = "v51-";
@@ -1092,19 +1115,33 @@ public final class SpellVisualGeometry {
     // the cast clock. Every radial feature stays inside the real 1.58-block
     // visual radius (under the 1.9-block damage radius), and the height is
     // driven by the authored reach so it matches the staged 8..12 blocks.
+    //
+    // The clock is staged, not looping, because the server stage is staged:
+    // the authored warning (locked breach marker + inward pre-blast) owns the
+    // whole 1-second telegraph, the column blooms after it and only starts to
+    // collapse past GEYSER_COLLAPSE_START_MILLIS, so the drawn column is always
+    // standing on every tick that can still damage a latecomer. The shorter
+    // GEYSER_PERIOD_MILLIS drives only the surface detail so the standing
+    // column never freezes between those stage boundaries.
     // ------------------------------------------------------------------
     private static List<Stroke> geyser(long elapsedMillis, long seed, double requested,
                                        Quality quality) {
         double height = clamp(requested > 0.0D ? requested : GEYSER_MAX_HEIGHT,
                 GEYSER_MIN_HEIGHT, GEYSER_MAX_HEIGHT);
-        double t = frac(elapsedMillis / (double) GEYSER_PERIOD_MILLIS);
-        // Envelope: fissures and pressure lead, the column blooms, then it
-        // collapses and the ash settles. All phases overlap so motion never
-        // stops mid-cycle.
-        double swell = t < 0.22D ? smooth(t / 0.22D) : 1.0D;
-        double erupt = clamp((t - 0.18D) / 0.18D, 0.0D, 1.0D);
-        double collapse = clamp((t - 0.72D) / 0.28D, 0.0D, 1.0D);
-        double column = clamp(0.12D + 0.88D * erupt - collapse, 0.06D, 1.0D);
+        double elapsed = Math.max(0.0D, elapsedMillis);
+        // Stage envelope: nothing but the breach until the warning ends, a fast
+        // authored bloom, a long standing column, then a collapse to wisps.
+        double warn = clamp(elapsed / (double) GEYSER_WARNING_MILLIS, 0.0D, 1.0D);
+        double swell = smooth(warn);
+        double erupt = clamp((elapsed - GEYSER_WARNING_MILLIS)
+                / (double) GEYSER_BLOOM_MILLIS, 0.0D, 1.0D);
+        double collapse = clamp((elapsed - GEYSER_COLLAPSE_START_MILLIS)
+                / Math.max(1.0D, (double) (GEYSER_STAGE_MILLIS - GEYSER_COLLAPSE_START_MILLIS)),
+                0.0D, 1.0D);
+        double column = clamp(0.12D + 0.88D * smooth(erupt) - collapse, 0.06D, 1.0D);
+        // Detail clock: identical to the old looping period, so fissures, flame
+        // lash, ash drift and shard launches keep moving while the stage holds.
+        double t = frac(elapsed / (double) GEYSER_PERIOD_MILLIS);
         double spin = spinDegrees(elapsedMillis, 26.0D, splitUnit(seed, 5L) * 360.0D);
         int samples = quality.samples();
         List<Stroke> strokes = new ArrayList<>(64);
@@ -1255,7 +1292,7 @@ public final class SpellVisualGeometry {
             double launch = 0.20D + 0.03D * (shard % 4)
                     + 0.02D * splitUnit(seed, 540L + shard);
             double life = clamp((t - launch) / 0.55D, 0.0D, 1.0D);
-            if (life <= 0.0D || life >= 1.0D || column <= 0.10D) {
+            if (life <= 0.0D || life >= 1.0D || column <= 0.10D || erupt <= 0.0D) {
                 continue;
             }
             double arc = Math.sin(Math.PI * life);

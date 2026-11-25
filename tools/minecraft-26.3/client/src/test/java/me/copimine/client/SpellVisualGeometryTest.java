@@ -323,11 +323,14 @@ class SpellVisualGeometryTest {
         // column with growing fissures, volumetric flame sheets and debris that
         // collapses -- not a static particle spiral. Everything must stay inside
         // the authored visual radius (under the real 1.9-block damage radius).
+        // The staged clock owns the phases: the warning is a floor marker, the
+        // column stands through the whole damage window (GEYSER_COLLAPSE_START_MILLIS
+        // is the longest legal eruption), then it collapses at the very end.
         List<SpellVisualGeometry.Stroke> bloom = SpellVisualGeometry.build(
-                SpellVisualGeometry.Spell.GEYSER, 1080L, SEED,
+                SpellVisualGeometry.Spell.GEYSER, 3_600L, SEED,
                 SpellVisualGeometry.GEYSER_MAX_HEIGHT, SpellVisualGeometry.Quality.FULL);
         List<SpellVisualGeometry.Stroke> collapse = SpellVisualGeometry.build(
-                SpellVisualGeometry.Spell.GEYSER, 2200L, SEED,
+                SpellVisualGeometry.Spell.GEYSER, 4_650L, SEED,
                 SpellVisualGeometry.GEYSER_MAX_HEIGHT, SpellVisualGeometry.Quality.FULL);
         double bloomTop = bloom.stream().flatMap(stroke -> stroke.points().stream())
                 .mapToDouble(SpellVisualGeometry.Point::x).max().orElse(0);
@@ -337,8 +340,9 @@ class SpellVisualGeometryTest {
                 "the full column must reach near its authored height, was " + bloomTop);
         // Every radial feature hugs the throat: never wider than the visual
         // radius, so the visible column cannot promise more than its hitbox.
-        // Checked on the bloom and on the collapsing tail, because a late-cycle
-        // mote that drifts outside the capsule would be just as dishonest.
+        // Checked on the standing column and on the collapsing tail, because a
+        // late-cycle mote that drifts outside the capsule would be just as
+        // dishonest.
         for (List<SpellVisualGeometry.Stroke> frame : List.of(bloom, collapse)) {
             for (SpellVisualGeometry.Stroke stroke : frame) {
                 for (SpellVisualGeometry.Point point : stroke.points()) {
@@ -356,16 +360,16 @@ class SpellVisualGeometryTest {
         assertTrue(count(bloom, SpellVisualGeometry.Style.FIELD) >= 4, "volumetric flame sheets");
         assertTrue(count(bloom, SpellVisualGeometry.Style.TRACE) >= 6, "ash and debris");
         // The authored height drives the extent.
-        double shortTop = SpellVisualGeometry.build(SpellVisualGeometry.Spell.GEYSER, 1080L, SEED,
+        double shortTop = SpellVisualGeometry.build(SpellVisualGeometry.Spell.GEYSER, 3_600L, SEED,
                         6.0D, SpellVisualGeometry.Quality.FULL).stream()
                 .flatMap(stroke -> stroke.points().stream())
                 .mapToDouble(SpellVisualGeometry.Point::x).max().orElse(0);
         assertTrue(bloomTop > shortTop + 2.0D, "a taller staging really is taller");
         // It animates continuously and collapses rather than sitting static.
         assertTrue(!bloom.equals(SpellVisualGeometry.build(SpellVisualGeometry.Spell.GEYSER,
-                1380L, SEED, SpellVisualGeometry.GEYSER_MAX_HEIGHT,
+                1_380L, SEED, SpellVisualGeometry.GEYSER_MAX_HEIGHT,
                 SpellVisualGeometry.Quality.FULL)), "the geyser must animate over its clock");
-        assertTrue(collapseTop < bloomTop, "the column collapses at the end of the cycle");
+        assertTrue(collapseTop < bloomTop, "the column collapses at the end of its stage");
     }
 
     @Test
@@ -376,13 +380,13 @@ class SpellVisualGeometryTest {
         // breach marker, the inward pre-blast, the ballistic shards, the
         // detached crest lobes or the exit rings.
         List<SpellVisualGeometry.Stroke> warning = SpellVisualGeometry.build(
-                SpellVisualGeometry.Spell.GEYSER, 240L, SEED,
+                SpellVisualGeometry.Spell.GEYSER, 800L, SEED,
                 SpellVisualGeometry.GEYSER_MAX_HEIGHT, SpellVisualGeometry.Quality.FULL);
         List<SpellVisualGeometry.Stroke> bloom = SpellVisualGeometry.build(
-                SpellVisualGeometry.Spell.GEYSER, 1080L, SEED,
+                SpellVisualGeometry.Spell.GEYSER, 3_600L, SEED,
                 SpellVisualGeometry.GEYSER_MAX_HEIGHT, SpellVisualGeometry.Quality.FULL);
         List<SpellVisualGeometry.Stroke> cooling = SpellVisualGeometry.build(
-                SpellVisualGeometry.Spell.GEYSER, 2200L, SEED,
+                SpellVisualGeometry.Spell.GEYSER, 4_600L, SEED,
                 SpellVisualGeometry.GEYSER_MAX_HEIGHT, SpellVisualGeometry.Quality.FULL);
 
         // 1. The locked ground breach: a closed, rugged outer ring plus a

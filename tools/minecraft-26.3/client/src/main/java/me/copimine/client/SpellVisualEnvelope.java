@@ -87,7 +87,7 @@ public final class SpellVisualEnvelope {
 
     private static final double[] BEAM_HEAT = {0.35D, 0.50D, 0.72D, 1.00D, 0.95D, 0.70D, 0.42D};
 
-    private static final double[] GEYSER_HEAT = {0.38D, 0.55D, 0.80D, 1.00D, 0.94D, 0.66D, 0.40D};
+    private static final double[] GEYSER_HEAT = {0.38D, 0.50D, 0.66D, 0.86D, 1.00D, 0.98D, 0.96D};
 
     private SpellVisualEnvelope() {
     }

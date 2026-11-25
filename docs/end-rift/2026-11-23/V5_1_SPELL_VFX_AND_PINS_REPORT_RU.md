@@ -35,7 +35,18 @@ jar на 5 байт длиннее (30679300 вместо 30679295). Причи�
 `SpellVisualEnvelope` с 7 смысловыми ключами, строго монотонным re-time и кривой
 нагрева материала (только яркость, силуэт неизменен) — см. §1.17. Поскольку это
 правка основных исходников клиента, jar пересобран дважды (оба раза
-байт-идентично) и пин обновлён — см. §1.18. CI этого коммита — run `45510583294`.
+байт-идентично) и пин обновлён — см. §1.18. Поверх — docs-коммит
+`41500fc3d0d6f4d5a0b1411e09a1fbb1c0cf053a` (§9L.01-карта и этот лог).
+
+**CI зелёный на финальном SHA `41500fc3`, run [`45511745562`](https://github.com/IliaZav/copimine/actions/runs/45511745562):**
+все три джобы `success` — `static-and-contract` (шаг 12 «Build and verify pinned
+Minecraft 26.3 candidates» → **success**, то есть CI воспроизвёл новый пин
+**30 684 452 B / `4e70f379…`** из исходников; шаг 17 «Run Python contract tests»
+→ success), `java-plugins`, `migration-postgres-contract`. Шаги «Require native
+Minecraft 26.3 acceptance evidence» и «Upload verified Minecraft 26.3 acceptance
+evidence» — **skipped**, а не passed: нативного F2/звука в этой среде нет, поэтому
+`NATIVE_BLOCKED` честно отражён и в самом пайплайне. Предыдущий run `45507903256`
+(коммит `f5c15a0e`, `.gitattributes` `eol=lf` + превью) — тоже `success`.
 
 ## 1. Что сделано
 
@@ -354,8 +365,10 @@ Dungeon и третьи стороны не тронуты; инкремент �
 - Локально: 26.3-клиент `test jar` — BUILD SUCCESSFUL; полная батарея клиента
   **434 теста, `FAIL=0 ERR=0 SKIP=0`** (`SpellVisualGeometryTest` 20/20,
   `SpellVisualMotionPolicyTest` 4/4, `SpellVisualToneMapTest` 6/6,
-  `SpellVisualSoundRuntimeTest` 5/5, `SpellVisualEnvelopeTest` 7/7); тесты на пин
-  и клиентские команды — 177 passed, 1 skipped.
+  `SpellVisualSoundRuntimeTest` 5/5, `SpellVisualEnvelopeTest` 7/7); локальный прогон
+  `test_minecraft_migration_profile.py` + `test_end_rift_spell_presentation.py` +
+  `test_end_rift_spell_visual_previews.py` — **59 passed, 1 skipped**; CI шаг 17 гоняет
+  весь `tests/`.
 
 ### 1.12 Снижение движения для авторских мировых мешей (§9A.04, §9A.05, SOURCE + AUTO)
 
@@ -692,7 +705,7 @@ completed) и авторские кривые с разным характеро
 | Слой | Что покрывает |
 |---|---|
 | `SOURCE` | Правки кода: серверные подсказки, 26.3-клиент (мешь/рендерер/проводка), 1.21.1-зеркало, перепины и тесты. |
-| `AUTO` | Локальный гейт: все шаги сборки/тестов зелёные (единственный красный — repo-wide `git diff --check` на постороннем незакоммиченном файле подземелья, вне коммита), **434 теста 26.3-клиента** (`FAIL=0 ERR=0 SKIP=0`), pin-тесты (**177 passed/1 skipped** на новом хэше), двойная байт-воспроизводимая пересборка (30 684 452 / `4e70f379…`); полная Python-батарея **3842 passed / 5 failed (инкремент подземелья)** до двух новых тестов превью, затем **8 passed** на превью + презентацию и `--check` генератора (12 листов совпадают с исходником). |
+| `AUTO` | Локальный гейт: все шаги сборки/тестов зелёные (единственный красный — repo-wide `git diff --check` на постороннем незакоммиченном файле подземелья, вне коммита), **434 теста 26.3-клиента** (`FAIL=0 ERR=0 SKIP=0`), локально pin-профиль+презентация+превью — **59 passed / 1 skipped**; **CI run [`45511745562`](https://github.com/IliaZav/copimine/actions/runs/45511745562) — все джобы success**: шаг 12 «Build and verify pinned Minecraft 26.3 candidates» воспроизвёл пин **30 684 452 / `4e70f379…`** из исходников, шаг 17 «Run Python contract tests» — success, нативные гейты — **skipped** (честно, не passed); двойная байт-воспроизводимая пересборка (30 684 452 / `4e70f379…`); полная Python-батарея **3842 passed / 5 failed (инкремент подземелья)** до двух новых тестов превью, затем **8 passed** на превью + презентацию и `--check` генератора (12 листов совпадают с исходником). |
 | `NATIVE_BLOCKED` | F2 нативный визуал; измерения нагрузки N23-P1-07 при 2/5/10/11/20 игроках. |
 | `PROD` | Не выполнялось. |
 

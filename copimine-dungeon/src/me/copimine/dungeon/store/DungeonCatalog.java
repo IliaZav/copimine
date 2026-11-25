@@ -111,7 +111,8 @@ public final class DungeonCatalog {
                             .map(GateDefinition::id).toList())
                     .secretIds(secrets.values().stream().filter(secret -> secret.roomId().equals(roomId))
                             .map(SecretDefinition::id).toList())
-                    .spawnAnchorIds(spawns.values().stream().filter(spawn -> spawn.roomId().equals(roomId))
+                    .spawnAnchorIds(spawns.values().stream().filter(spawn -> spawn.roomId().equals(roomId)
+                                    && !spawn.id().equals(entry.getValue().reward().anchorId()))
                             .map(SpawnAnchor::id).toList())
                     .build());
         }

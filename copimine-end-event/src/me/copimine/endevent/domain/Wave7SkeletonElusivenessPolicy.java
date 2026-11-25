@@ -17,7 +17,7 @@ public final class Wave7SkeletonElusivenessPolicy {
     public static final int REPOSITION_INTERVAL_TICKS = 8;
 
     /** A hide is brief: long enough to lose them, short enough to punish late. */
-    public static final int VANISH_TICKS = 34;
+    public static final int VANISH_TICKS = (int) Wave7MarksmanInvisibilityPolicy.INVISIBLE_TICKS;
 
     /** A vanished archer cannot shoot and cannot be hit; the tell is the smoke. */
     public static final int VANISH_RECOVERY_TICKS = 10;

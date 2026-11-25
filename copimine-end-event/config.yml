@@ -28,6 +28,9 @@ ritual:
 # Set only after checking the exact live layout with /cmend arena reveal-preview.
 # The independently reviewed, site-specific manifest is last-seal-arena.tsv.
 last-seal-reveal:
+  # Inclusive [x1, y1, z1, x2, y2, z2] from the approved builder survey.
+  concealed-corridor: []
+  protected-safe-zone: []
   approved-plan-sha256: ''
 
 arena:

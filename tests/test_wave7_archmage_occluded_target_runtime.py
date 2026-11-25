@@ -83,7 +83,10 @@ public class OccludedArchmageProbe {
     // and can commit the pair's joint crossfire. Both belong to the sibling
     // actor, so the probe stubs them out; the pair rules themselves are covered
     // by Wave7SkeletonPairPolicyTest.
-    boolean maintainNamedMarksmanPair(Object a,int b){return true;}
+    final Map<Integer,Object> marksmanSkyHail=new HashMap<>();
+    boolean marksmanHasVisibleCover(Object a,Object b,long now){return false;}
+    boolean beginMarksmanSkyHail(Object a,Object b,Object c,long now){return false;}
+    void emitTrialParticle(Object a,Object b,Particle c,int d,double x,double y,double z,double spread){}
     boolean isPairedCrossfireLeader(Object a,int b){return false;}
     boolean pairedCrossfireReady(Object a,Object b,int c){return false;}
     boolean fireNamedMarksmanPairedCrossfire(Object a,Object b,
@@ -120,17 +123,19 @@ public class OccludedArchmageProbe {
         @SuppressWarnings("unchecked") <T> T get(Object key,Type<T> type){return (T)values.get(key);}
     }
     enum EntityType { EVOKER, SKELETON }
-    enum Particle { PORTAL, HAPPY_VILLAGER }
+    enum Particle { PORTAL, HAPPY_VILLAGER, ASH, ELECTRIC_SPARK }
     enum Sound { ENTITY_ENDERMAN_TELEPORT }
     static class Vector {
         double x,y,z;Vector(double x,double y,double z){this.x=x;this.y=y;this.z=z;}
         double getX(){return x;}double getY(){return y;}double getZ(){return z;}
         public Vector clone(){return new Vector(x,y,z);}Vector multiply(double m){x*=m;y*=m;z*=m;return this;}
+        Vector setY(double y){this.y=y;return this;} double lengthSquared(){return x*x+y*y+z*z;}
     }
     static class Location {
         double x,y,z;Location(double x,double y,double z){this.x=x;this.y=y;this.z=z;}
         public Location clone(){return new Location(x,y,z);}
         Location add(Vector v){return add(v.x,v.y,v.z);}
+        Location subtract(Vector v){return add(-v.x,-v.y,-v.z);}
         Location add(double x,double y,double z){this.x+=x;this.y+=y;this.z+=z;return this;}
         double getX(){return x;}double getZ(){return z;}double getY(){return y;}void setY(double y){this.y=y;}
         double distanceSquared(Location other){double dx=x-other.x,dy=y-other.y,dz=z-other.z;return dx*dx+dy*dy+dz*dz;}

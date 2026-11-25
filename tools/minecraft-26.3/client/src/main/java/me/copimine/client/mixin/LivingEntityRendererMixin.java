@@ -81,8 +81,15 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity,
         String uuid = entity.getUUID().toString();
         bound.copimine$poseProgress(ClientBridgeProtocol.endEventState().wavePoseProgress(uuid,System.currentTimeMillis()));
         bound.copimine$bindTrialFrame(ClientBridgeProtocol.endEventState().trialFrame(uuid, System.currentTimeMillis()));
+        String visual = ClientBridgeProtocol.endEventVisualForEntity(uuid);
+        var customName = entity.getCustomName();
+        if ((visual == null || visual.isBlank()) && state instanceof WardenRenderState
+                && customName != null && customName.getContents() instanceof net.minecraft.network.chat.contents.TranslatableContents translated
+                && translated.getKey().equals("copimine.dungeon.arena_warden")) {
+            visual = "DUNGEON_ARENA_WARDEN";
+        }
         bound.copimine$bindRenderState(uuid, entity.getId(), entity instanceof EchoPlayerView,
-                ClientBridgeProtocol.endEventVisualForEntity(uuid),
+                visual,
                 ClientBridgeProtocol.endEventWavePoseForEntity(uuid),
                 ClientBridgeProtocol.endEventAnimationForEntity(uuid),
                 ClientBridgeProtocol.isBoundEndBoss(uuid),

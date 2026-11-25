@@ -55,9 +55,11 @@ final class LastSealArenaReveal {
         Location at(World world) { return new Location(world, x + .5, y, z + .5); }
         boolean loaded(World world) { return world.isChunkLoaded(x >> 4, z >> 4); }
     }
-    private record Change(boolean wall, Cell cell, String original) { }
+    private record Change(String kind, Cell cell, String original) {
+        boolean wall() { return !kind.equals("fissure"); }
+    }
     record Plan(UUID worldId, int x, int z, int radius, int floor, int rescueY, Cell landing,
-                String digest, List<Change> changes) {
+                String digest, List<Change> changes, Square protectedSafeZone) {
         boolean horizontal(double px, double pz) {
             double dx = px - x - .5, dz = pz - z - .5;
             return dx * dx + dz * dz <= (double) radius * radius;
@@ -85,7 +87,8 @@ final class LastSealArenaReveal {
     boolean configured() { return Files.exists(planPath); }
     boolean needsRecovery() { return Files.exists(journal); }
 
-    Plan preview(World world, Location core, Square original, Predicate<Location> protectedCell)
+    Plan preview(World world, Location core, Square original, Square corridor, Square safeZone,
+                 Predicate<Location> protectedCell)
             throws IOException {
         if (world == null || core == null || original == null) throw new IOException("arena layout is unavailable");
         byte[] bytes = readBounded(planPath);
@@ -105,7 +108,12 @@ final class LastSealArenaReveal {
                     || !original.contains(landing.at(world)) || !safeLanding(landing, world)) {
                 throw new IOException("world, Core, radius or rescue landing is invalid");
             }
-            Plan candidate = new Plan(id, x, z, radius, floor, rescueY, landing, digest(bytes), List.of());
+            if ((corridor == null) != (safeZone == null))
+                throw new IOException("concealed corridor and protected safe zone must both be configured");
+            byte[] approval = corridor == null ? bytes
+                    : (new String(bytes, StandardCharsets.UTF_8) + "\n" + corridor + "\n" + safeZone)
+                            .getBytes(StandardCharsets.UTF_8);
+            Plan candidate = new Plan(id, x, z, radius, floor, rescueY, landing, digest(approval), List.of(), safeZone);
             for (int sx : new int[]{original.minX(), original.maxX()}) {
                 for (int sz : new int[]{original.minZ(), original.maxZ()}) {
                     if (!candidate.horizontal(sx + .5, sz + .5))
@@ -113,17 +121,23 @@ final class LastSealArenaReveal {
                 }
             }
             List<Change> changes = parseChanges(lines.subList(1, lines.size()));
+            if (safeZone != null && safeZone.contains(landing.at(world)))
+                throw new IOException("rescue landing cannot be in the protected safe zone");
             if (changes.size() != expectedCount || changes.stream().noneMatch(Change::wall))
                 throw new IOException("wrong cell count or no wall segment");
             for (Change change : changes) {
                 Cell cell = change.cell();
                 boolean onBoundary = original.horizontal(cell.x(), cell.z()) && (cell.x() == original.minX()
                         || cell.x() == original.maxX() || cell.z() == original.minZ() || cell.z() == original.maxZ());
-                boolean geometry = change.wall() ? onBoundary && cell.y() > floor && cell.y() <= original.maxY()
-                        : !original.horizontal(cell.x(), cell.z()) && cell.y() == floor;
                 Location at = cell.at(world);
+                boolean geometry = switch (change.kind()) {
+                    case "corridor" -> corridor != null && corridor.contains(at) && cell.y() > floor;
+                    case "wall" -> corridor == null && onBoundary && cell.y() > floor && cell.y() <= original.maxY();
+                    default -> !original.horizontal(cell.x(), cell.z()) && cell.y() == floor;
+                };
                 if (!geometry || !world.getWorldBorder().isInside(at)
                         || !candidate.horizontal(at.getX(), at.getZ()) || protectedCell.test(at)
+                        || safeZone != null && safeZone.contains(at)
                         || !cell.loaded(world)) throw new IOException("unapproved, protected, or unloaded cell " + cell);
                 Block block = cell.block(world);
                 if (!block.getType().isSolid() || block.getState(false) instanceof TileState
@@ -131,7 +145,7 @@ final class LastSealArenaReveal {
                     throw new IOException("site no longer matches original block at " + cell);
                 }
             }
-            return new Plan(id, x, z, radius, floor, rescueY, landing, candidate.digest(), changes);
+            return new Plan(id, x, z, radius, floor, rescueY, landing, candidate.digest(), changes, safeZone);
         } catch (IllegalArgumentException invalid) {
             throw new IOException("invalid Last Seal plan", invalid);
         }
@@ -155,14 +169,24 @@ final class LastSealArenaReveal {
     Plan opened(long generation) { return active(generation) && open ? plan : null; }
     boolean ascensionStarted(long generation) { return active(generation) && ascended; }
 
+    double ascentProgress(long generation, long tick) {
+        return ascensionStarted(generation) ? Math.clamp((tick - startTick - 140) / 76.0D, 0, 1) : 0;
+    }
+
     boolean takeAscension(long generation, long tick) {
-        if (!active(generation) || !open || ascended || tick - startTick < 160) return false;
+        if (!active(generation) || !open || ascended || tick - startTick < 140) return false;
         ascended = true;
         return true;
     }
 
+    boolean protects(Location at, long generation) {
+        return active(generation) && plan.protectedSafeZone() != null && at.getWorld() != null
+                && at.getWorld().getUID().equals(plan.worldId()) && plan.protectedSafeZone().contains(at);
+    }
+
     boolean contains(Location at, long generation) {
         return active(generation) && open && at.getWorld() != null && at.getWorld().getUID().equals(plan.worldId())
+                && (plan.protectedSafeZone() == null || !plan.protectedSafeZone().contains(at))
                 && plan.horizontal(at.getX(), at.getZ()) && at.getY() >= plan.floor()
                 && at.getY() < square.maxY() + 1.0;
     }
@@ -200,6 +224,7 @@ final class LastSealArenaReveal {
         if (age >= 100) {
             for (Player player : world.getPlayers()) {
                 Location at = player.getLocation();
+                if (protects(at, generation)) continue;
                 if (at.getY() < plan.rescueY() && plan.horizontal(at.getX(), at.getZ())
                         && plan.changes().stream().anyMatch(change -> !change.wall()
                         && Math.abs(change.cell().x() - at.getBlockX()) <= 1
@@ -252,7 +277,8 @@ final class LastSealArenaReveal {
         String contents = new String(readBounded(journal), StandardCharsets.UTF_8);
         List<String> lines = java.util.Arrays.asList(contents.split("\\R"));
         String[] header = lines.getFirst().split("\t", -1);
-        if (header.length != 14 || !VERSION.equals(header[0])) throw new IOException("invalid arena recovery journal");
+        if ((header.length != 14 && header.length != 20) || !VERSION.equals(header[0]))
+            throw new IOException("invalid arena recovery journal");
         try {
             World world = Bukkit.getWorld(UUID.fromString(header[1]));
             if (world == null) throw new IOException("arena journal world unavailable");
@@ -260,6 +286,8 @@ final class LastSealArenaReveal {
             Square original = new Square(number(header[7]), world.getMinHeight(), number(header[8]),
                     number(header[9]), world.getMaxHeight() - 1, number(header[10]));
             int centerX = number(header[11]), centerZ = number(header[12]), radius = number(header[13]);
+            Square safeZone = header.length == 20 ? new Square(number(header[14]), number(header[15]), number(header[16]),
+                    number(header[17]), number(header[18]), number(header[19])) : null;
             if (radius < 8 || radius > 96 || original.minX() > original.maxX() || original.minZ() > original.maxZ())
                 throw new IOException("invalid recovery footprint");
             List<Change> changes = parseChanges(lines.subList(1, lines.size()));
@@ -277,6 +305,7 @@ final class LastSealArenaReveal {
             boolean wasRevealed = changes.stream().anyMatch(change -> change.cell().block(world).getType().isAir());
             for (Player player : world.getPlayers()) {
                 Location at = player.getLocation();
+                if (safeZone != null && safeZone.contains(at)) continue;
                 boolean inClosingCell = changes.stream().anyMatch(change -> {
                     Cell cell = change.cell();
                     return player.getBoundingBox().overlaps(new BoundingBox(cell.x(), cell.y(), cell.z(),
@@ -304,7 +333,7 @@ final class LastSealArenaReveal {
         StringBuilder body = new StringBuilder();
         for (Change change : checked.changes()) {
             Cell c = change.cell();
-            body.append(change.wall() ? "wall" : "fissure").append('\t').append(c.x()).append('\t')
+            body.append(change.kind()).append('\t').append(c.x()).append('\t')
                     .append(c.y()).append('\t').append(c.z()).append('\t').append(change.original()).append('\n');
         }
         Cell safe = checked.landing();
@@ -312,6 +341,9 @@ final class LastSealArenaReveal {
                 "" + safe.z(), "" + checked.changes().size(), digest(body.toString().getBytes(StandardCharsets.UTF_8)),
                 "" + original.minX(), "" + original.minZ(), "" + original.maxX(), "" + original.maxZ(),
                 "" + checked.x(), "" + checked.z(), "" + checked.radius());
+        Square safeZone = checked.protectedSafeZone();
+        if (safeZone != null) header += "\t" + String.join("\t", "" + safeZone.minX(), "" + safeZone.minY(),
+                "" + safeZone.minZ(), "" + safeZone.maxX(), "" + safeZone.maxY(), "" + safeZone.maxZ());
         Files.createDirectories(journal.getParent());
         Path temporary = Files.createTempFile(journal.getParent(), "last-seal-arena-", ".tmp");
         try {
@@ -333,15 +365,15 @@ final class LastSealArenaReveal {
         for (String line : lines) {
             if (line.isBlank() || line.startsWith("#")) continue;
             String[] fields = line.split("\t", -1);
-            if (fields.length != 5 || !(fields[0].equals("wall") || fields[0].equals("fissure"))
+            if (fields.length != 5 || !(fields[0].equals("wall") || fields[0].equals("fissure") || fields[0].equals("corridor"))
                     || fields[4].isBlank() || parsed.size() >= MAX_CELLS)
                 throw new IOException("invalid arena cell");
-            boolean wall = fields[0].equals("wall");
+            boolean wall = !fields[0].equals("fissure");
             if (wall && fissure) throw new IOException("walls must come before fissures");
             fissure |= !wall;
             Cell cell = new Cell(number(fields[1]), number(fields[2]), number(fields[3]));
             if (!seen.add(cell)) throw new IOException("duplicate arena cell " + cell);
-            parsed.add(new Change(wall, cell, fields[4]));
+            parsed.add(new Change(fields[0], cell, fields[4]));
         }
         long chunks = parsed.stream().map(change -> {
             Cell cell = change.cell();

@@ -18,10 +18,15 @@ public abstract class WardenEntityRendererMixin {
             at = @At("HEAD"), cancellable = true)
     private void copimine$wave7WardenTexture(WardenRenderState state,
                                               CallbackInfoReturnable<Identifier> cir) {
-        if (!(state instanceof EndRiftRenderStateAccess bound)
-                || !Wave7NamedTrialVisualPolicy.WARDEN_VISUAL.equals(bound.copimine$visual())) return;
-        Identifier texture = EndEventTextureCatalog.textureForVisual(bound.copimine$visual());
-        EndEventTextureCatalog.logLookup("wave7-warden", texture);
+        if (!(state instanceof EndRiftRenderStateAccess bound)) return;
+        Identifier texture;
+        if ("DUNGEON_ARENA_WARDEN".equals(bound.copimine$visual())) {
+            texture = Identifier.fromNamespaceAndPath("copimineclient", "textures/entity/dungeon_arena_warden.png");
+        } else if (Wave7NamedTrialVisualPolicy.WARDEN_VISUAL.equals(bound.copimine$visual())) {
+            texture = EndEventTextureCatalog.textureForVisual(bound.copimine$visual());
+        } else {
+            return;
+        }
         if (EndEventTextureCatalog.isAvailable(texture)) cir.setReturnValue(texture);
     }
 }

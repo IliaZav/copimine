@@ -44,6 +44,7 @@ final class DungeonMobCombat {
             tickWindup(tick, players);
             return;
         }
+        if (profile.template() == MobTemplate.ARENA_WARDEN) return;
         Player target = nearest(players);
         mob.setTarget(target);
         if (target == null || tick < nextAttack || !profile.template().isDungeonExtension()

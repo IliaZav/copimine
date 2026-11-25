@@ -21,6 +21,7 @@ public final class Wave7NamedTrialActorPolicy {
          * See {@link me.copimine.endevent.domain.Wave7SkeletonPairPolicy}.</p>
          */
         MARKSMAN_PAIRED_CROSSFIRE,
+        MARKSMAN_SKY_HAIL,
         ARCHMAGE_FANGS,
         ARCHMAGE_SPEAR,
         ARCHMAGE_STEP,
@@ -348,6 +349,7 @@ public final class Wave7NamedTrialActorPolicy {
             // A longer tell than any solo shot: the party must be able to read
             // the cross forming and pick a side to leave.
             case MARKSMAN_PAIRED_CROSSFIRE -> 30;
+            case MARKSMAN_SKY_HAIL -> 48;
             case ARCHMAGE_FANGS -> 20;
             case ARCHMAGE_SPEAR -> 24;
             case ARCHMAGE_STEP -> 18;
@@ -370,6 +372,7 @@ public final class Wave7NamedTrialActorPolicy {
             case MARKSMAN_SPREAD_SHOT -> 48;
             case MARKSMAN_SUPPORT -> 90;
             case MARKSMAN_PAIRED_CROSSFIRE -> 140;
+            case MARKSMAN_SKY_HAIL -> 800;
             case ARCHMAGE_FANGS -> ArchmageV5CombatPolicy.FANG_LINE_WARNING_TICKS + 20;
             case ARCHMAGE_SPEAR -> 62;
             case ARCHMAGE_STEP -> 46;

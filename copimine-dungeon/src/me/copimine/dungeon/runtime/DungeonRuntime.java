@@ -134,6 +134,7 @@ public final class DungeonRuntime implements Listener {
         }
         List<SpawnAnchor> anchors = new ArrayList<>();
         for (String id : room.spawnAnchorIds()) {
+            if (id.equals(room.reward().anchorId())) continue;
             SpawnAnchor anchor = store.catalog().spawn(id);
             if (anchor != null) {
                 anchors.add(anchor);
@@ -731,6 +732,11 @@ public final class DungeonRuntime implements Listener {
                     return false;
                 }
                 mob.setRemoveWhenFarAway(false);
+                if (assignment.template() == me.copimine.dungeon.domain.MobTemplate.ARENA_WARDEN) {
+                    mob.customName(net.kyori.adventure.text.Component.translatable(
+                            "copimine.dungeon.arena_warden", "Страж арены"));
+                    mob.setCustomNameVisible(false);
+                }
                 track(mob, new Owner(this, life.generation(), true, Long.MAX_VALUE));
                 live.put(mob.getUniqueId(), new DungeonMobCombat(mob, assignment.template(), tick));
                 return true;
@@ -785,7 +791,7 @@ public final class DungeonRuntime implements Listener {
                 return false;
             }
             double halfWidth = type == EntityType.RAVAGER ? 1.0 : 0.48;
-            double height = type == EntityType.ENDERMAN ? 2.9 : 2.0;
+            double height = type == EntityType.ENDERMAN || type == EntityType.WARDEN ? 2.9 : 2.0;
             BoundingBox cell = new BoundingBox(at.getX() - halfWidth, y, at.getZ() - halfWidth,
                     at.getX() + halfWidth, y + height, at.getZ() + halfWidth);
             for (int bx = (int) Math.floor(cell.getMinX()); bx <= Math.floor(cell.getMaxX()); bx++) {

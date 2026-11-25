@@ -30,6 +30,9 @@ public final class LastSealRingRuntime {
         void finished(Scope scope, String reason);
         void failed(String reason);
         default void repelPrelude(Location origin, double progress, boolean release) { }
+        default double combatRadius(Location origin) {
+            return KaguneRingGapPolicy.ROW_EMERGE_RADIUS[0] + KaguneRingGapPolicy.ROW_TRAVEL_BLOCKS;
+        }
     }
     private record FallLease(UUID world, long generation, long expiresNanos) { }
     private final Host host;
@@ -45,6 +48,8 @@ public final class LastSealRingRuntime {
     private long nextCleanupTick;
     private long preludeTick = -1L;
     private boolean repelled;
+    private double travelBlocks;
+    private int travelTicks, rowTicks;
 
     public LastSealRingRuntime(Host host) { this.host = Objects.requireNonNull(host); }
     public boolean active() { return active; }
@@ -80,7 +85,11 @@ public final class LastSealRingRuntime {
         // Escape passages must remain usable over each row's entire travel. Rows
         // now share one centre origin, so scan from the boss's feet to the rim.
         double innerRadius = KaguneRingGapPolicy.ROW_EMERGE_RADIUS[0];
-        double outerRadius = innerRadius + KaguneRingGapPolicy.ROW_TRAVEL_BLOCKS;
+        double outerRadius = host.combatRadius(at);
+        if (!Double.isFinite(outerRadius) || outerRadius <= innerRadius || outerRadius > KaguneRingFrame.MAX_RADIUS) return false;
+        travelBlocks = outerRadius - innerRadius;
+        travelTicks = Math.max(TRAVEL_TICKS, (int) Math.ceil(travelBlocks / .275D));
+        rowTicks = EMERGE_TICKS + travelTicks + RETRACT_TICKS + GAP_TICKS;
         for (int step = 0; step < 96; step++) {
             double angle = Math.PI * 2D * step / 96;
             boolean clear = true;
@@ -105,7 +114,7 @@ public final class LastSealRingRuntime {
         try {
             carrier = host.createCarrier(origin.clone());
             if (carrier == null || !carrier.isValid()) throw new IllegalStateException("carrier-refused");
-            host.publish(carrier, frame(0, 0));
+            host.publish(carrier, frame(0, 0, 0));
             active = true;
             return true;
         } catch (RuntimeException failure) {
@@ -127,6 +136,7 @@ public final class LastSealRingRuntime {
         if (tick < lastTick || tick < (preludeTick >= 0 ? preludeTick : startedTick)) {
             cancel("clock-rewound"); return;
         }
+        long priorTick = lastTick;
         lastTick = tick;
         if (preludeTick >= 0 && tick < startedTick) {
             try {
@@ -138,9 +148,11 @@ public final class LastSealRingRuntime {
             return;
         }
         long elapsed = tick - startedTick;
-        if (elapsed >= CAST_TICKS) { cancel("complete"); return; }
-        int row = (int) (elapsed / ROW_TICKS), age = (int) (elapsed % ROW_TICKS);
-        KaguneRingFrame frame = frame(row, age);
+        if (elapsed >= rowTicks * KaguneRingGapPolicy.ROW_COUNT) { cancel("complete"); return; }
+        int row = (int) (elapsed / rowTicks), age = (int) (elapsed % rowTicks);
+        int priorAge = priorTick < startedTick ? age - 1
+                : (int) Math.max(0L, priorTick - startedTick - (long) row * rowTicks);
+        KaguneRingFrame frame = frame(row, age, priorAge);
         try {
             // Publish first. A failed frame cannot deal invisible damage.
             host.publish(carrier, frame);
@@ -172,19 +184,19 @@ public final class LastSealRingRuntime {
         } catch (RuntimeException failure) { cancel("frame-failed"); host.failed(failure.getMessage()); }
     }
 
-    private KaguneRingFrame frame(int rowIndex, int age) {
+    private KaguneRingFrame frame(int rowIndex, int age, int priorAge) {
         var row = layout.row(rowIndex);
-        double progress = Math.max(0D, Math.min(1D, (age - EMERGE_TICKS) / (double) TRAVEL_TICKS));
-        double prior = Math.max(0D, Math.min(1D, (age - EMERGE_TICKS - 1D) / TRAVEL_TICKS));
+        double progress = Math.clamp((age - EMERGE_TICKS) / (double) travelTicks, 0, 1);
+        double prior = Math.clamp((priorAge - EMERGE_TICKS) / (double) travelTicks, 0, 1);
         int stage = age < EMERGE_TICKS ? KaguneRingFrame.EMERGE
-                : age < EMERGE_TICKS + TRAVEL_TICKS ? KaguneRingFrame.TRAVEL : KaguneRingFrame.RETRACT;
+                : age <= EMERGE_TICKS + travelTicks ? KaguneRingFrame.TRAVEL : KaguneRingFrame.RETRACT;
         double rise = stage == KaguneRingFrame.EMERGE ? age / (double) EMERGE_TICKS
-                : stage == KaguneRingFrame.RETRACT ? Math.max(0D, 1D - (age - EMERGE_TICKS - TRAVEL_TICKS) / (double) RETRACT_TICKS) : 1D;
+                : stage == KaguneRingFrame.RETRACT ? Math.max(0D, 1D - (age - EMERGE_TICKS - travelTicks) / (double) RETRACT_TICKS) : 1D;
         List<Double> gaps = new ArrayList<>();
         for (double angle : row.gapCentres()) gaps.add(KaguneRingFrame.wrap(angle));
         return new KaguneRingFrame(rowIndex, stage,
-                row.emergeRadius() + KaguneRingGapPolicy.ROW_TRAVEL_BLOCKS * progress,
-                row.emergeRadius() + KaguneRingGapPolicy.ROW_TRAVEL_BLOCKS * prior, rise, progress, gaps);
+                row.emergeRadius() + travelBlocks * progress,
+                row.emergeRadius() + travelBlocks * prior, rise, progress, gaps);
     }
 
     /** Accepted launch protection survives visual retirement until one landing. */

@@ -295,6 +295,11 @@ public final class DungeonDefinitionStore {
             }
         }
         for (String spawnId : room.spawnAnchorIds()) {
+            SpawnAnchor spawn = catalog.spawn(spawnId);
+            if (spawn != null && (!id.equals(spawn.roomId()) || !room.world().equals(spawn.world())
+                    || room.bounds() == null || !room.bounds().contains(spawn.bounds()))) {
+                problems.add("Spawn zone '" + spawnId + "' is outside room '" + id + "'.");
+            }
             if (!catalog.spawns().containsKey(spawnId)) {
                 problems.add("Комната '" + id + "': спавн-якорь '" + spawnId + "' не найден.");
             }
@@ -406,8 +411,9 @@ public final class DungeonDefinitionStore {
                     .append(spawn.x()).append('\t')
                     .append(spawn.y()).append('\t')
                     .append(spawn.z()).append('\t')
-                    .append(spawn.radius())
-                    .append('\n');
+                    .append(spawn.radius());
+            if (spawn.zone() != null) out.append('\t').append(encodeCuboid(spawn.zone()));
+            out.append('\n');
         }
         return out.toString();
     }
@@ -591,7 +597,8 @@ public final class DungeonDefinitionStore {
             return;
         }
         catalog.putSpawn(new SpawnAnchor(id, unesc(f[2]), unesc(f[3]), parseInt(f[4]),
-                parseInt(f[5]), parseInt(f[6]), Double.parseDouble(f[7].trim())));
+                parseInt(f[5]), parseInt(f[6]), Double.parseDouble(f[7].trim()),
+                f.length > 8 ? decodeCuboid(f[8]) : null));
     }
 
     // ------------------------------------------------------------------

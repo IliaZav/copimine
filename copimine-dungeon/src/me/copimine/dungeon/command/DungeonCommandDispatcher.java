@@ -248,6 +248,20 @@ public final class DungeonCommandDispatcher {
             case "room info", "room edit", "room show" -> {
                 return describeRoom(route.argument("roomId"), lines);
             }
+            case "room bounds", "room trigger" -> {
+                String id = route.argument("roomId");
+                DungeonRoomDefinition room = store.catalog().room(id);
+                Cuboid selection = room == null ? null : selectionInWorld(actor, room.world());
+                if (selection == null) return CommandResponse.fail("Сначала выделите две точки в мире комнаты.");
+                if (path.endsWith("trigger")) {
+                    if (!room.bounds().contains(selection)) return CommandResponse.fail("Триггер должен быть внутри комнаты.");
+                    return roomMutate(id, lines, b -> b.trigger(selection), "Триггер обновлён.");
+                }
+                if (room.trigger() != null && !selection.contains(room.trigger())) {
+                    return CommandResponse.fail("Новые границы должны содержать триггер комнаты.");
+                }
+                return roomMutate(id, lines, b -> b.bounds(selection), "Границы комнаты обновлены.");
+            }
             case "room validate" -> {
                 return validateRoom(route.argument("roomId"), lines);
             }
@@ -329,6 +343,13 @@ public final class DungeonCommandDispatcher {
             case "gate add" -> {
                 return gateAdd(actor, route, lines);
             }
+            case "gate bounds" -> {
+                String id = route.argument("gateId");
+                var definition = store.catalog().gate(id);
+                Cuboid selection = definition == null ? null : selectionInWorld(actor, definition.world());
+                if (selection == null) return CommandResponse.fail("Сначала выделите две точки в мире объекта.");
+                return gateMutate(id, lines, b -> b.bounds(selection));
+            }
             case "gate style" -> {
                 return gateMutate(route.argument("gateId"), lines, gate -> gate
                         .style(GateStyle.fromToken(route.argument("style"))));
@@ -371,6 +392,13 @@ public final class DungeonCommandDispatcher {
             case "secret add" -> {
                 return secretAdd(actor, route, lines);
             }
+            case "secret bounds" -> {
+                String id = route.argument("secretId");
+                var definition = store.catalog().secret(id);
+                Cuboid selection = definition == null ? null : selectionInWorld(actor, definition.world());
+                if (selection == null) return CommandResponse.fail("Сначала выделите две точки в мире объекта.");
+                return secretMutate(id, lines, b -> b.bounds(selection));
+            }
             case "secret style" -> {
                 return secretMutate(route.argument("secretId"), lines, secret -> secret
                         .style(GateStyle.fromToken(route.argument("gateStyle"))));
@@ -382,18 +410,35 @@ public final class DungeonCommandDispatcher {
             case "spawn add" -> {
                 return spawnAdd(actor, route, lines);
             }
+            case "spawn zone", "spawn bounds" -> {
+                return editSpawnZone(actor, route.argument("spawnId"), path.equals("spawn bounds"));
+            }
             case "spawn list" -> {
                 for (SpawnAnchor spawn : store.catalog().spawns().values()) {
                     if (spawn.roomId().equals(route.argument("roomId"))) {
-                        lines.add(spawn.id() + " " + format(spawn.position()) + " r=" + spawn.radius());
+                        lines.add(spawn.id() + " " + spawn.bounds().describe() + " r=" + spawn.radius());
                     }
                 }
                 return CommandResponse.ok(lines);
             }
             case "spawn remove" -> {
-                boolean removed = store.catalog().removeSpawn(route.argument("spawnId")) != null;
-                lines.add(removed ? "Спавн-якорь удалён." : "Спавн-якорь не найден.");
-                return CommandResponse.ok(lines);
+                String id = route.argument("spawnId");
+                SpawnAnchor anchor = store.catalog().spawn(id);
+                if (anchor == null) return CommandResponse.fail("Спавн-якорь не найден.");
+                DungeonRoomDefinition room = store.catalog().room(anchor.roomId());
+                if (room != null && id.equals(room.reward().anchorId())) {
+                    return CommandResponse.fail("Этот якорь используется наградой комнаты.");
+                }
+                try {
+                    store.applyEdit(catalog -> {
+                        catalog.removeSpawn(id);
+                        if (room != null) catalog.putRoom(room.toBuilder().spawnAnchorIds(room.spawnAnchorIds().stream()
+                                .filter(anchorId -> !id.equals(anchorId)).toList()).build());
+                    });
+                    return CommandResponse.ok("Спавн-якорь удалён.");
+                } catch (RuntimeException error) {
+                    return CommandResponse.fail(error.getMessage());
+                }
             }
             case "mobs add" -> {
                 return mobsAdd(route, lines);
@@ -410,8 +455,26 @@ public final class DungeonCommandDispatcher {
             }
             case "wave add" -> {
                 return roomMutate(route.argument("roomId"), lines,
-                        builder -> builder.addWave(new WaveSpec(List.of(), 0)),
+                        builder -> {
+                            if (builder.waves().size() >= 64) throw new IllegalArgumentException("Лимит — 64 волны.");
+                            builder.addWave(new WaveSpec(List.of(), 0));
+                        },
                         "Волна добавлена.");
+            }
+            case "wave mob" -> {
+                int index = Integer.parseInt(route.argument("waveIndex"));
+                int count = Integer.parseInt(route.argument("count"));
+                MobTemplate template = MobTemplate.fromId(route.argument("mobTemplate"));
+                return roomMutate(route.argument("roomId"), lines, builder -> {
+                    List<WaveSpec> waves = new ArrayList<>(builder.waves());
+                    if (index >= waves.size()) throw new IllegalArgumentException("Индекс волны вне диапазона.");
+                    WaveSpec wave = waves.get(index);
+                    List<EnemyGroup> groups = new ArrayList<>(wave.group());
+                    groups.removeIf(group -> group.template() == template);
+                    if (count > 0) groups.add(new EnemyGroup(template, count));
+                    waves.set(index, new WaveSpec(groups, wave.delayTicks()));
+                    builder.waves(waves);
+                }, "Состав волны обновлён.");
             }
             case "wave delay" -> {
                 int index = Integer.parseInt(route.argument("waveIndex"));
@@ -580,6 +643,11 @@ public final class DungeonCommandDispatcher {
         }
     }
 
+    private Cuboid selectionInWorld(CommandActor actor, String world) {
+        EditorSession session = sessions.session(actor.id());
+        return session != null && world.equals(session.world()) ? session.selection() : null;
+    }
+
     private CommandResponse gateAdd(CommandActor actor, CommandRegistry.Route route, List<String> lines) {
         String gateId = route.argument("gateId");
         if (store.catalog().gate(gateId) != null) {
@@ -666,6 +734,33 @@ public final class DungeonCommandDispatcher {
         }
         lines.add("Секрет '" + secretId + "' обновлён.");
         return CommandResponse.ok(lines);
+    }
+
+    private CommandResponse editSpawnZone(CommandActor actor, String id, boolean replace) {
+        EditorSession session = sessions.session(actor.id());
+        if (session == null || session.selection() == null) {
+            return CommandResponse.fail("Выделите обе границы зоны спавна.");
+        }
+        SpawnAnchor existing = store.catalog().spawn(id);
+        if (replace != (existing != null)) {
+            return CommandResponse.fail(replace ? "Зона спавна не найдена." : "Этот идентификатор уже занят.");
+        }
+        String roomId = replace ? existing.roomId() : session.selectedRoomId();
+        DungeonRoomDefinition room = roomId == null ? null : store.catalog().room(roomId);
+        if (room == null || room.bounds() == null || !room.world().equals(session.world())
+                || !room.bounds().contains(session.selection())) {
+            return CommandResponse.fail("Выделение должно полностью находиться в границах комнаты.");
+        }
+        try {
+            SpawnAnchor anchor = SpawnAnchor.inZone(id, roomId, room.world(), session.selection());
+            store.applyEdit(catalog -> {
+                catalog.putSpawn(anchor);
+                if (!replace) catalog.putRoom(room.toBuilder().addSpawnAnchorId(id).build());
+            });
+            return CommandResponse.ok("Зона спавна " + id + " · " + anchor.bounds().describe());
+        } catch (RuntimeException error) {
+            return CommandResponse.fail(error.getMessage());
+        }
     }
 
     private CommandResponse spawnAdd(CommandActor actor, CommandRegistry.Route route, List<String> lines) {

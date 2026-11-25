@@ -2840,6 +2840,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             bootstrapTask = null;
         }
         resetEncounterTaskRegistry(Math.max(1L, generation));
+        lastSealArena = new LastSealArenaReveal(getDataFolder().toPath());
+        restoreLastSealArena();
         recoverHazardJournal();
         restorePersistedGateIfNeeded();
         boolean configuredEventInProgress = isConfigured()
@@ -6641,6 +6643,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         clearWave7MinibossBossBars();
         // Contract 14.4: a disabled plugin must not leave magma behind either;
         // the inferno puts its exact originals back before the scheduler stops.
+        restoreLastSealArena();
         clearArenaInferno();
         // Contract 13.2: a disabled plugin must not leave a cracked floor or
         // magma behind. The teardown restores the exact original BlockData and
@@ -8359,7 +8362,109 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
+    private LastSealArenaReveal lastSealArena;
+
+    private LastSealArenaReveal.Square lastSealSquare() {
+        return new LastSealArenaReveal.Square(arenaMinX, arenaMinY, arenaMinZ, arenaMaxX, arenaMaxY, arenaMaxZ);
+    }
+
+    private boolean protectedLastSealCell(Location at) {
+        Location core = coreCombatAnchorLocation();
+        if (core == null || at.distanceSquared(core) < 16.0D) return true;
+        EventLayoutState.Portal portal = portalRoom();
+        if (portal != null && portal.world().equals(at.getWorld().getName())
+                && at.distanceSquared(new Location(at.getWorld(), portal.x(), portal.y(), portal.z())) < 36D) return true;
+        EventLayoutState.Point a = layoutState.gatePos1(), b = layoutState.gatePos2();
+        return a != null && b != null && a.world().equals(at.getWorld().getName())
+                && b.world().equals(a.world())
+                && at.getBlockX() >= Math.min(a.x(), b.x()) - 1 && at.getBlockX() <= Math.max(a.x(), b.x()) + 1
+                && at.getBlockY() >= Math.min(a.y(), b.y()) - 1 && at.getBlockY() <= Math.max(a.y(), b.y()) + 1
+                && at.getBlockZ() >= Math.min(a.z(), b.z()) - 1 && at.getBlockZ() <= Math.max(a.z(), b.z()) + 1;
+    }
+
+    private void previewLastSealArena(CommandSender sender) {
+        if (lastSealArena == null || !lastSealArena.configured() || !isConfigured()) {
+            message(sender, "&eТребуется карта last-seal-arena.tsv для текущей арены.");
+            return;
+        }
+        try {
+            Location core = coreCombatAnchorLocation();
+            var plan = lastSealArena.preview(core == null ? null : core.getWorld(), core,
+                    lastSealSquare(), this::protectedLastSealCell);
+            message(sender, "&aКарта совпадает с блоками. Радиус " + plan.radius() + " · SHA-256 " + plan.digest());
+            message(sender, "&7Для утверждения укажите этот хеш в last-seal-reveal.approved-plan-sha256.");
+        } catch (java.io.IOException invalid) {
+            message(sender, "&cКарта отклонена: " + invalid.getMessage());
+        }
+    }
+
+    private boolean startLastSealArenaReveal(LivingEntity boss) {
+        String approved = getConfig().getString("last-seal-reveal.approved-plan-sha256", "");
+        if (lastSealArena == null || !lastSealArena.configured() || approved.isBlank()
+                || !isOfficialBoss(boss)) return false;
+        try {
+            Location core = coreCombatAnchorLocation();
+            var site = lastSealArena.preview(boss.getWorld(), core, lastSealSquare(), this::protectedLastSealCell);
+            lastSealArena.begin(site, lastSealSquare(), approved, generation, eventTickCounter);
+            stopEventMusic();
+            holdBossCastPosition(boss);
+            getLogger().info("LAST_SEAL_REVEAL_BEGIN generation=" + generation + " plan=" + site.digest());
+            return true;
+        } catch (java.io.IOException invalid) {
+            getLogger().warning("LAST_SEAL_REVEAL_REFUSED " + invalid.getMessage());
+            return false;
+        }
+    }
+
+    private boolean tickLastSealArenaReveal(LivingEntity boss) {
+        if (lastSealArena == null || !lastSealArena.active(generation)) return false;
+        try {
+            boolean wasOpen = lastSealArena.opened(generation) != null;
+            lastSealArena.tick(boss.getWorld(), coreCombatAnchorLocation(), generation, eventTickCounter);
+            if (!wasOpen && lastSealArena.opened(generation) != null) {
+                for (Player viewer : eventAudience()) refreshClientBindingsForPlayer(viewer);
+            }
+            boolean ascending = lastSealArena.takeAscension(generation, eventTickCounter);
+            if (ascending) {
+                startCurrentLastSealVisuals(boss);
+                playEventMusic(musicForPhase());
+            }
+            if (lastSealArena.playing(generation, eventTickCounter)) {
+                if (!lastSealArena.ascensionStarted(generation) || !pinBossToFinalSealCore(boss)) {
+                    holdBossCastPosition(boss);
+                }
+                if (ascending) spawnLastSealAscensionBurst(boss);
+                updateBossBar(boss);
+                return true;
+            }
+            if (ascending) spawnLastSealAscensionBurst(boss);
+            return false;
+        } catch (java.io.IOException | RuntimeException error) {
+            getLogger().warning("LAST_SEAL_REVEAL_ABORTED " + error.getMessage());
+            if (restoreLastSealArena()) startCurrentLastSealVisuals(boss);
+            return true;
+        }
+    }
+
+    private boolean restoreLastSealArena() {
+        if (lastSealArena == null || !lastSealArena.needsRecovery()) return true;
+        try {
+            lastSealArena.restore();
+            return true;
+        } catch (java.io.IOException | RuntimeException error) {
+            phase = EventPhase.RECOVERY_REQUIRED;
+            recoveryReason = "LAST_SEAL_ARENA_RESTORE_REQUIRED";
+            getLogger().severe(recoveryReason + " " + error.getMessage());
+            saveStateSync();
+            return false;
+        }
+    }
+
     private void handleLayout(CommandSender sender, String group, String[] args) {
+        if ("arena".equals(group) && args.length > 1 && "reveal-preview".equalsIgnoreCase(args[1])) {
+            previewLastSealArena(sender);
+            return;
+        }
         if ("portalroom".equals(group)) {
             if (args.length > 1 && "info".equalsIgnoreCase(args[1])) {
                 EventLayoutState.Portal portal = portalRoom();
@@ -15888,6 +15993,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || !location.getWorld().getName().equalsIgnoreCase(worldName)) {
             return false;
         }
+        if (lastSealArena != null && lastSealArena.contains(location, generation)) return true;
         int x = location.getBlockX();
         int y = location.getBlockY();
         int z = location.getBlockZ();
@@ -38687,10 +38793,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Player target = checkpoint.targetId() == null ? null : Bukkit.getPlayer(checkpoint.targetId());
 
         if (checkpoint.attack() != Wave7NamedTrialActorPolicy.Attack.NONE) {
+            boolean committedArea = isCommittedArchmageArea(checkpoint.attack());
+            boolean targetAvailable = target != null && isCurrentRealitySplitTrialTarget(actor, target);
             TrialAimLock lock = trialAimLocks.get(actor.getUniqueId());
             if (lock == null || lock.cast() != checkpoint.phaseDeadlineMillis()
                     || lock.generation() != generation || !Objects.equals(lock.event(), eventId)
-                    || target == null || !isCurrentRealitySplitTrialTarget(actor, target))
+                    || (!committedArea && !targetAvailable))
                 return finishNamedTrialAttack(actor, checkpoint, now);
             actor.setVelocity(new Vector(0.0D, actor.getVelocity().getY(), 0.0D));
             if (checkpoint.phaseDeadlineMillis() > now) {
@@ -38698,7 +38806,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         Wave7NamedTrialActorPolicy.telegraphTicks(checkpoint.attack()) * 50,
                         (int)Math.max(0L, Wave7NamedTrialActorPolicy.telegraphTicks(checkpoint.attack()) * 50L
                                 - (checkpoint.phaseDeadlineMillis() - now)));
-                renderNamedTrialTelegraph(actor, target, checkpoint.attack(), false);
+                if (targetAvailable) renderNamedTrialTelegraph(actor, target, checkpoint.attack(), false);
                 return true;
             }
             if (checkpoint.attack() == Wave7NamedTrialActorPolicy.Attack.MARKSMAN_SUPPORT) {
@@ -38719,10 +38827,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 }
                 return fireNamedMarksmanPairedCrossfire(actor, target, checkpoint, now, trial.chamber());
             }
-            if (target == null || !isCurrentRealitySplitTrialTarget(actor, target)) {
-                return finishNamedTrialAttack(actor, checkpoint, now);
-            }
-            if (!resolveNamedTrialAttack(actor, target, checkpoint.attack(), trial.chamber())) {
+            if (!resolveNamedTrialAttack(actor, targetAvailable ? target : null,
+                    checkpoint.attack(), trial.chamber())) {
                 return finishNamedTrialAttack(actor, checkpoint, now);
             }
             // MAGE7-005: record the tool use only after the cast really resolved.
@@ -39734,7 +39840,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 // cells ALONG the aim axis — instead of a wider bar across the
                 // victim, so what a player reads is what will actually spawn.
                 for (Location mark : lock.fangMarks().values()) {
-                    Vector lane = horizontalDirection(actor.getLocation(), mark);
+                    Vector lane = horizontalDirection(lock.casterOrigin(), mark);
                     for (double offset : ArchmageV5CombatPolicy.fangLineOffsets())
                         emitTrialParticle(actor, mark.clone().add(lane.clone().multiply(offset))
                                         .add(0, 0.15D, 0), Particle.SOUL_FIRE_FLAME, 2,
@@ -39809,6 +39915,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
+    private static boolean isCommittedArchmageArea(Wave7NamedTrialActorPolicy.Attack attack) {
+        return switch (attack) {
+            case ARCHMAGE_CIRCLE, ARCHMAGE_CROWN, ARCHMAGE_REPULSE -> true;
+            default -> false;
+        };
+    }
+
     private boolean resolveNamedTrialAttack(LivingEntity actor, Player target,
             Wave7NamedTrialActorPolicy.Attack attack, int chamber) {
         if (actor == null || attack == null) return false;
@@ -39820,11 +39933,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             // this branch never fires and reports honestly that nothing landed.
             return false;
         }
-        if (target == null || !isCurrentRealitySplitTrialTarget(actor, target)) return true;
-        // Step validates its own destination, chamber and unobstructed travel path.
-        // Losing direct sight of the player must not disable tactical repositioning.
-        if (attack != Wave7NamedTrialActorPolicy.Attack.ARCHMAGE_STEP
-                && !hasNamedTrialLineOfSight(actor.getEyeLocation(), namedTrialAim(actor, target))) return true;
+        if (!isCommittedArchmageArea(attack)) {
+            if (target == null || !isCurrentRealitySplitTrialTarget(actor, target)) return false;
+            if (attack != Wave7NamedTrialActorPolicy.Attack.ARCHMAGE_STEP
+                    && !hasNamedTrialLineOfSight(actor.getEyeLocation(), namedTrialAim(actor, target))) return false;
+        }
         boolean landed = switch (attack) {
             case MARKSMAN_QUICK_SHOT -> launchNamedTrialArrow(actor, target, attack,
                     1.65F, 0.0F, false, false);
@@ -39836,9 +39949,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     1.25F, 0.0F, true, true);
             case ARCHMAGE_STEP -> stepNamedTrialArchmage(actor, target, chamber);
             // V5.1 additions, each with its own authoritative shape.
-            case ARCHMAGE_CIRCLE -> spawnNamedTrialFangCircle(actor, target, attack);
-            case ARCHMAGE_CROWN -> beginNamedTrialFangCrown(actor, target);
-            case ARCHMAGE_REPULSE -> resolveNamedTrialRepulse(actor, target, attack);
+            case ARCHMAGE_CIRCLE -> spawnNamedTrialFangCircle(actor, attack);
+            case ARCHMAGE_CROWN -> beginNamedTrialFangCrown(actor);
+            case ARCHMAGE_REPULSE -> resolveNamedTrialRepulse(actor);
             case ARCHMAGE_BEAM -> {
                 resolveNamedTrialBeam(actor, target, chamber);
                 yield true;
@@ -40103,7 +40216,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 continue;
             }
         }
-        return true;
+        return !createdFangs.isEmpty();
     }
 
     /** How one fang line ended. */
@@ -40133,7 +40246,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         TrialAimLock lock = trialAimLocks.get(actor.getUniqueId());
         Location mark = lock == null ? null : lock.fangMarks().get(victim.getUniqueId());
         if (mark == null) return FangLineOutcome.MISSED;
-        Vector direction = horizontalDirection(actor.getLocation(), mark);
+        Vector direction = horizontalDirection(lock.casterOrigin(), mark);
         Location base = mark.clone();
         base.setY(Math.floor(base.getY()));
         // V5.1: the old cast painted three fangs ACROSS the victim on a 2.5-block
@@ -40224,10 +40337,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return points;
     }
 
-    private boolean spawnNamedTrialFangCircle(LivingEntity actor, Player target,
-            Wave7NamedTrialActorPolicy.Attack attack) {
+    private boolean spawnNamedTrialFangCircle(LivingEntity actor, Wave7NamedTrialActorPolicy.Attack attack) {
         TrialAimLock lock = trialAimLocks.get(actor.getUniqueId());
-        if (lock == null || !isCurrentRealitySplitTrialTarget(actor, target)) return false;
+        if (lock == null) return false;
         List<Location> spawned = new ArrayList<>();
         for (Location at : namedTrialCirclePoints(actor, lock)) {
             if (spawnOwnedArchmageFang(actor, attack, at) != null) spawned.add(at);
@@ -40254,9 +40366,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return points;
     }
 
-    private boolean beginNamedTrialFangCrown(LivingEntity actor, Player target) {
+    private boolean beginNamedTrialFangCrown(LivingEntity actor) {
         TrialAimLock lock = trialAimLocks.get(actor.getUniqueId());
-        if (lock == null || !isCurrentRealitySplitTrialTarget(actor, target)) return false;
+        if (lock == null) return false;
         UUID casterId = actor.getUniqueId();
         if (!activeCrownChannels.add(casterId)) return false;
         long ownerGeneration = generation;
@@ -40328,10 +40440,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * respected so a player on a ledge above the caster is untouched. It is a
      * defensive reset, never the main threat.</p>
      */
-    private boolean resolveNamedTrialRepulse(LivingEntity actor, Player target,
-            Wave7NamedTrialActorPolicy.Attack attack) {
-        if (actor == null) return false;
-        Location center = actor.getLocation();
+    private boolean resolveNamedTrialRepulse(LivingEntity actor) {
+        TrialAimLock lock = trialAimLocks.get(actor.getUniqueId());
+        if (lock == null || lock.casterOrigin().getWorld() != actor.getWorld()) return false;
+        Location center = lock.casterOrigin().clone();
+        Location source = center.clone().add(0, 1.0D, 0);
         Vector cueDir = actor.getLocation().getDirection().setY(0.0D);
         if (cueDir.lengthSquared() < 1.0E-4D) cueDir = new Vector(0.0D, 0.0D, 1.0D);
         broadcastSpellVisualCue("separation", cueSeedFor(actor.getUniqueId()),
@@ -40339,13 +40452,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         ArchmageV5CombatPolicy.repulseRadius())), 0x7FE8FF);
         double damage = Wave7NamedTrialActorPolicy.scaledDamage(
                 ArchmageV5CombatPolicy.REPULSE_DAMAGE, wave7FrozenRosterSize());
-        int pushed = 0;
         for (Player player : realitySplitTrialTargets(actor)) {
             if (!isCurrentRealitySplitTrialTarget(actor, player)) continue;
             double dx = player.getLocation().getX() - center.getX();
             double dz = player.getLocation().getZ() - center.getZ();
             double dy = player.getLocation().getY() - center.getY();
-            if (!ArchmageV5CombatPolicy.repulseHits(Math.hypot(dx, dz), dy)) continue;
+            if (!ArchmageV5CombatPolicy.repulseHits(Math.hypot(dx, dz), dy)
+                    || !hasNamedTrialLineOfSight(source, player.getLocation().add(0, 1.0D, 0))) continue;
             Vector push = new Vector(dx, 0.0D, dz);
             if (push.lengthSquared() < 1.0E-4D) {
                 push = center.getDirection().clone().setY(0.0D);
@@ -40356,11 +40469,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 player.setVelocity(push.normalize()
                         .multiply(ArchmageV5CombatPolicy.repulsePush() * 0.30D).setY(0.42D));
             }
-            pushed++;
         }
-        // The cast resolves even if the crowd already scattered: the push is
-        // what it promised, and the actor keeps its slot either way.
-        return pushed > 0 || target != null;
+        return true;
     }
 
     /** Reach of the Archmage fang cast, in blocks. */
@@ -48773,6 +48883,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void clearBossOnly() {
+        restoreLastSealArena();
         clearBossSpellModels();
         bossPhasePresentationUntilMillis = 0L;
         bossBrain.reset();
@@ -49004,6 +49115,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         ensureEventCombatAi(boss);
         long now = System.currentTimeMillis();
         synchronizeBossPhase(boss);
+        if (tickLastSealArenaReveal(boss)) return;
         // Spec 3.2: sample the formation every tick so the 2-3 s dwell is real,
         // not a sampling artefact of the spell cooldown.
         if (isBossCombatRuntimeActive(boss) && BossEdgeVolleyPolicy.allowsPhase(bossPhase)) {
@@ -49471,6 +49583,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // permanent orphan or, worse, be mistaken for the real boss.
         if (transition.entered().contains(BossPhase.LAST_SEAL)) {
             clearEchoDecoys("entered-last-seal");
+            if (startLastSealArenaReveal(boss)) return;
             startCurrentLastSealVisuals(boss);
             // One-shot arena-wide ascension read: a single expanding seal and a
             // roar, drawn once per viewer as the final phase opens.
@@ -51550,6 +51663,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 return;
             }
             boss.setInvulnerable(false);
+            if (!restoreLastSealArena()) return;
             boss.setHealth(0.0D);
         }, BossDefeatCinematicPolicy.DEFEAT_DYING_TICKS);
     }
@@ -55511,26 +55625,54 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         infernoElites.clear();
     }
 
-    /** The 3D breach ring that announces the pack before it lands. */
+    /** The Inferno opens with a low fissure followed by inward-curling flame columns. */
     private void renderInfernoBreach(LivingEntity boss, int castTick) {
-        World world = boss.getWorld();
         Location anchor = coreCombatAnchorLocation();
-        if (world == null || anchor == null) {
-            return;
-        }
-        double progress = castTick / (double) InfernoMobWindowPolicy.SPAWN_BREACH_TICKS;
+        if (anchor == null || anchor.getWorld() != boss.getWorld()) return;
+        anchor.setY(combatLevelY() + 0.18D);
+        List<Player> viewers = eventAudience().stream().filter(viewer -> isEventParticleViewer(viewer, anchor)).toList();
+        if (viewers.isEmpty()) return;
+        double progress = Math.clamp(castTick / (double) InfernoMobWindowPolicy.SPAWN_BREACH_TICKS, 0, 1);
         double radius = 3.0D + progress * 6.0D;
-        int points = 16;
-        for (int i = 0; i < points; i++) {
-            double angle = (2.0D * Math.PI * i / points) + progress * 1.5D;
-            world.spawnParticle(Particle.FLAME, anchor.getX() + Math.cos(angle) * radius,
-                    combatLevelY() + 0.2D, anchor.getZ() + Math.sin(angle) * radius,
-                    1, 0.0D, 0.0D, 0.0D, 0.0D);
+        double lift = 0.35D + 5.0D * progress * progress;
+        int emitted = 0;
+        for (int branch = 0; branch < 6; branch++) {
+            double axis = branch * Math.PI / 3.0D;
+            double jitter = Math.sin(branch * 4.19D + arenaInfernoSequence) * 0.24D;
+            for (int joint = 0; joint <= 3; joint++) {
+                double u = joint / 3.0D;
+                double angle = axis + jitter + Math.sin(joint * 2.1D + branch) * 0.12D;
+                double reach = radius * (0.66D + 0.34D * u);
+                Location cell = anchor.clone().add(Math.cos(angle) * reach, 0, Math.sin(angle) * reach);
+                infernoSceneParticle(viewers, cell, joint == 3 ? Particle.LAVA : Particle.FLAME);
+                emitted++;
+            }
+            if (progress < 0.18D) continue;
+            for (int joint = 1; joint <= 5; joint++) {
+                double u = joint / 5.0D;
+                double angle = axis + jitter + progress * u * 0.9D;
+                double reach = radius - (1.15D + progress) * u * u;
+                Location plume = anchor.clone().add(Math.cos(angle) * reach, lift * u, Math.sin(angle) * reach);
+                Particle particle = joint == 5 ? Particle.CAMPFIRE_COSY_SMOKE
+                        : joint >= 3 ? Particle.SMALL_FLAME : Particle.FLAME;
+                infernoSceneParticle(viewers, plume, particle);
+                emitted++;
+            }
         }
-        if (castTick % 6 == 0) {
-            world.playSound(anchor, Sound.BLOCK_FIRE_AMBIENT, SoundCategory.HOSTILE, 1.2F, 0.7F);
+        if (castTick < 5 || castTick >= InfernoMobWindowPolicy.SPAWN_BREACH_TICKS - 5) {
+            boolean release = castTick >= 5;
+            for (Player viewer : viewers) {
+                viewer.playSound(anchor, release ? Sound.ENTITY_BLAZE_SHOOT : Sound.BLOCK_FIRE_AMBIENT,
+                        SoundCategory.HOSTILE, release ? 0.95F : 0.8F, release ? 0.68F : 0.56F);
+            }
         }
-        recordParticleEmission(points);
+        recordParticleEmission(emitted);
+    }
+
+    private void infernoSceneParticle(List<Player> viewers, Location point, Particle particle) {
+        for (Player viewer : viewers) {
+            viewer.spawnParticle(particle, point, 1, 0.025D, 0.015D, 0.025D, 0.0D);
+        }
     }
 
     /**
@@ -55545,8 +55687,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         InfernoSceneryPolicy.Layer[] layers = InfernoSceneryPolicy.Layer.values();
         InfernoSceneryPolicy.Layer layer = layers[Math.floorMod(castTick / 4, layers.length)];
-        int players = Math.max(1, activeLivingPlayers().size());
-        int lod = InfernoSceneryPolicy.LOD_REDUCED;
+        List<Player> viewers = eventAudience().stream().filter(viewer -> isEventParticleViewer(viewer, anchor)).toList();
+        if (viewers.isEmpty()) return;
+        int players = viewers.size();
+        int lod = players <= 5 ? InfernoSceneryPolicy.LOD_FULL : InfernoSceneryPolicy.LOD_REDUCED;
         if (!InfernoSceneryPolicy.drawsAt(layer, lod)) {
             return;
         }
@@ -55562,7 +55706,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 anchor.getX(), combatLevelY(), anchor.getZ());
         int emitted = 0;
         for (double[] point : points) {
-            world.spawnParticle(particle, point[0], point[1], point[2], 1, 0.0D, 0.0D, 0.0D, 0.0D);
+            infernoSceneParticle(viewers, new Location(world, point[0], point[1], point[2]), particle);
             emitted++;
         }
         if (emitted > 0) {
@@ -66067,6 +66211,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (dimension == null || arenaMinX > arenaMaxX || arenaMinY > arenaMaxY
                 || arenaMinZ > arenaMaxZ) {
             return null;
+        }
+        var activeHall = lastSealArena == null ? null : lastSealArena.opened(generation);
+        if (activeHall != null) {
+            return new EndEventBridgeV4Access.EventContext(eventUuid, generation, dimension,
+                    Math.min(arenaMinX, activeHall.x() - activeHall.radius()), Math.min(arenaMinY, activeHall.rescueY()),
+                    Math.min(arenaMinZ, activeHall.z() - activeHall.radius()),
+                    Math.max(arenaMaxX, activeHall.x() + activeHall.radius()), arenaMaxY,
+                    Math.max(arenaMaxZ, activeHall.z() + activeHall.radius()));
         }
         return new EndEventBridgeV4Access.EventContext(eventUuid, generation, dimension,
                 arenaMinX, arenaMinY, arenaMinZ, arenaMaxX, arenaMaxY, arenaMaxZ);

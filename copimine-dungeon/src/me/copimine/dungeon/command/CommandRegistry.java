@@ -271,7 +271,8 @@ public final class CommandRegistry {
             case SECRET_ID_NEW -> validateNewId(argument, token, "секрет");
             case SPAWN_ID_NEW -> validateNewId(argument, token, "спавн-якорь");
             case MOB_TEMPLATE -> membership(token, ids.mobTemplateIds(), "шаблон моба");
-            case LOOT_TABLE -> validateNewId(argument, token, "таблица добычи");
+            case LOOT_TABLE -> token.matches("(?:[a-z0-9_.-]+:)?[a-z0-9_./-]+") ? null
+                    : "Некорректный ключ таблицы добычи: " + token;
             case GATE_STYLE -> GateStyle.fromToken(token) == null
                     ? "Неизвестный стиль шлюза '" + token + "'. Доступно: " + GateStyle.tokens() + "."
                     : null;

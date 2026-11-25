@@ -174,8 +174,10 @@ public final class CopiMineDungeon extends JavaPlugin {
             }
             catalog.putSpawn(spawn);
         }
-        var overlaps = me.copimine.dungeon.domain.PhysicalGatePolicy.overlapConflicts(
-                new java.util.ArrayList<>(catalog.gates().values()));
+        var masks = new java.util.ArrayList<>(catalog.gates().values());
+        catalog.secrets().values().stream().map(me.copimine.dungeon.domain.SecretDefinition::physicalGate)
+                .forEach(masks::add);
+        var overlaps = me.copimine.dungeon.domain.PhysicalGatePolicy.overlapConflicts(masks);
         if (!overlaps.isEmpty()) {
             throw new IOException("Маски ворот пересекаются: " + String.join(", ", overlaps.getFirst()));
         }
@@ -198,8 +200,12 @@ public final class CopiMineDungeon extends JavaPlugin {
             throw new IOException("Границы комнаты или триггер выходят за допустимый объём.");
         }
         var gateWorld = new me.copimine.dungeon.runtime.BukkitGateWorld(world);
-        for (String id : room.gateIds()) {
-            var gate = catalog.gate(id);
+        var masks = new java.util.ArrayList<me.copimine.dungeon.domain.GateDefinition>();
+        room.gateIds().stream().map(catalog::gate).forEach(masks::add);
+        room.secretIds().stream().map(catalog::secret)
+                .map(me.copimine.dungeon.domain.SecretDefinition::physicalGate).forEach(masks::add);
+        for (var gate : masks) {
+            var id = gate.id();
             for (int[] cell : me.copimine.dungeon.domain.PhysicalGatePolicy.doorMask(gate)) {
                 if (!gateWorld.chunkLoaded(cell[0], cell[1], cell[2])
                         || !gateWorld.mutable(cell[0], cell[1], cell[2])) {
@@ -209,16 +215,28 @@ public final class CopiMineDungeon extends JavaPlugin {
         }
         for (String id : room.spawnAnchorIds()) {
             var spawn = catalog.spawn(id);
-            if (!bounds.contains(spawn.x(), spawn.y(), spawn.z()) || spawn.y() <= world.getMinHeight()
-                    || spawn.y() >= world.getMaxHeight() - 1
-                    || !world.isChunkLoaded(spawn.x() >> 4, spawn.z() >> 4)
-                    || !world.getBlockAt(spawn.x(), spawn.y() - 1, spawn.z()).getType().isSolid()
-                    || !world.getBlockAt(spawn.x(), spawn.y(), spawn.z()).getType().isAir()
-                    || !world.getBlockAt(spawn.x(), spawn.y() + 1, spawn.z()).getType().isAir()) {
-                throw new IOException("Спавн " + id + " должен иметь загруженный пол и два свободных блока.");
+            var zone = spawn.bounds();
+            if (!bounds.contains(zone) || !world.isChunkLoaded(spawn.x() >> 4, spawn.z() >> 4)) {
+                throw new IOException("Зона спавна " + id + " должна быть в границах комнаты и в загруженном чанке.");
+            }
+            boolean safeCenter = false;
+            for (int y = Math.max(world.getMinHeight() + 1, zone.minY());
+                    y <= Math.min(world.getMaxHeight() - 3, zone.maxY()); y++) {
+                if (world.getBlockAt(spawn.x(), y - 1, spawn.z()).getType().isSolid()
+                        && world.getBlockAt(spawn.x(), y, spawn.z()).getType().isAir()
+                        && world.getBlockAt(spawn.x(), y + 1, spawn.z()).getType().isAir()) {
+                    safeCenter = true;
+                    break;
+                }
+            }
+            if (!safeCenter) {
+                throw new IOException("Спавн " + id + " должен иметь пол и два свободных блока в центре зоны.");
             }
         }
         var reward = room.reward();
+        if (reward.mode() != me.copimine.dungeon.domain.RewardMode.PERSONAL) {
+            throw new IOException("Выберите личную выдачу. Физическая выдача в этой версии недоступна.");
+        }
         var key = org.bukkit.NamespacedKey.fromString(reward.lootTableId());
         if (key == null || org.bukkit.Bukkit.getLootTable(key) == null) {
             throw new IOException("Таблица добычи " + reward.lootTableId() + " не найдена.");

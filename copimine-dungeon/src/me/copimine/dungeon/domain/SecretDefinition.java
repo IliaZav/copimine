@@ -25,6 +25,10 @@ public record SecretDefinition(String id, String roomId, GateStyle style, Unlock
         return new SecretDefinition(id, roomId, style, unlock, world, bounds, entryRule);
     }
 
+    public GateDefinition physicalGate() {
+        return GateDefinition.of("secret:" + id, roomId, style, unlock, world, bounds, "auto", false);
+    }
+
     /** Concealment style presented to authorized builders only. */
     public GateStyle revealStyle() {
         return GateStyle.SECRET_DISGUISED;

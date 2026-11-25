@@ -25,6 +25,11 @@ ritual:
   # fraction of real time instead of snapping to zero when a player steps out.
   portal-capture-decay-rate: 0.5
 
+# Set only after checking the exact live layout with /cmend arena reveal-preview.
+# The independently reviewed, site-specific manifest is last-seal-arena.tsv.
+last-seal-reveal:
+  approved-plan-sha256: ''
+
 arena:
   world: CopiMine
   radius: 20.0

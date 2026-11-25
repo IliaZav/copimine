@@ -92,7 +92,7 @@ public final class DungeonEncounterPlanPolicy {
                 continue;
             }
             if (room.bounds() != null
-                    && !room.bounds().contains(anchor.x(), anchor.y(), anchor.z())) {
+                    && !room.bounds().contains(anchor.bounds())) {
                 continue;
             }
             usable.add(anchor);

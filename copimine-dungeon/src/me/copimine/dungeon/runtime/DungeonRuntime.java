@@ -112,6 +112,10 @@ public final class DungeonRuntime implements Listener {
                     rooms.put(room.id(), buildRoom(store, room));
                 }
             }
+            var masks = rooms.values().stream().flatMap(room -> room.gateDefinitions.stream()).toList();
+            if (!PhysicalGatePolicy.overlapConflicts(masks).isEmpty()) {
+                throw new IOException("Published gate and secret masks overlap");
+            }
         } catch (IOException | RuntimeException error) {
             plugin.getLogger().severe("Dungeon runtime could not load checkpoints: " + error.getMessage());
             rooms.clear();
@@ -139,6 +143,16 @@ public final class DungeonRuntime implements Listener {
             if (gate == null || !gate.roomId().equals(room.id()) || !gate.world().equals(room.world())) {
                 throw new IOException("Invalid gate owner/world for " + id);
             }
+            PhysicalGatePolicy.doorMask(gate);
+            gates.add(gate);
+        }
+        for (String id : room.secretIds()) {
+            var secret = store.catalog().secret(id);
+            if (secret == null || !secret.roomId().equals(room.id()) || !secret.world().equals(room.world())
+                    || !secret.style().isSecretFamily()) {
+                throw new IOException("Invalid secret passage owner, world or style for " + id);
+            }
+            GateDefinition gate = secret.physicalGate();
             PhysicalGatePolicy.doorMask(gate);
             gates.add(gate);
         }
@@ -217,8 +231,7 @@ public final class DungeonRuntime implements Listener {
         }
         Location at = event.getClickedBlock().getLocation();
         for (RoomRuntime room : rooms.values()) {
-            if (!room.cleared || !room.roster.contains(event.getPlayer().getUniqueId())
-                    || !eligible(event.getPlayer())) {
+            if (!room.cleared || !room.activeParticipant(event.getPlayer())) {
                 continue;
             }
             for (GateRuntime gate : room.gates) {
@@ -584,8 +597,8 @@ public final class DungeonRuntime implements Listener {
         @Override
         public boolean openExit() {
             for (GateRuntime gate : gates) {
-                if ((entrance(gate) || gate.gate().unlock() == UnlockMode.ON_ROOM_CLEAR
-                        && !PhysicalGatePolicy.isSecret(gate.gate())) && !open(gate, true)) {
+                if ((entrance(gate) || gate.gate().unlock() == UnlockMode.ON_ROOM_CLEAR)
+                        && !open(gate, true)) {
                     return false;
                 }
             }
@@ -667,6 +680,19 @@ public final class DungeonRuntime implements Listener {
             Location center = new Location(boundWorld, assignment.x() + 0.5, assignment.y(), assignment.z() + 0.5);
             SpawnAnchor anchor = anchors.stream().filter(value -> value.id().equals(assignment.anchorId()))
                     .findFirst().orElse(null);
+            if (anchor != null && anchor.zone() != null) {
+                Cuboid zone = anchor.zone();
+                var random = java.util.concurrent.ThreadLocalRandom.current();
+                for (int sample = 0; sample < 24; sample++) {
+                    int x = sample == 0 ? anchor.x() : zone.minX() + random.nextInt(zone.sizeX());
+                    int z = sample == 0 ? anchor.z() : zone.minZ() + random.nextInt(zone.sizeZ());
+                    for (int layer = 0; layer < zone.sizeY(); layer++) {
+                        Location at = new Location(boundWorld, x + 0.5, zone.minY() + layer, z + 0.5);
+                        if (safeSpawn(at, type)) return at;
+                    }
+                }
+                return null;
+            }
             double radius = anchor == null ? 0 : Math.min(4.0D, anchor.radius());
             for (int ring = 0; ring <= Math.ceil(radius); ring++) {
                 for (int dx = -ring; dx <= ring; dx++) {

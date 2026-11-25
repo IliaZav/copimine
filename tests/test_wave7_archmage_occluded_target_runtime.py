@@ -43,6 +43,7 @@ def occluded_archmage_probe(tmp_path_factory):
         # The three-argument overload delegates to the timed one, so the probe must
         # compile the real timed body rather than resolve a missing overload.
         "private boolean finishNamedTrialAttack(Entity actor,\n            Wave7NamedTrialActorPolicy.Checkpoint checkpoint, long now, long cooldownMillis)",
+        "private static boolean isCommittedArchmageArea(",
         "private boolean resolveNamedTrialAttack(",
         "private boolean stepNamedTrialArchmage(",
         # MAGE7-005: the resolved cast now records what the tool cost through
@@ -244,9 +245,9 @@ public class OccludedArchmageProbe {
     boolean launchMarksmanFan(LivingEntity a,Player p,Wave7NamedTrialActorPolicy.Attack attack,int fan){damageActions+=8;return true;}
     boolean spawnNamedTrialFangs(LivingEntity a,Player p,Wave7NamedTrialActorPolicy.Attack attack){damageActions++;return true;}
     void resolveNamedTrialBeam(LivingEntity a,Player p,int chamber){damageActions++;}
-    boolean spawnNamedTrialFangCircle(LivingEntity a,Player p,Wave7NamedTrialActorPolicy.Attack attack){damageActions++;return true;}
-    boolean beginNamedTrialFangCrown(LivingEntity a,Player p){damageActions++;return true;}
-    boolean resolveNamedTrialRepulse(LivingEntity a,Player p,Wave7NamedTrialActorPolicy.Attack attack){damageActions++;return true;}
+    boolean spawnNamedTrialFangCircle(LivingEntity a,Wave7NamedTrialActorPolicy.Attack attack){damageActions++;return true;}
+    boolean beginNamedTrialFangCrown(LivingEntity a){damageActions++;return true;}
+    boolean resolveNamedTrialRepulse(LivingEntity a){damageActions++;return true;}
 
     void setup(boolean marksman,long attackIndex){
         int room=marksman?2:3;

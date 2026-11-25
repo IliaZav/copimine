@@ -1,0 +1,385 @@
+package me.copimine.endevent;
+
+import org.bukkit.Bukkit;
+import org.bukkit.Color;
+import org.bukkit.Location;
+import org.bukkit.Material;
+import org.bukkit.Particle;
+import org.bukkit.Sound;
+import org.bukkit.SoundCategory;
+import org.bukkit.World;
+import org.bukkit.block.Block;
+import org.bukkit.block.TileState;
+import org.bukkit.entity.BlockDisplay;
+import org.bukkit.entity.Display;
+import org.bukkit.entity.Player;
+import org.bukkit.util.BoundingBox;
+import org.bukkit.util.Transformation;
+import org.joml.Quaternionf;
+import org.joml.Vector3f;
+
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.HexFormat;
+import java.util.List;
+import java.util.UUID;
+import java.util.function.Predicate;
+
+/** Changes only the cells pinned by a site plan. The journal also owns recovery without that plan. */
+final class LastSealArenaReveal {
+    static final int DURATION_TICKS = 280;
+    private static final int MAX_CELLS = 320;
+    private static final int MAX_BYTES = 96_000;
+    private static final int BATCH = 26;
+    private static final int FALL_TICKS = 22;
+    private static final String VERSION = "last-seal-v1";
+
+    record Square(int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
+        boolean horizontal(int x, int z) { return x >= minX && x <= maxX && z >= minZ && z <= maxZ; }
+        boolean contains(Location at) {
+            return horizontal(at.getBlockX(), at.getBlockZ()) && at.getBlockY() >= minY && at.getBlockY() <= maxY;
+        }
+    }
+    record Cell(int x, int y, int z) {
+        Block block(World world) { return world.getBlockAt(x, y, z); }
+        Location at(World world) { return new Location(world, x + .5, y, z + .5); }
+        boolean loaded(World world) { return world.isChunkLoaded(x >> 4, z >> 4); }
+    }
+    private record Change(boolean wall, Cell cell, String original) { }
+    record Plan(UUID worldId, int x, int z, int radius, int floor, int rescueY, Cell landing,
+                String digest, List<Change> changes) {
+        boolean horizontal(double px, double pz) {
+            double dx = px - x - .5, dz = pz - z - .5;
+            return dx * dx + dz * dz <= (double) radius * radius;
+        }
+    }
+    private record Fragment(BlockDisplay display, Transformation fall, long start, long end) { }
+
+    private final Path planPath;
+    private final Path journal;
+    private final List<Fragment> fragments = new ArrayList<>();
+    private Plan plan;
+    private Square square;
+    private long owner;
+    private long startTick;
+    private int next;
+    private int lastBeat = -1;
+    private boolean open;
+    private boolean ascended;
+
+    LastSealArenaReveal(Path directory) {
+        planPath = directory.resolve("last-seal-arena.tsv");
+        journal = directory.resolve("last-seal-arena-journal.tsv");
+    }
+
+    boolean configured() { return Files.exists(planPath); }
+    boolean needsRecovery() { return Files.exists(journal); }
+
+    Plan preview(World world, Location core, Square original, Predicate<Location> protectedCell)
+            throws IOException {
+        if (world == null || core == null || original == null) throw new IOException("arena layout is unavailable");
+        byte[] bytes = readBounded(planPath);
+        List<String> lines = java.util.Arrays.asList(new String(bytes, StandardCharsets.UTF_8).split("\\R"));
+        if (lines.isEmpty()) throw new IOException("missing Last Seal header");
+        String[] header = lines.getFirst().split("\t", -1);
+        try {
+            if (header.length != 11 || !VERSION.equals(header[0])) throw new IOException("invalid Last Seal header");
+            UUID id = UUID.fromString(header[1]);
+            int x = number(header[2]), z = number(header[3]), radius = number(header[4]);
+            int floor = number(header[5]), rescueY = number(header[6]);
+            Cell landing = new Cell(number(header[7]), number(header[8]), number(header[9]));
+            int expectedCount = number(header[10]);
+            if (!world.getUID().equals(id) || core.getBlockX() != x || core.getBlockZ() != z
+                    || radius < 8 || radius > 96 || floor < world.getMinHeight() + 5 || floor >= world.getMaxHeight() - 3
+                    || rescueY < world.getMinHeight() + 4 || rescueY >= floor || expectedCount < 1 || expectedCount > MAX_CELLS
+                    || !original.contains(landing.at(world)) || !safeLanding(landing, world)) {
+                throw new IOException("world, Core, radius or rescue landing is invalid");
+            }
+            Plan candidate = new Plan(id, x, z, radius, floor, rescueY, landing, digest(bytes), List.of());
+            for (int sx : new int[]{original.minX(), original.maxX()}) {
+                for (int sz : new int[]{original.minZ(), original.maxZ()}) {
+                    if (!candidate.horizontal(sx + .5, sz + .5))
+                        throw new IOException("the approved outer hall must enclose the four square corners");
+                }
+            }
+            List<Change> changes = parseChanges(lines.subList(1, lines.size()));
+            if (changes.size() != expectedCount || changes.stream().noneMatch(Change::wall))
+                throw new IOException("wrong cell count or no wall segment");
+            for (Change change : changes) {
+                Cell cell = change.cell();
+                boolean onBoundary = original.horizontal(cell.x(), cell.z()) && (cell.x() == original.minX()
+                        || cell.x() == original.maxX() || cell.z() == original.minZ() || cell.z() == original.maxZ());
+                boolean geometry = change.wall() ? onBoundary && cell.y() > floor && cell.y() <= original.maxY()
+                        : !original.horizontal(cell.x(), cell.z()) && cell.y() == floor;
+                Location at = cell.at(world);
+                if (!geometry || !world.getWorldBorder().isInside(at)
+                        || !candidate.horizontal(at.getX(), at.getZ()) || protectedCell.test(at)
+                        || !cell.loaded(world)) throw new IOException("unapproved, protected, or unloaded cell " + cell);
+                Block block = cell.block(world);
+                if (!block.getType().isSolid() || block.getState(false) instanceof TileState
+                        || !block.getBlockData().getAsString().equals(change.original())) {
+                    throw new IOException("site no longer matches original block at " + cell);
+                }
+            }
+            return new Plan(id, x, z, radius, floor, rescueY, landing, candidate.digest(), changes);
+        } catch (IllegalArgumentException invalid) {
+            throw new IOException("invalid Last Seal plan", invalid);
+        }
+    }
+
+    void begin(Plan checked, Square original, String approved, long generation, long tick) throws IOException {
+        if (plan != null || needsRecovery() || !checked.digest().equalsIgnoreCase(approved))
+            throw new IOException("missing approval for the exact manifest or unfinished recovery");
+        writeJournal(checked, original);
+        plan = checked;
+        square = original;
+        owner = generation;
+        startTick = tick;
+        next = 0;
+        lastBeat = -1;
+        ascended = false;
+    }
+
+    boolean active(long generation) { return plan != null && owner == generation; }
+    boolean playing(long generation, long tick) { return active(generation) && tick - startTick < DURATION_TICKS; }
+    Plan opened(long generation) { return active(generation) && open ? plan : null; }
+    boolean ascensionStarted(long generation) { return active(generation) && ascended; }
+
+    boolean takeAscension(long generation, long tick) {
+        if (!active(generation) || !open || ascended || tick - startTick < 160) return false;
+        ascended = true;
+        return true;
+    }
+
+    boolean contains(Location at, long generation) {
+        return active(generation) && open && at.getWorld() != null && at.getWorld().getUID().equals(plan.worldId())
+                && plan.horizontal(at.getX(), at.getZ()) && at.getY() >= plan.floor()
+                && at.getY() < square.maxY() + 1.0;
+    }
+
+    void tick(World world, Location core, long generation, long now) throws IOException {
+        if (!active(generation)) return;
+        if (!world.getUID().equals(plan.worldId())) throw new IOException("arena world changed");
+        fragments.removeIf(fragment -> {
+            if (fragment.display().isValid() && now == fragment.start()) {
+                fragment.display().setInterpolationDelay(0);
+                fragment.display().setTransformation(fragment.fall());
+            }
+            if (fragment.end() > now) return false;
+            fragment.display().remove();
+            return true;
+        });
+        long age = now - startTick;
+        beat(world, core, age);
+        if (age >= 40 && next < plan.changes().size()) {
+            for (int i = 0; i < BATCH && next < plan.changes().size(); i++) {
+                Change change = plan.changes().get(next);
+                if (!change.wall() && age < 100) break;
+                Cell cell = change.cell();
+                if (!cell.loaded(world)) throw new IOException("unloaded approved cell " + cell);
+                Block block = cell.block(world);
+                if (!block.getBlockData().getAsString().equals(change.original()) || block.getState(false) instanceof TileState)
+                    throw new IOException("site was modified during reveal at " + cell);
+                if (fragments.size() < 40 && ((next & 3) == 0 || !change.wall() && (next & 1) == 0))
+                    animate(world, block, change.wall(), now);
+                block.setType(Material.AIR, false);
+                next++;
+            }
+        }
+        open = next == plan.changes().size() && age >= 100;
+        if (age >= 100) {
+            for (Player player : world.getPlayers()) {
+                Location at = player.getLocation();
+                if (at.getY() < plan.rescueY() && plan.horizontal(at.getX(), at.getZ())
+                        && plan.changes().stream().anyMatch(change -> !change.wall()
+                        && Math.abs(change.cell().x() - at.getBlockX()) <= 1
+                        && Math.abs(change.cell().z() - at.getBlockZ()) <= 1)) {
+                    evacuate(player, plan.landing(), world);
+                }
+            }
+        }
+    }
+
+    private void beat(World world, Location core, long age) {
+        int beat = age >= 240 ? 4 : age >= 160 ? 3 : age >= 100 ? 2 : age >= 40 ? 1 : 0;
+        if (beat <= lastBeat) return;
+        lastBeat = beat;
+        Sound cue = switch (beat) {
+            case 0 -> Sound.ENTITY_WARDEN_HEARTBEAT;
+            case 1 -> Sound.BLOCK_DEEPSLATE_BREAK;
+            case 2 -> Sound.BLOCK_RESPAWN_ANCHOR_DEPLETE;
+            case 3 -> Sound.ENTITY_WARDEN_ROAR;
+            default -> Sound.BLOCK_END_PORTAL_SPAWN;
+        };
+        world.playSound(core, cue, SoundCategory.HOSTILE, beat == 1 ? 2.5f : 1.4f, .66f + .07f * beat);
+    }
+
+    private void animate(World world, Block block, boolean wall, long tick) {
+        Location at = block.getLocation();
+        BlockDisplay shard = world.spawn(at, BlockDisplay.class, display -> {
+            display.setBlock(block.getBlockData());
+            display.setPersistent(false);
+            display.setBrightness(new Display.Brightness(12, 12));
+            display.setViewRange(1.15f);
+            display.setInterpolationDuration(FALL_TICKS);
+        });
+        double dx = at.getX() - plan.x(), dz = at.getZ() - plan.z();
+        double length = Math.max(1, Math.hypot(dx, dz));
+        float nx = (float) (dx / length), nz = (float) (dz / length);
+        var fall = new Transformation(new Vector3f(nx * 2.2f, wall ? -2.6f : -4f, nz * 2.2f),
+                new Quaternionf().rotateAxis(1.18f, nz, .15f, -nx), new Vector3f(.72f), new Quaternionf());
+        fragments.add(new Fragment(shard, fall, tick + 5, tick + FALL_TICKS + 6));
+        world.spawnParticle(Particle.BLOCK, at.clone().add(.5, .5, .5), 10,
+                .34, .30, .34, .035, block.getBlockData());
+        if (!wall) world.spawnParticle(Particle.DUST, at.clone().add(.5, .2, .5), 12,
+                .42, .40, .42, 0, new Particle.DustOptions(Color.fromRGB(157, 70, 231), 1.25f));
+    }
+
+    void restore() throws IOException {
+        for (Fragment fragment : fragments) fragment.display().remove();
+        fragments.clear();
+        if (!needsRecovery()) { plan = null; open = false; return; }
+        String contents = new String(readBounded(journal), StandardCharsets.UTF_8);
+        List<String> lines = java.util.Arrays.asList(contents.split("\\R"));
+        String[] header = lines.getFirst().split("\t", -1);
+        if (header.length != 14 || !VERSION.equals(header[0])) throw new IOException("invalid arena recovery journal");
+        try {
+            World world = Bukkit.getWorld(UUID.fromString(header[1]));
+            if (world == null) throw new IOException("arena journal world unavailable");
+            Cell landing = new Cell(number(header[2]), number(header[3]), number(header[4]));
+            Square original = new Square(number(header[7]), world.getMinHeight(), number(header[8]),
+                    number(header[9]), world.getMaxHeight() - 1, number(header[10]));
+            int centerX = number(header[11]), centerZ = number(header[12]), radius = number(header[13]);
+            if (radius < 8 || radius > 96 || original.minX() > original.maxX() || original.minZ() > original.maxZ())
+                throw new IOException("invalid recovery footprint");
+            List<Change> changes = parseChanges(lines.subList(1, lines.size()));
+            if (changes.size() != number(header[5])
+                    || !digest((String.join("\n", lines.subList(1, lines.size())) + "\n").getBytes(StandardCharsets.UTF_8))
+                        .equals(header[6])) throw new IOException("arena recovery journal checksum mismatch");
+            for (Change change : changes) {
+                Cell cell = change.cell();
+                world.getChunkAt(cell.x() >> 4, cell.z() >> 4);
+                Block block = cell.block(world);
+                if (!block.getBlockData().getAsString().equals(change.original()) && !block.getType().isAir())
+                    throw new IOException("non-owned block obstructs restoration at " + cell);
+                Bukkit.createBlockData(change.original());
+            }
+            boolean wasRevealed = changes.stream().anyMatch(change -> change.cell().block(world).getType().isAir());
+            for (Player player : world.getPlayers()) {
+                Location at = player.getLocation();
+                boolean inClosingCell = changes.stream().anyMatch(change -> {
+                    Cell cell = change.cell();
+                    return player.getBoundingBox().overlaps(new BoundingBox(cell.x(), cell.y(), cell.z(),
+                            cell.x() + 1, cell.y() + 1, cell.z() + 1));
+                });
+                double dx = at.getX() - centerX - .5, dz = at.getZ() - centerZ - .5;
+                if (inClosingCell || wasRevealed && dx * dx + dz * dz <= (double) radius * radius
+                        && !original.horizontal(at.getBlockX(), at.getBlockZ())) evacuate(player, landing, world);
+            }
+            for (Change change : changes.reversed()) {
+                var block = change.cell().block(world);
+                if (block.getType().isAir()) block.setBlockData(Bukkit.createBlockData(change.original()), false);
+            }
+            // Flush restored terrain before releasing the only recovery receipt.
+            world.save();
+            Files.delete(journal);
+            plan = null;
+            open = false;
+        } catch (IllegalArgumentException invalid) {
+            throw new IOException("invalid arena recovery data", invalid);
+        }
+    }
+
+    private void writeJournal(Plan checked, Square original) throws IOException {
+        StringBuilder body = new StringBuilder();
+        for (Change change : checked.changes()) {
+            Cell c = change.cell();
+            body.append(change.wall() ? "wall" : "fissure").append('\t').append(c.x()).append('\t')
+                    .append(c.y()).append('\t').append(c.z()).append('\t').append(change.original()).append('\n');
+        }
+        Cell safe = checked.landing();
+        String header = String.join("\t", VERSION, checked.worldId().toString(), "" + safe.x(), "" + safe.y(),
+                "" + safe.z(), "" + checked.changes().size(), digest(body.toString().getBytes(StandardCharsets.UTF_8)),
+                "" + original.minX(), "" + original.minZ(), "" + original.maxX(), "" + original.maxZ(),
+                "" + checked.x(), "" + checked.z(), "" + checked.radius());
+        Files.createDirectories(journal.getParent());
+        Path temporary = Files.createTempFile(journal.getParent(), "last-seal-arena-", ".tmp");
+        try {
+            try (FileChannel channel = FileChannel.open(temporary, StandardOpenOption.WRITE)) {
+                ByteBuffer bytes = StandardCharsets.UTF_8.encode(header + "\n" + body);
+                while (bytes.hasRemaining()) channel.write(bytes);
+                channel.force(true);
+            }
+            Files.move(temporary, journal, StandardCopyOption.ATOMIC_MOVE);
+        } finally {
+            Files.deleteIfExists(temporary);
+        }
+    }
+
+    private static List<Change> parseChanges(List<String> lines) throws IOException {
+        var parsed = new ArrayList<Change>();
+        var seen = new HashSet<Cell>();
+        boolean fissure = false;
+        for (String line : lines) {
+            if (line.isBlank() || line.startsWith("#")) continue;
+            String[] fields = line.split("\t", -1);
+            if (fields.length != 5 || !(fields[0].equals("wall") || fields[0].equals("fissure"))
+                    || fields[4].isBlank() || parsed.size() >= MAX_CELLS)
+                throw new IOException("invalid arena cell");
+            boolean wall = fields[0].equals("wall");
+            if (wall && fissure) throw new IOException("walls must come before fissures");
+            fissure |= !wall;
+            Cell cell = new Cell(number(fields[1]), number(fields[2]), number(fields[3]));
+            if (!seen.add(cell)) throw new IOException("duplicate arena cell " + cell);
+            parsed.add(new Change(wall, cell, fields[4]));
+        }
+        long chunks = parsed.stream().map(change -> {
+            Cell cell = change.cell();
+            return ((long) (cell.x() >> 4) << 32) | ((cell.z() >> 4) & 0xffffffffL);
+        }).distinct().count();
+        if (chunks > 32) throw new IOException("arena cells span too many chunks");
+        return List.copyOf(parsed);
+    }
+
+    private static boolean safeLanding(Cell p, World world) {
+        if (!p.loaded(world) || p.y() <= world.getMinHeight() || p.y() >= world.getMaxHeight() - 1
+                || !world.getWorldBorder().isInside(p.at(world))) return false;
+        Block feet = p.block(world);
+        Block below = feet.getRelative(0, -1, 0);
+        return feet.getType().isAir() && feet.getRelative(0, 1, 0).getType().isAir()
+                && below.getType().isSolid() && !below.isLiquid()
+                && below.getType() != Material.MAGMA_BLOCK && below.getType() != Material.CAMPFIRE;
+    }
+
+    private static void evacuate(Player player, Cell p, World world) throws IOException {
+        if (!safeLanding(p, world) || !player.teleport(p.at(world)))
+            throw new IOException("approved arena rescue landing is obstructed");
+        player.setFallDistance(0);
+        player.setVelocity(new org.bukkit.util.Vector());
+    }
+
+    private static int number(String text) { return Integer.parseInt(text); }
+
+    private static byte[] readBounded(Path path) throws IOException {
+        try (var stream = Files.newInputStream(path)) {
+            byte[] bytes = stream.readNBytes(MAX_BYTES + 1);
+            if (bytes.length == 0 || bytes.length > MAX_BYTES) throw new IOException("invalid arena file size");
+            return bytes;
+        }
+    }
+
+    private static String digest(byte[] bytes) {
+        try { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)); }
+        catch (NoSuchAlgorithmException error) { throw new IllegalStateException(error); }
+    }
+}

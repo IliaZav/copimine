@@ -606,6 +606,23 @@ consumer is still open.
 - **Status**: `SOURCE` + `AUTO`. The packet is *not yet* signed by the bridge nor
   consumed by the 26.3 client; that integration and the measured reduction stay
   `NATIVE_BLOCKED`/open.
+- **Measurement harness (authorable half, 2026-11-25)**: the "measure, do not
+  guess" requirement now has a real tool instead of a promise.
+  `scripts/minecraft/EndRiftSpellLoadReport.py` parses the plugin's own
+  `END_EVENT_RUNTIME_DIAGNOSTICS` lines, derives the online-player count from the
+  ping roster, groups samples by that count and prints the median
+  `particle_packets_sec`, `plugin_messages_sec`, `client_bindings_sent/failed`,
+  `client_bindings_coalesced`, `client_binding_cache_entries`, `gc_collections`,
+  `gc_pause_ms`, `server_thread_cpu_percent` and `avg_ping_ms` for each rung.
+  With `--baseline <before.log>` it prints the measured percent drop per metric,
+  but only for a rung present in **both** captures. It exits non-zero on an
+  incomplete 2/5/10/11/20 ladder and always prints the metrics this telemetry
+  does *not* carry (`bytes/second`, `MSPT`, Netty queue depth, client GPU frame
+  time) under "still to capture by hand", so a partial table can never be read as
+  a complete measurement. `tests/test_end_rift_spell_load_report.py` (8 tests)
+  pins the parser, the medians, the 200→50 = 75% reduction maths, the missing-rung
+  refusal and the "never invent bytes/s or GPU" guarantee using labelled format
+  fixtures (not measurements).
 - **Candidate re-pin (CI repair)**: both this codec and `acb63a0a` (the LOD
   emitter change in `BossPresentationEffects`) alter
   `build/minecraft-26.3/plugins/jars/CopiMineEndEvent-26.3.jar`, so run

@@ -122,7 +122,7 @@ LOD, доказательство и точные пути ассетов.
 | `spell_id` / owner source | §0 «Точные пути ассетов», строка каждого листа | токен `v51-<token>-<seed>` фиксирован; серверный транспорт — существующий ограниченный beam-cue, клиент — `SpellVisualGeometry`/`SpellVisualRenderer` |
 | `timeline` | строка «Таймлайн» каждого листа | визуальные ключи `SpellVisualEnvelope` считает клиент; серверные тики урона владеет damage-policy (вне этого файла — не выдумываю) |
 | `range_and_hitbox` | строка «Контур опасности» + «Размер против игрока» | реальные константы `SpellVisualGeometry` (`maxReach`, `*_RADIUS`, `BEAM_RADIUS`…); визуал строго внутри серверной зоны |
-| `storyboard` | `docs/end-rift/2026-11-23/spell_previews/<token>.svg` | 3 авторских инстанса каста из настоящего исходника; **не** скриншот |
+| `storyboard` | `docs/end-rift/2026-11-23/spell_previews/<token>.svg` | все 7 смысловых ключей каста (`dormant → … → completed`) из настоящего исходника; **не** скриншот |
 | `in-game_evidence` | — | `NATIVE_BLOCKED` (нет GUI/Paper/подписанного V4-клиента) |
 | `audio_evidence` | строка «Аудио-слой» каждого листа | 12 оригинальных Ogg поставлены и зарегистрированы; живой микс — `NATIVE_BLOCKED` |
 | `quality` | §0 «Три уровня LOD» + тесты | FULL/BALANCED/REDUCED реализованы и проверены `AUTO`; визуальное сравнение — `NATIVE_BLOCKED` |

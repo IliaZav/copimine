@@ -3,12 +3,13 @@
 A native F2 capture from a real client is BLOCKED on this host, so the honest
 substitute is proof of what the shipped Java actually draws.  ``scripts/
 minecraft/RenderSpellVisualPreviews.py`` compiles the real ``SpellVisualGeometry``
-source, samples the authored mesh at three cast instants and emits one isometric
-SVG sheet per token.  This test runs its ``--check`` mode, so a geometry edit can
-never silently leave the committed sheets describing an older mesh, and it pins
-the contract that makes the sheets usable as evidence:
+source, samples the authored mesh across the seven authored semantic cast keys and
+emits one isometric SVG sheet per token.  This test runs its ``--check`` mode, so a
+geometry edit can never silently leave the committed sheets describing an older
+mesh, and it pins the contract that makes the sheets usable as evidence:
 
 * exactly one sheet per authored token, no orphans and no missing art,
+* every sheet shows the seven authored semantic cast keys, in order,
 * every sheet is a real, non-trivial SVG rather than a placeholder,
 * every sheet says out loud that it is source-derived and not a screenshot,
 * the generator itself stays in the repository, so the sheets are reproducible.
@@ -65,15 +66,19 @@ def test_every_authored_cast_has_a_labelled_preview_sheet() -> None:
         sheet = SHEETS / f"{token}.svg"
         text = sheet.read_text(encoding="utf-8")
         assert text.startswith("<?xml"), f"{token}.svg is not an SVG document"
-        assert "authored SpellVisualGeometry mesh at three cast" in text, (
+        assert "authored SpellVisualGeometry mesh across the seven" in text, (
             f"{token}.svg lost its source-derived provenance note"
         )
         assert "NOT an in-game screenshot; native F2 capture is BLOCKED" in text, (
             f"{token}.svg must keep the honest native-capture caveat"
         )
-        # Three authored instants, each carrying real mesh strokes.
-        assert text.count("t = 0 ms") == 1 and "t = 1200 ms" in text and "t = 2600 ms" in text, (
-            f"{token}.svg does not show the three authored cast instants"
-        )
+        # The seven authored semantic cast keys, in Section 9A.03(C) order, each
+        # carrying the family's own re-time and material heat.
+        for index, beat in enumerate(
+            ("dormant", "anticipation", "energized", "release", "peak", "dissipate", "completed")
+        ):
+            assert f"{index + 1}/7 {beat} " in text, (
+                f"{token}.svg is missing semantic cast key {index + 1} ({beat})"
+            )
         assert text.count("<line") > 40, f"{token}.svg looks like an empty placeholder"
         assert sheet.stat().st_size > 5_000, f"{token}.svg is suspiciously small"

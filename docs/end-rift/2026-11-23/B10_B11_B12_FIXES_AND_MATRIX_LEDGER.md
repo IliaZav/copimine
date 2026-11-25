@@ -623,6 +623,35 @@ consumer is still open.
   (`f12397d3…`, indices 68 and 244) was left untouched, because the documented
   convention is to never dedupe this list.
 
+### N23-P2-15 — resource and post-processing drift
+
+Master V5.1 (N23-P2-15) requires the signed client JAR, plugin JAR, client
+bridge, resourcepack and optional Iris+BSL pipeline to agree exactly, with
+verified UV/atlas provenance (event art shared from
+`CopiMineClient/src/main/resources`, never a second divergent copy) and event
+fog isolated from non-event shader packs. The native half (F1/F2/F5,
+16:9/16:10, shader on/off, reduced-motion, low-FPS, disconnect/rejoin and two
+simultaneous viewers) needs a GUI client and a live server, so it stays
+`NATIVE_BLOCKED`.
+
+- **Contract**: `tests/test_end_rift_resource_and_postprocess_drift.py` pins the
+  half provable from the repository. The four authoring artefacts of a shipped
+  spell cast must never drift apart: the twelve families in
+  `SpellVisualGeometry`, one registered `spell/<token>` sound plus its Ogg in
+  `sounds.json`, one source-derived preview sheet per family, and the single
+  client-artifact hash named identically in `profile.lock.json`,
+  `docs/minecraft-26.3/README.md` and `tests/test_minecraft_migration_profile.py`.
+- **Provenance**: the same test asserts the client build still shares
+  `CopiMineClient/src/main/resources`, that `SpellVisualRenderer` resolves exactly
+  one shared texture (`end_rift_spell_arc.png`) and builds one
+  `entityTranslucentEmissive(TEXTURE)` layer, and that the atlas is a real
+  128x64 8-bit RGBA PNG (not a stub). It also fails if any `end_rift_spell*`
+  file leaks into a `shaderpacks/` directory (the Iris menu).
+- **Status**: `SOURCE` + `AUTO`. The drift contract is offline-verifiable and
+  currently green (4 passed); everything requiring a real frame or a real
+  disconnect/rejoin stays `NATIVE_BLOCKED`, recorded in
+  `NATIVE_F2_VISUAL_CHECKLIST.md`.
+
 ### V6 section 9E Phase 4 - the Core memorial survives a full raid roster
 
 V6 asks for `CoreMemorialService`: "persistent names and clean large-roster
@@ -1198,15 +1227,19 @@ testable off a live server.
   единственным реально неописанным упакованным исходником; остальные уже покрыты
   `eol=lf`/`-text`.
 - **Превью-листы мешей (§9L)**: `scripts/minecraft/RenderSpellVisualPreviews.py`
-  компилирует настоящий `SpellVisualGeometry.java` пробником и раскладывает штрихи
-  трёх авторских моментов часов каста (`0/1200/2600` мс, seed `4242`, tier `FULL`)
-  в 12 изометрических SVG `docs/end-rift/2026-11-23/spell_previews/<token>.svg`.
+  компилирует настоящий `SpellVisualGeometry.java` (и `SpellVisualEnvelope.java`)
+  пробником и раскладывает штрихи **семи авторских смысловых ключей каста**
+  §9A.03(C) (`0/240/540/860/1180/1580/2000` мс — `dormant → anticipation →
+  energized → release → peak → dissipate → completed`, seed `4242`, tier `FULL`,
+  с собственным re-time и нагревом материала каждого семейства) в 12
+  изометрических SVG `docs/end-rift/2026-11-23/spell_previews/<token>.svg`.
   Каждый лист в самом XML подписан как «превью из исходника, не скриншот», а
   нативный F2 — `BLOCKED`. `--check` детерминированно перерисовывает во временную
   папку и падает при расхождении; контракт
   `tests/test_end_rift_spell_visual_previews.py` (2 теста) гоняет `--check` и
-  требует ровно один лист на токен, ненулевое содержимое и три момента. Только
-  docs/скрипты/тесты — основные исходники и ресурсы клиента не менялись, пин прежний.
+  требует ровно один лист на токен, ненулевое содержимое и все семь ключей по
+  порядку. Только docs/скрипты/тесты — основные исходники и ресурсы клиента не
+  менялись, пин прежний.
 - **Статус**: `SOURCE` + `AUTO` (локально: `--check` = «12 authored preview sheets
   match the shipped geometry», `exit 0`; превью+презентация = 8 passed). Живой кадр
   и нативное прослушивание — по-прежнему `NATIVE_BLOCKED`.

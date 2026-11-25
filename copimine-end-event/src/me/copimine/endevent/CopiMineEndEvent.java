@@ -59479,9 +59479,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private double guardianStrikeRangeSquared() {
-        // Imported permanent rig is about five blocks long, not an eight-block invisible grab.
-        double reach=Math.min(TENTACLE_MAX_GRAB_RANGE,7.8681D*.62D+.3D);
-        return reach*reach;
+        // V6 §6.3: hit geometry is the real ~4.9-block authored rig, not the
+        // three-block under-player ambush grab range that used to clamp it.
+        return KaguneGuardianFightPolicy.guardianReachSquared();
     }
 
     private void strikeTentacleGuardianTarget(ItemDisplay display, Player target) {

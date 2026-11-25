@@ -1,5 +1,7 @@
 package me.copimine.endevent;
 
+import me.copimine.endevent.domain.LastSealStructuralGeometryPolicy;
+
 import org.bukkit.Bukkit;
 import org.bukkit.Color;
 import org.bukkit.Location;
@@ -136,16 +138,17 @@ final class LastSealArenaReveal {
                 throw new IOException("rescue landing cannot be in the protected safe zone");
             if (changes.size() != expectedCount || changes.stream().noneMatch(Change::wall))
                 throw new IOException("wrong cell count or no wall segment");
+            LastSealStructuralGeometryPolicy.Box squareBox = new LastSealStructuralGeometryPolicy.Box(
+                    original.minX(), original.minY(), original.minZ(),
+                    original.maxX(), original.maxY(), original.maxZ());
+            LastSealStructuralGeometryPolicy.Box corridorBox = corridor == null ? null
+                    : new LastSealStructuralGeometryPolicy.Box(corridor.minX(), corridor.minY(),
+                            corridor.minZ(), corridor.maxX(), corridor.maxY(), corridor.maxZ());
             for (Change change : changes) {
                 Cell cell = change.cell();
-                boolean onBoundary = original.horizontal(cell.x(), cell.z()) && (cell.x() == original.minX()
-                        || cell.x() == original.maxX() || cell.z() == original.minZ() || cell.z() == original.maxZ());
                 Location at = cell.at(world);
-                boolean geometry = switch (change.kind()) {
-                    case "corridor" -> corridor != null && corridor.contains(at) && cell.y() > floor;
-                    case "wall" -> corridor == null && onBoundary && cell.y() > floor && cell.y() <= original.maxY();
-                    default -> !original.horizontal(cell.x(), cell.z()) && cell.y() == floor;
-                };
+                boolean geometry = LastSealStructuralGeometryPolicy.cellKindApproved(
+                        change.kind(), cell.x(), cell.y(), cell.z(), squareBox, floor, corridorBox);
                 if (!geometry || !world.getWorldBorder().isInside(at)
                         || !candidate.horizontal(at.getX(), at.getZ()) || protectedCell.test(at)
                         || safeZone != null && safeZone.contains(at)

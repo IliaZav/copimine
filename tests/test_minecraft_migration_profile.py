@@ -306,10 +306,15 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # ignition curve that scales material brightness only, never the silhouette.
     # Repinned from two clean `--rerun-tasks gradle test jar` runs that agreed
     # byte for byte on the same JDK.
-    assert artifact['size'] == 30_732_175
+    # 25-November re-pin: the V5.1 authored geyser clock/sound merge
+    # (`SpellVisualGeometry`/`SpellVisualEnvelope`/`geyser.ogg`) legitimately
+    # changed the merged client, and the previous pin (30732175) predated even
+    # the pre-merge CI build (30767016); no jar of that old size existed on
+    # disk. Two clean cold builds of the merged SHA agreed byte for byte.
+    assert artifact['size'] == 30_766_985
     assert artifact['sha512'] == (
-        '80a1e21a6f28a01e5646f5d3483c4f7d6df8a6fddb34cfe9297ceeec2b965b2b'
-        '247cb0f35bcfd53b419ded2d85b5dcfbe86c544e7b8a81175d0fc0ee4b8e5f09'
+        'b139c4873c340c833eef6472e0553a5d336d62f45ac00c4e3a4358dfc6783777'
+        '88f035aaecf42c0b0ba2a19239c1e22b93d73b0372608b8af6f156c99e49c432'
     )
 
 

@@ -21,8 +21,33 @@ public final class KaguneGuardianFightPolicy {
     public static final int MAX_PENDING_FLINCHES = 3;
     /** Shared pressure: one player is struck by at most this many defenders at once. */
     public static final int MAX_CONCURRENT_ATTACKERS_PER_TARGET = 2;
+    /**
+     * V6 §6.3: the permanent defender is a continuous roughly 4.5-5-block rig.
+     * Its strike and capture reach is the real authored length (7.8681 source
+     * units rendered at the 0.62 length scale), NOT the retired invisible
+     * eight-block grab and NOT the three-block under-player ambush range that
+     * used to clamp it. A legal strike therefore lands exactly where the model
+     * visibly reaches.
+     */
+    public static final double RIG_AUTHORED_HEIGHT_UNITS = 7.8681D;
+    public static final double RIG_LENGTH_SCALE = 0.62D;
+    public static final double MIN_GUARDIAN_REACH_BLOCKS = 4.5D;
+    public static final double MAX_GUARDIAN_REACH_BLOCKS = 5.0D;
 
     private KaguneGuardianFightPolicy() {
+    }
+
+    /** World-block reach of the permanent defender rig, clamped to the approved band. */
+    public static double guardianReachBlocks() {
+        double reach = RIG_AUTHORED_HEIGHT_UNITS * RIG_LENGTH_SCALE;
+        return Math.max(MIN_GUARDIAN_REACH_BLOCKS,
+                Math.min(MAX_GUARDIAN_REACH_BLOCKS, reach));
+    }
+
+    /** Squared reach the live server uses to refuse out-of-range strikes and grabs. */
+    public static double guardianReachSquared() {
+        double reach = guardianReachBlocks();
+        return reach * reach;
     }
 
     /** Party-scaled strike damage, bounded. */

@@ -498,6 +498,18 @@ public class FightProbe {
                     "knockback never exceeds six blocks: " + knock);
         }
 
+        // V6 §6.3: the defender's real reach is the authored ~4.5-5-block rig,
+        // not the three-block ambush grab that used to clamp the strike.
+        double reach = KaguneGuardianFightPolicy.guardianReachBlocks();
+        check(reach >= KaguneGuardianFightPolicy.MIN_GUARDIAN_REACH_BLOCKS,
+                "the defender rig reaches at least 4.5 blocks: " + reach);
+        check(reach <= KaguneGuardianFightPolicy.MAX_GUARDIAN_REACH_BLOCKS,
+                "the defender rig reaches at most 5 blocks: " + reach);
+        check(KaguneGuardianFightPolicy.guardianReachSquared() > 3.0D * 3.0D,
+                "the three-block ambush grab range no longer clamps the defender");
+        check(KaguneGuardianFightPolicy.guardianReachSquared() >= reach * reach - 1.0e-9,
+                "the squared reach matches the reported reach");
+
         // Anti-stunlock: one flinch at a time, bounded pressure.
         check(KaguneGuardianFightPolicy.flinchAllowed(0, 0), "a fresh guardian may flinch");
         check(!KaguneGuardianFightPolicy.flinchAllowed(3, 0),

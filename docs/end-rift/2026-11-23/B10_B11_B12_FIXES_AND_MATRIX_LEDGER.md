@@ -652,6 +652,29 @@ simultaneous viewers) needs a GUI client and a live server, so it stays
   disconnect/rejoin stays `NATIVE_BLOCKED`, recorded in
   `NATIVE_F2_VISUAL_CHECKLIST.md`.
 
+### §9A.03(F) — the shipped sounds really are anticipation + transient + tail
+
+The audio contract already proved the chain exists (one Ogg per token, a
+`sounds.json` registration, the one-shot runtime, the generator). It did not
+prove the samples *sound* like the three required layers. `tests/
+test_end_rift_spell_audio_envelope.py` decodes the twelve shipped Ogg files and
+measures:
+
+- mono 44.1 kHz (a positional world event, not stereo music),
+- an audible **onset** (mean RMS of the first 12.5% >= 0.02; measured minimum
+  0.089), i.e. a real anticipation cue rather than silence into the hit,
+- a high-contrast **release/impact transient** (peak >= 0.50, crest factor
+  >= 2.0; measured minima 0.861 / 2.62),
+- a **decaying tail** (last-12.5% RMS / envelope peak <= 0.35; measured maximum
+  0.159), i.e. a clean fade, not an endless loud loop,
+- duration 0.8-6.0 s (measured 1.70-3.00 s) and twelve distinct SHA-256 digests
+  so no two casts share a motif.
+
+`soundfile`/`numpy` are workstation tools, not CI test dependencies, so the test
+`importorskip`s and skips cleanly on the runner; a skip is never reported as a
+pass, and the CI-side wiring proof stays the always-on contract. Live mix,
+balance against phase music and 2+-player audibility remain `NATIVE_BLOCKED`.
+
 ### V6 section 9E Phase 4 - the Core memorial survives a full raid roster
 
 V6 asks for `CoreMemorialService`: "persistent names and clean large-roster

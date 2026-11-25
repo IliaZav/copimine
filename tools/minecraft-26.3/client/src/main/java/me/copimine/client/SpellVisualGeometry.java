@@ -1129,7 +1129,52 @@ public final class SpellVisualGeometry {
             strokes.add(new Stroke(Style.LANE, crack, widths, 0.85F, 0.55F));
         }
 
-        // 2. Pressure glow: pulsing rings hugging the throat at the base.
+        // 2. Locked ground breach: a rugged, closed ring of cracked black
+        // ground whose inner edge glows. The jitter is seeded by the cue only,
+        // so once the server freezes the target position the marked footprint
+        // can never drift or shrink; it simply grows into place through the
+        // warning and then holds, which is what lets a player read the exact
+        // edge of the real damage cylinder even under tall grass or other fog.
+        int breachPoints = quality == Quality.REDUCED ? 14 : 22;
+        double breachScale = GEYSER_VISUAL_RADIUS * 0.92D * (0.62D + 0.38D * swell);
+        for (int edge = 0; edge < 2; edge++) {
+            double radius = breachScale * (edge == 0 ? 1.0D : 0.74D);
+            List<Point> breach = new ArrayList<>(breachPoints + 1);
+            List<Float> breachWidths = new ArrayList<>(breachPoints + 1);
+            for (int index = 0; index <= breachPoints; index++) {
+                int knot = index % breachPoints;
+                double angle = Math.PI * 2.0D * index / breachPoints;
+                double jitter = 0.84D + 0.24D * splitUnit(seed, 300L + edge * 40L + knot);
+                double r = radius * jitter;
+                breach.add(new Point(0.06D + 0.02D * edge,
+                        Math.cos(angle) * r, Math.sin(angle) * r));
+                breachWidths.add((float) (0.07D * (edge == 0 ? 1.0D : 0.60D)));
+            }
+            strokes.add(new Stroke(edge == 0 ? Style.LANE : Style.RING, breach, breachWidths,
+                    edge == 0 ? 0.62F : 1.0F, edge == 0 ? 0.55F : 0.86F));
+        }
+
+        // 3. Pre-blast pressure: a handful of ash motes are visibly pulled
+        // INWARD before the blow, so the warning reads from motion alone even
+        // with sound off. It is entirely local and disappears by the eruption.
+        if (swell < 1.0D) {
+            int pulled = quality == Quality.REDUCED ? 4 : 6;
+            for (int mote = 0; mote < pulled; mote++) {
+                double angle = splitUnit(seed, 420L + mote) * Math.PI * 2.0D + spin * 0.25D;
+                double outer = GEYSER_VISUAL_RADIUS * (0.90D + 0.06D * splitUnit(seed, 460L + mote));
+                double inner = GEYSER_VISUAL_RADIUS * 0.30D;
+                double r = outer + (inner - outer) * swell;
+                double lift = 0.10D + 0.24D * (1.0D - swell) * splitUnit(seed, 500L + mote);
+                strokes.add(new Stroke(Style.TRACE, List.of(
+                        new Point(lift, Math.cos(angle) * outer * 0.92D,
+                                Math.sin(angle) * outer * 0.92D),
+                        new Point(lift + 0.06D, Math.cos(angle) * r, Math.sin(angle) * r)),
+                        List.of(0.05F, 0.02F), 0.92F,
+                        (float) (0.55D + 0.35D * (1.0D - swell))));
+            }
+        }
+
+        // 4. Pressure glow: pulsing rings hugging the throat at the base.
         for (int ring = 0; ring < 3; ring++) {
             double phase = frac(t + ring / 3.0D);
             strokes.add(axisRing(0.10D + ring * 0.08D,
@@ -1137,7 +1182,7 @@ public final class SpellVisualGeometry {
                     Style.RING, 0.90F, (float) (0.55D * (1.0D - phase)), spin * 0.3D));
         }
 
-        // 3. Rock/obsidian throat: jagged vertical ribs and stepped ledges.
+        // 5. Rock/obsidian throat: jagged vertical ribs and stepped ledges.
         int ribs = quality == Quality.REDUCED ? 5 : 7;
         for (int rib = 0; rib < ribs; rib++) {
             double angle = rib * (Math.PI * 2.0D) / ribs + spin * 0.10D;
@@ -1157,7 +1202,7 @@ public final class SpellVisualGeometry {
             strokes.add(new Stroke(Style.JAW, throat, widths, 0.60F, 0.90F));
         }
 
-        // 4. Volumetric flame sheets: tall staggered, leaning, travelling wave.
+        // 6. Volumetric flame sheets: tall staggered, leaning, travelling wave.
         int sheets = quality == Quality.REDUCED ? 4 : 6;
         for (int sheet = 0; sheet < sheets; sheet++) {
             double angle = sheet * (Math.PI * 2.0D) / sheets + spin * 0.16D;
@@ -1181,7 +1226,7 @@ public final class SpellVisualGeometry {
             strokes.add(new Stroke(Style.FIELD, flame, widths, 1.0F, 0.62F));
         }
 
-        // 5. Ash and debris: motes flung out, then falling as it collapses.
+        // 7. Ash and debris: motes flung out, then falling as it collapses.
         int motes = quality == Quality.REDUCED ? 6 : 10;
         for (int mote = 0; mote < motes; mote++) {
             double angle = splitUnit(seed, 100L + mote) * (Math.PI * 2.0D) + spin * 0.40D;
@@ -1199,7 +1244,42 @@ public final class SpellVisualGeometry {
                     List.of(0.10F, 0.03F), 0.70F, (float) (0.35D + 0.35D * (1.0D - u))));
         }
 
-        // 6. Crown flare: short blades at the top of the living column.
+        // 8. Real rock fragmentation: readable local shards leave the throat on
+        // a ballistic arc, peak under their own momentum and fall back as the
+        // column collapses. Each is a chipped three-point slab. They stay
+        // inside the marked breach edge, so no shard can ever hide the actual
+        // danger boundary, and they are cosmetic only -- the hit receipt stays
+        // server-authoritative.
+        int shards = quality == Quality.REDUCED ? 4 : 8;
+        for (int shard = 0; shard < shards; shard++) {
+            double launch = 0.20D + 0.03D * (shard % 4)
+                    + 0.02D * splitUnit(seed, 540L + shard);
+            double life = clamp((t - launch) / 0.55D, 0.0D, 1.0D);
+            if (life <= 0.0D || life >= 1.0D || column <= 0.10D) {
+                continue;
+            }
+            double arc = Math.sin(Math.PI * life);
+            double angle = splitUnit(seed, 580L + shard) * Math.PI * 2.0D + spin * 0.12D;
+            double radial = GEYSER_VISUAL_RADIUS * (0.38D + 0.34D * life)
+                    * (0.80D + 0.20D * splitUnit(seed, 620L + shard));
+            double top = height * (0.14D + 0.66D * arc);
+            double tilt = 0.10D + 0.12D * ((shard % 3) - 1);
+            double side = radial * 0.22D;
+            Point root = new Point(Math.max(0.06D, top - height * 0.16D),
+                    Math.cos(angle) * radial - Math.sin(angle) * side,
+                    Math.sin(angle) * radial + Math.cos(angle) * side);
+            Point tip = new Point(Math.min(height, top + height * 0.05D),
+                    Math.cos(angle) * (radial + tilt),
+                    Math.sin(angle) * (radial + tilt));
+            Point wing = new Point(Math.max(0.06D, top - height * 0.10D),
+                    Math.cos(angle + 0.18D) * radial,
+                    Math.sin(angle + 0.18D) * radial);
+            strokes.add(new Stroke(Style.JAW, List.of(root, wing, tip),
+                    List.of(0.15F, 0.10F, 0.03F), 0.92F,
+                    (float) (0.55D + 0.35D * arc)));
+        }
+
+        // 9. Crown flare: short blades at the top of the living column.
         if (column > 0.35D) {
             double top = height * column;
             for (int blade = 0; blade < 5; blade++) {
@@ -1211,6 +1291,48 @@ public final class SpellVisualGeometry {
                                 Math.cos(angle) * GEYSER_VISUAL_RADIUS * 0.85D,
                                 Math.sin(angle) * GEYSER_VISUAL_RADIUS * 0.85D)),
                         List.of(0.09F, 0.02F), 1.0F, (float) (0.50D + 0.50D * column)));
+            }
+        }
+
+        // 10. Detached crest lobes: the top breaks into separated tongues
+        // instead of ending in a hard flat cap, so the column keeps reading as
+        // fire from every angle and never as a cylinder with a lid.
+        if (column > 0.50D) {
+            double crest = height * column;
+            int lobes = quality == Quality.REDUCED ? 3 : 5;
+            for (int lobe = 0; lobe < lobes; lobe++) {
+                double angle = lobe * (Math.PI * 2.0D) / lobes + spin * 0.34D + 0.40D;
+                double spread = GEYSER_VISUAL_RADIUS * (0.34D + 0.10D * (lobe % 3));
+                double startX = Math.max(0.06D, Math.min(crest, height - height * 0.10D));
+                double rise = Math.min(height, startX
+                        + height * (0.06D + 0.05D * splitUnit(seed, 660L + lobe)));
+                double drift = Math.cos(angle + 0.30D);
+                double driftZ = Math.sin(angle + 0.30D);
+                strokes.add(new Stroke(Style.ARM, List.of(
+                        new Point(startX, Math.cos(angle) * spread * 0.55D,
+                                Math.sin(angle) * spread * 0.55D),
+                        new Point(startX + (rise - startX) * 0.55D,
+                                Math.cos(angle) * spread,
+                                Math.sin(angle) * spread),
+                        new Point(rise, drift * spread * 1.05D, driftZ * spread * 1.05D)),
+                        List.of(0.10F, 0.07F, 0.02F), 1.0F,
+                        (float) (0.50D + 0.50D * column)));
+            }
+        }
+
+        // 11. Impact exit: fast concentric dust/air rings leave the base as the
+        // column cools, then fade with it. They stay inside the real radius.
+        if (collapse > 0.0D) {
+            int rings = quality == Quality.REDUCED ? 1 : 2;
+            for (int ring = 0; ring < rings; ring++) {
+                double u = clamp(collapse - ring * 0.18D, 0.0D, 1.0D);
+                if (u <= 0.0D) {
+                    continue;
+                }
+                double radius = GEYSER_VISUAL_RADIUS * (0.42D + 0.54D * u);
+                strokes.add(axisRing(0.12D + 0.02D * ring, radius, 18, 0.05D,
+                        Style.RING, (float) (0.85D * (1.0D - u)),
+                        (float) (0.50D * (1.0D - u)), spin * 0.40D));
             }
         }
         return strokes;

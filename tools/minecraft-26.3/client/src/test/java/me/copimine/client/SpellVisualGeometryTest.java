@@ -34,6 +34,11 @@ class SpellVisualGeometryTest {
         return strokes.stream().filter(stroke -> stroke.style() == style).count();
     }
 
+    /** Horizontal distance from the authored column axis (the local x axis). */
+    private static double radial(SpellVisualGeometry.Point point) {
+        return Math.hypot(point.y(), point.z());
+    }
+
     @Test
     void crownHasFiveCurvedArmsThatRotate() {
         List<SpellVisualGeometry.Stroke> strokes = crown(0L);
@@ -361,6 +366,96 @@ class SpellVisualGeometryTest {
                 1380L, SEED, SpellVisualGeometry.GEYSER_MAX_HEIGHT,
                 SpellVisualGeometry.Quality.FULL)), "the geyser must animate over its clock");
         assertTrue(collapseTop < bloomTop, "the column collapses at the end of the cycle");
+    }
+
+    @Test
+    void geyserCarriesEveryAuthoredNineD01Component() {
+        // Section 9D.01 asks the signature Phase 3 geyser for five coordinated
+        // visible components. Each one is pinned here by style, shape and the
+        // phase it belongs to, so a later refactor cannot quietly drop the
+        // breach marker, the inward pre-blast, the ballistic shards, the
+        // detached crest lobes or the exit rings.
+        List<SpellVisualGeometry.Stroke> warning = SpellVisualGeometry.build(
+                SpellVisualGeometry.Spell.GEYSER, 240L, SEED,
+                SpellVisualGeometry.GEYSER_MAX_HEIGHT, SpellVisualGeometry.Quality.FULL);
+        List<SpellVisualGeometry.Stroke> bloom = SpellVisualGeometry.build(
+                SpellVisualGeometry.Spell.GEYSER, 1080L, SEED,
+                SpellVisualGeometry.GEYSER_MAX_HEIGHT, SpellVisualGeometry.Quality.FULL);
+        List<SpellVisualGeometry.Stroke> cooling = SpellVisualGeometry.build(
+                SpellVisualGeometry.Spell.GEYSER, 2200L, SEED,
+                SpellVisualGeometry.GEYSER_MAX_HEIGHT, SpellVisualGeometry.Quality.FULL);
+
+        // 1. The locked ground breach: a closed, rugged outer ring plus a
+        // high-contrast glowing inner edge, both lying on the floor plane.
+        long breachRing = bloom.stream()
+                .filter(stroke -> stroke.style() == SpellVisualGeometry.Style.LANE)
+                .filter(stroke -> stroke.points().size() >= 20)
+                .filter(stroke -> stroke.points().stream()
+                        .allMatch(point -> point.x() <= 0.061D))
+                .count();
+        assertEquals(1L, breachRing, "the locked ground breach ring");
+        long glowingEdge = bloom.stream()
+                .filter(stroke -> stroke.brightness() >= 0.95F && stroke.alpha() >= 0.80F)
+                .filter(stroke -> stroke.style() == SpellVisualGeometry.Style.RING)
+                .filter(stroke -> stroke.points().stream()
+                        .allMatch(point -> point.x() <= 0.081D))
+                .count();
+        assertTrue(glowingEdge >= 1L, "the glowing inner edge of the breach");
+
+        // 2. Pre-blast pressure: ash that visibly travels INWARD before the
+        // eruption, so the warning reads even with sound off.
+        long inward = warning.stream()
+                .filter(stroke -> stroke.style() == SpellVisualGeometry.Style.TRACE)
+                .filter(stroke -> radial(stroke.points().get(0))
+                        > radial(stroke.points().get(stroke.points().size() - 1)) + 0.20D)
+                .count();
+        assertTrue(inward >= 3L, "inward-pulled pre-blast debris");
+
+        // 3. Real rock fragmentation: chipped three-point slabs on a ballistic
+        // arc, some of them well above the throat.
+        long shards = bloom.stream()
+                .filter(stroke -> stroke.style() == SpellVisualGeometry.Style.JAW)
+                .filter(stroke -> stroke.points().size() == 3)
+                .count();
+        assertTrue(shards >= 6L, "ballistic rock shards");
+        double highestShard = bloom.stream()
+                .filter(stroke -> stroke.style() == SpellVisualGeometry.Style.JAW)
+                .filter(stroke -> stroke.points().size() == 3)
+                .flatMap(stroke -> stroke.points().stream())
+                .mapToDouble(SpellVisualGeometry.Point::x).max().orElse(0.0D);
+        assertTrue(highestShard > SpellVisualGeometry.GEYSER_MAX_HEIGHT * 0.45D,
+                "a shard must actually arc upward, top was " + highestShard);
+
+        // 4. Detached crest lobes: separated tongues, not a flat cap.
+        long lobes = bloom.stream()
+                .filter(stroke -> stroke.style() == SpellVisualGeometry.Style.ARM)
+                .filter(stroke -> stroke.points().size() == 3)
+                .count();
+        assertTrue(lobes >= 5L, "detached crest lobes");
+
+        // 5. Exit rings: fast dust/air rings that fade out with the collapse.
+        long exitRings = cooling.stream()
+                .filter(stroke -> stroke.style() == SpellVisualGeometry.Style.RING)
+                .filter(stroke -> stroke.alpha() <= 0.35F)
+                .count();
+        assertTrue(exitRings >= 1L, "exit dust/air rings");
+        double widestExit = cooling.stream()
+                .filter(stroke -> stroke.style() == SpellVisualGeometry.Style.RING)
+                .filter(stroke -> stroke.alpha() <= 0.35F)
+                .flatMap(stroke -> stroke.points().stream())
+                .mapToDouble(SpellVisualGeometryTest::radial).max().orElse(0.0D);
+        assertTrue(widestExit > SpellVisualGeometry.GEYSER_VISUAL_RADIUS * 0.60D,
+                "an exit ring must actually leave the base, radius " + widestExit);
+        // None of the five components is allowed to promise more than the real
+        // cylinder: the marker, the shards and the rings all stay inside it.
+        for (List<SpellVisualGeometry.Stroke> frame : List.of(warning, bloom, cooling)) {
+            for (SpellVisualGeometry.Stroke stroke : frame) {
+                for (SpellVisualGeometry.Point point : stroke.points()) {
+                    assertTrue(radial(point) <= SpellVisualGeometry.GEYSER_VISUAL_RADIUS + 1.0E-6D,
+                            "an authored geyser component escaped the hit cylinder");
+                }
+            }
+        }
     }
 
     @Test

@@ -306,10 +306,10 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # ignition curve that scales material brightness only, never the silhouette.
     # Repinned from two clean `--rerun-tasks gradle test jar` runs that agreed
     # byte for byte on the same JDK.
-    assert artifact['size'] == 30_684_452
+    assert artifact['size'] == 30_685_728
     assert artifact['sha512'] == (
-        '4e70f37995e124efa0f7f15b3ee0b484c443cfd6a124eccb464e744672bc0819'
-        '99048df9e4b37acca5fd1e09dabe4f18f2c94503f5152556604eacf9fafaad43'
+        '03620f76e57f315ca7ad84977b7468378446e5ec05135f3ec7199bb95cb4c647'
+        '783f5696d3a1acfef14ceb88378b9e3116ec39edcaf6108da90e4d193805c811'
     )
 
 

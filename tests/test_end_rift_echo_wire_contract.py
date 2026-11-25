@@ -30,6 +30,7 @@ def _duration_literals(source):
     patterns = {
         "sendEchoCloneView": r'"END_ECHO_STATE",\s*frame\.duel\(\)\.toString\(\),\s*([0-9_]+L)',
         "sendNamedEchoView": r'type,\s*pair\.duel\(\)\.toString\(\),\s*([0-9_]+L)',
+        "broadcastEchoReplicaCopyView": r'type,\s*frame\.duel\(\)\.toString\(\),\s*([0-9_]+L)',
     }
     found = {}
     for name, pattern in patterns.items():
@@ -40,7 +41,7 @@ def _duration_literals(source):
     return found
 
 
-def _probe_source(clone_duration, named_duration):
+def _probe_source(clone_duration, named_duration, copy_duration):
     return f"""
 import java.util.UUID;
 import me.copimine.protocol.EndEventBridgeBodyCodec;
@@ -78,9 +79,10 @@ public class EchoWireProbe {{
     public static void main(String[] args) {{
         // Exactly the durations the production producers pass.
         if (!send({clone_duration}L, 3L)) throw new AssertionError("clone frame refused");
-        if (!send({named_duration}L, Phase5EchoCopyPresentationPolicy.epochFor(1L)))
-            throw new AssertionError("named frame refused");
-        if (accepted != 2) throw new AssertionError("expected two accepted frames, saw " + accepted);
+        if (!send({named_duration}L, 3L)) throw new AssertionError("named frame refused");
+        if (!send({copy_duration}L, Phase5EchoCopyPresentationPolicy.epochFor(1L)))
+            throw new AssertionError("Phase 5 copy frame refused");
+        if (accepted != 3) throw new AssertionError("expected three accepted frames, saw " + accepted);
 
         // The copy band must survive the wire verbatim and stay distinguishable.
         if (!Phase5EchoCopyPresentationPolicy.isCopyEpoch(
@@ -106,7 +108,8 @@ public class EchoWireProbe {{
 def test_echo_producers_pass_a_codec_accepted_duration(tmp_path):
     durations = _duration_literals(MONOLITH.read_text(encoding="utf-8"))
     probe = tmp_path / "EchoWireProbe.java"
-    probe.write_text(_probe_source(durations["sendEchoCloneView"], durations["sendNamedEchoView"]),
+    probe.write_text(_probe_source(durations["sendEchoCloneView"], durations["sendNamedEchoView"],
+                                   durations["broadcastEchoReplicaCopyView"]),
                      encoding="utf-8")
     compile_result = subprocess.run(
         ["javac", "-sourcepath", f"{PROTOCOL}{__import__('os').pathsep}{END_EVENT_SRC}",
@@ -118,7 +121,7 @@ def test_echo_producers_pass_a_codec_accepted_duration(tmp_path):
     assert run.returncode == 0, run.stdout + run.stderr
 
 
-@pytest.mark.parametrize("producer", ["sendEchoCloneView", "sendNamedEchoView"])
+@pytest.mark.parametrize("producer", ["sendEchoCloneView", "sendNamedEchoView", "broadcastEchoReplicaCopyView"])
 def test_echo_producers_do_not_pass_a_lease(producer):
     durations = _duration_literals(MONOLITH.read_text(encoding="utf-8"))
     assert durations[producer] == 0, (

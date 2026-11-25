@@ -1739,6 +1739,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      */
     private final Map<UUID, EchoReplicaActor> echoReplicaActors = new LinkedHashMap<>();
     private final Map<UUID, EchoReplicaPresentationPolicy.Beat> echoReplicaBeats = new HashMap<>();
+    /**
+     * V6 §963 / owner request: the same carrier that draws the Guardian replica
+     * also drives a TRANSLUCENT copy of the locked player's own body.
+     *
+     * <p>The carrier is bound into the shared Echo presentation scope at the
+     * reserved Phase 5 epoch band so a capable client draws the victim's real
+     * skin, pose and equipment at {@code PlayerEchoCopyPolicy.COPY_ALPHA}
+     * instead of the Guardian body. Viewers without the Echo capability keep the
+     * Guardian replica they always had.</p>
+     */
+    private final Map<UUID, EchoPresentationProbeState> echoReplicaEchoViews = new LinkedHashMap<>();
+    /** Dedupe/keepalive for the Phase 5 copy frames, keyed by viewer and actor. */
+    private final me.copimine.endevent.domain.wave7.EchoFrameBroadcastPolicy echoCopyBroadcast =
+            new me.copimine.endevent.domain.wave7.EchoFrameBroadcastPolicy();
     private record EchoChestProbe(UUID display, Location origin, Vector direction, Location previous) { }
     private final Map<UUID, EchoChestProbe> echoChestProbes = new HashMap<>();
     private final Set<UUID> echoChestStarted = new HashSet<>();
@@ -58182,7 +58196,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                             target.getLocation().getYaw() * Math.PI / 180.0D, copyFamily);
             UUID copyId = UUID.randomUUID();
             EchoReplicaActor actor = spawnEchoReplicaActor(boss, copyId,
-                    target.getLocation(), placement, copyFamily);
+                    target, placement, copyFamily);
             if (actor == null) {
                 getLogger().info("ECHO_ATTACK_REPLICA_SPAWN_REFUSED event=" + eventId
                         + " phase=" + bossPhase + " family=" + copyFamily
@@ -58278,6 +58292,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             var beat = EchoReplicaPresentationPolicy.beatAt(timeline, eventTickCounter);
             presentEchoReplicaActor(copyId, actor, timeline, lock, beat);
+            // V6 Phase 5: mirror the copy's beat onto the translucent body and
+            // keep its own view alive and current.
+            poseEchoReplicaCopyView(copyId, beat);
+            broadcastEchoReplicaCopyView(copyId, "END_ECHO_STATE");
             Entity raw = ownedEntities.get(actor.entityId());
             if (!(raw instanceof LivingEntity source)) { retireEchoReplica(copyId, "actor-lost"); continue; }
             if (timeline.family().equals("CHEST_STRIKE")) {
@@ -58441,12 +58459,120 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return refusal;
     }
 
+    /**
+     * V6 §963 / owner request: bind the copy's carrier into the shared Echo
+     * presentation scope so a capable client draws the LOCKED player's own
+     * translucent body instead of the Guardian replica.
+     *
+     * <p>The copy wears the victim's real armour and hands (every drop chance is
+     * zero — the carrier owns no loot) so the client can project the silhouette.
+     * The epoch is the reserved Phase 5 band: every copy shares
+     * {@code epochFor(generation)} so the client keeps them in one scope, and the
+     * band outranks any Wave 7 duel epoch so entering RAGE clears the finished
+     * Wave 7 scope instead of being refused by it.</p>
+     */
+    private void bindEchoReplicaCopyView(LivingEntity carrier, UUID copyId, Player target, String family) {
+        if (carrier == null || target == null || carrier.getWorld() == null || copyId == null) return;
+        var targetGear = target.getEquipment();
+        var carrierGear = carrier.getEquipment();
+        if (targetGear != null && carrierGear != null) {
+            carrierGear.setArmorContents(targetGear.getArmorContents());
+            carrierGear.setItemInMainHand(targetGear.getItemInMainHand());
+            carrierGear.setItemInOffHand(targetGear.getItemInOffHand());
+            carrierGear.setHelmetDropChance(0.0F);
+            carrierGear.setChestplateDropChance(0.0F);
+            carrierGear.setLeggingsDropChance(0.0F);
+            carrierGear.setBootsDropChance(0.0F);
+            carrierGear.setItemInMainHandDropChance(0.0F);
+            carrierGear.setItemInOffHandDropChance(0.0F);
+        }
+        UUID eventUuid = parseUuidOrNull(eventId);
+        if (eventUuid == null || generation <= 0L) return;
+        EchoPresentationProbeState view = new EchoPresentationProbeState(eventUuid, generation,
+                me.copimine.endevent.domain.Phase5EchoCopyPresentationPolicy.epochFor(generation),
+                copyId, carrier.getUniqueId(), target.getUniqueId(),
+                carrier.getWorld().getKey().toString(), eventTickCounter);
+        echoReplicaEchoViews.put(copyId, view);
+        broadcastEchoReplicaCopyView(copyId, "END_ECHO_BIND");
+        getLogger().info("PHASE5_ECHO_COPY_BOUND event=" + eventId + " generation=" + generation
+                + " copy=" + copyId + " actor=" + carrier.getUniqueId()
+                + " target=" + target.getUniqueId()
+                + " " + me.copimine.endevent.domain.Phase5EchoCopyPresentationPolicy.describe(
+                        0, family, me.copimine.endevent.domain.Phase5EchoCopyPresentationPolicy.COPY_ALPHA,
+                        target.getUniqueId().toString()));
+    }
+
+    /**
+     * Mirrors one copy's own beat onto the translucent player body so the copy
+     * visibly swings on contact/explosion instead of standing idle.
+     *
+     * <p>{@link EchoPresentationProbeState#begin} is only invoked on a real
+     * action change: it bumps the equipment counter, and churning that every tick
+     * would both waste signatures and defeat
+     * {@link me.copimine.endevent.domain.wave7.EchoFrameBroadcastPolicy}'s
+     * change detection.</p>
+     */
+    private void poseEchoReplicaCopyView(UUID copyId,
+                                         EchoReplicaPresentationPolicy.Beat beat) {
+        EchoPresentationProbeState view = echoReplicaEchoViews.get(copyId);
+        if (view == null || view.closed()) return;
+        EchoPresentationProbeState.Action wanted =
+                beat == EchoReplicaPresentationPolicy.Beat.CONTACT
+                        || beat == EchoReplicaPresentationPolicy.Beat.EXPLOSION
+                        ? EchoPresentationProbeState.Action.SWING
+                        : EchoPresentationProbeState.Action.IDLE;
+        if (view.action() != wanted) view.begin(wanted, eventTickCounter);
+    }
+
+    /**
+     * Sends one copy frame to every Echo-capable viewer, deduped by
+     * {@link me.copimine.endevent.domain.wave7.EchoFrameBroadcastPolicy}. A
+     * {@code REMOVE} always produces its final frame so the client can retire the
+     * actor; every other frame is delivered on change or on the keepalive tick.
+     */
+    private void broadcastEchoReplicaCopyView(UUID copyId, String type) {
+        EchoPresentationProbeState view = echoReplicaEchoViews.get(copyId);
+        if (view == null) return;
+        EchoPresentationProbeState.Frame frame = view.nextFrame(eventTickCounter);
+        if (frame == null) return;
+        String signature =
+                me.copimine.endevent.domain.wave7.EchoFrameBroadcastPolicy.signatureOf(frame.fields());
+        boolean removing = "END_ECHO_REMOVE".equals(type);
+        for (Player viewer : eventAudience()) {
+            if (viewer == null || !echoPresentationCapablePlayers.contains(viewer.getUniqueId())) continue;
+            if (!removing && !echoCopyBroadcast.shouldSend(viewer.getUniqueId(), frame.actor(),
+                    signature, eventTickCounter)) continue;
+            // Echo bodies are lease-free on the wire: the codec refuses a nonzero
+            // duration for END_ECHO_* and the client owns freshness.
+            boolean delivered = sendClientPacket(viewer, type, frame.duel().toString(), 0L,
+                    frame.actor().toString(), "END_RIFT_ECHO_V1", 0, 0, 0.0F,
+                    frame.fields(), frame.dimension());
+            if (delivered && !removing) {
+                echoCopyBroadcast.record(viewer.getUniqueId(), frame.actor(), signature, eventTickCounter);
+            }
+        }
+    }
+
+    /** Retires one copy's translucent view, sends its REMOVE and forgets it. */
+    private void retireEchoReplicaCopyView(UUID copyId) {
+        EchoPresentationProbeState view = echoReplicaEchoViews.get(copyId);
+        if (view == null) return;
+        view.died(eventTickCounter);
+        broadcastEchoReplicaCopyView(copyId, "END_ECHO_REMOVE");
+        view.close();
+        echoReplicaEchoViews.remove(copyId);
+    }
+
     /** Spawns the visible actor of one copy, or returns null and leaves nothing behind. */
     private EchoReplicaActor spawnEchoReplicaActor(LivingEntity boss, UUID copyId,
-                                                   Location origin,
+                                                   Player target,
                                                    EchoReplicaPresentationPolicy.Placement placement,
                                                    String family) {
-        if (boss == null || origin == null || origin.getWorld() == null || placement == null) {
+        if (boss == null || target == null || target.getWorld() == null || placement == null) {
+            return null;
+        }
+        Location origin = target.getLocation();
+        if (origin == null) {
             return null;
         }
         World world = origin.getWorld();
@@ -58504,6 +58630,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             copyBody.setHealth(Math.min(ECHO_REPLICA_ACTOR_HEALTH, copyBody.getMaxHealth()));
         }
         for (Player viewer : eventAudience()) bindEventEntityClient(viewer, stand);
+        // V6 Phase 5: the carrier additionally drives a translucent player copy.
+        if (stand instanceof LivingEntity copyCarrier) bindEchoReplicaCopyView(copyCarrier, copyId, target, family);
         getLogger().info("ECHO_REPLICA_ACTOR_SPAWNED event=" + eventId
                 + " generation=" + generation + " copy=" + copyId
                 + " family=" + family + " actor=" + stand.getUniqueId()
@@ -58656,6 +58784,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      */
     private void retireEchoReplica(UUID copyId, String reason) {
         retireEchoChestProbe(copyId);
+        retireEchoReplicaCopyView(copyId);
         echoChestStarted.remove(copyId); echoReplicaBeats.remove(copyId);
         echoReplicaGenerations.remove(copyId);
         EchoAttackReplicaPolicy.Timeline timeline = echoReplicaTimelines.remove(copyId);
@@ -58711,6 +58840,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // statue would outlive the copy that owned it.
         for (UUID copyId : new ArrayList<>(echoReplicaActors.keySet())) {
             EchoReplicaActor actor = echoReplicaActors.remove(copyId);
+            retireEchoReplicaCopyView(copyId);
             if (actor == null) {
                 continue;
             }
@@ -58725,6 +58855,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         echoReplicaAcceptedBlastDamage.clear();
         echoReplicaLastCastTick = Long.MIN_VALUE;
         echoReplicaLastCastFamily = "";
+        // V6 Phase 5: no translucent copy may outlive the phase's replicas.
+        for (UUID copyId : new ArrayList<>(echoReplicaEchoViews.keySet())) retireEchoReplicaCopyView(copyId);
+        echoReplicaEchoViews.clear();
+        echoCopyBroadcast.clear();
         // V6 §963: the recorded silhouettes only matter while echoes exist.
         playerRecentActionFamily.clear();
         if (removed > 0) {

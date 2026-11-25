@@ -38833,7 +38833,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             // MAGE7-005: record the tool use only after the cast really resolved.
             recordArchmageToolUse(actor, checkpoint.attack(), checkpoint.generation());
-            long cooldown = now + Wave7NamedTrialActorPolicy.cooldownTicks(checkpoint.attack()) * 50L;
+            int recoveryTicks = Wave7NamedTrialActorPolicy.cooldownTicks(checkpoint.attack());
+            if (trial.trial() == RealitySplitTrialController.NamedTrial.RIFT_ARCHMAGE) {
+                recoveryTicks = Math.min(recoveryTicks, (int) Wave7ArchmagePunishPolicy.PUNISH_TICKS);
+            }
+            long cooldown = now + recoveryTicks * 50L;
             return writeNamedTrialActorCheckpoint(actor, new Wave7NamedTrialActorPolicy.Checkpoint(
                     checkpoint.eventId(), checkpoint.generation(), checkpoint.chamber(), checkpoint.trial(),
                     checkpoint.actorId(), checkpoint.attackIndex(), Wave7NamedTrialActorPolicy.Attack.NONE,
@@ -38921,6 +38925,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
 
         Wave7NamedTrialActorPolicy.Attack attack;
+        long rotationIndex = checkpoint.attackIndex();
         boolean supportUsed = checkpoint.supportUsed();
         // MAGE7-005: Step is the one move that lets the mage escape melee. It is
         // refused while the punish window opened by a major cast is still open
@@ -38944,22 +38949,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             // SUPERSEDED (spec MARK-002/MARK-007): the Marksman keeps firing its
             // authored fans; support is the one-time Giant defender above, not a
             // bonus attack that interrupts the rotation.
-            attack = Wave7NamedTrialActorPolicy.attackFor(trial.trial(), checkpoint.attackIndex());
-            if (attack == Wave7NamedTrialActorPolicy.Attack.ARCHMAGE_STEP
-                    && !Wave7ArchmagePunishPolicy.stepAllowed(eventTickCounter, lastStepTick,
-                            punishWindow)) {
-                // The rotation steps over the refused entry; it never stalls.
-                attack = Wave7NamedTrialActorPolicy.attackForExcluding(trial.trial(),
-                        checkpoint.attackIndex() + 1L,
-                        Wave7NamedTrialActorPolicy.Attack.ARCHMAGE_STEP);
+            attack = Wave7NamedTrialActorPolicy.attackFor(trial.trial(), rotationIndex);
+            if (trial.trial() == RealitySplitTrialController.NamedTrial.RIFT_ARCHMAGE) {
+                int choices = Wave7NamedTrialActorPolicy.profile(trial.trial()).attacks().size();
+                for (int checked = 0; checked < choices && !archmageCastReady(actor, attack,
+                        checkpoint.generation(), lastStepTick, punishWindow); checked++) {
+                    attack = Wave7NamedTrialActorPolicy.attackFor(trial.trial(), ++rotationIndex);
+                }
             }
         }
-        if (attack == Wave7NamedTrialActorPolicy.Attack.NONE
-                || checkpoint.attackIndex() >= 1_000_000L) return false;
+        if (attack == Wave7NamedTrialActorPolicy.Attack.NONE || rotationIndex >= 1_000_000L) return false;
         long deadline = now + Wave7NamedTrialActorPolicy.telegraphTicks(attack) * 50L;
         Wave7NamedTrialActorPolicy.Checkpoint started = new Wave7NamedTrialActorPolicy.Checkpoint(
                 checkpoint.eventId(), checkpoint.generation(), checkpoint.chamber(), checkpoint.trial(),
-                checkpoint.actorId(), checkpoint.attackIndex() + 1L, attack, deadline,
+                checkpoint.actorId(), rotationIndex + 1L, attack, deadline,
                 checkpoint.cooldownUntilMillis(), target.getUniqueId(), supportUsed,
                 checkpoint.vanishUntilMillis());
         if (!writeNamedTrialActorCheckpoint(actor, started)) return false;
@@ -39915,6 +39918,29 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
+    private boolean archmageCastReady(LivingEntity actor, Wave7NamedTrialActorPolicy.Attack attack,
+            long castGeneration, long lastStepTick, Wave7ArchmagePunishPolicy.PunishWindow punishWindow) {
+        if (attack == Wave7NamedTrialActorPolicy.Attack.ARCHMAGE_STEP) {
+            return Wave7ArchmagePunishPolicy.stepAllowed(eventTickCounter, lastStepTick, punishWindow);
+        }
+        if (!isCommittedArchmageArea(attack)) return true;
+        long lastCast = archmageToolTick(actor, archmageAreaCooldownKey(attack), castGeneration);
+        if (lastCast != Wave7ArchmagePunishPolicy.NEVER
+                && eventTickCounter - lastCast < Wave7NamedTrialActorPolicy.cooldownTicks(attack)) return false;
+        if (attack != Wave7NamedTrialActorPolicy.Attack.ARCHMAGE_REPULSE) return true;
+        if (!Wave7ArchmagePunishPolicy.mayRepel(eventTickCounter, lastCast, punishWindow)) return false;
+        Location from = actor.getLocation();
+        return realitySplitTrialTargets(actor).stream().anyMatch(player -> {
+            Location at = player.getLocation();
+            return ArchmageV5CombatPolicy.repulseHits(Math.hypot(from.getX() - at.getX(), from.getZ() - at.getZ()),
+                    at.getY() - from.getY()) && hasNamedTrialLineOfSight(actor.getEyeLocation(), player.getEyeLocation());
+        });
+    }
+
+    private NamespacedKey archmageAreaCooldownKey(Wave7NamedTrialActorPolicy.Attack attack) {
+        return new NamespacedKey(this, "wave7_cooldown_" + attack.name().toLowerCase(java.util.Locale.ROOT));
+    }
+
     private static boolean isCommittedArchmageArea(Wave7NamedTrialActorPolicy.Attack attack) {
         return switch (attack) {
             case ARCHMAGE_CIRCLE, ARCHMAGE_CROWN, ARCHMAGE_REPULSE -> true;
@@ -40393,6 +40419,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         || actor.getLocation().distanceSquared(lock.casterOrigin()) > 2.25D;
                 if (fenced || System.nanoTime() - hardDeadline >= 0
                         || elapsed >= standardChannel || ArchmageV5CombatPolicy.crownMustFinish(elapsed)) {
+                    if (!fenced) {
+                        writeArchmageToolTick(actor, keyWave7ArchmagePunishUntil, ownerGeneration,
+                                Wave7ArchmagePunishPolicy.punishUntilTick(eventTickCounter));
+                    }
                     finish();
                     return;
                 }
@@ -40559,6 +40589,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private void recordArchmageToolUse(LivingEntity actor,
                                        Wave7NamedTrialActorPolicy.Attack attack, long generation) {
         if (actor == null || attack == null) return;
+        if (isCommittedArchmageArea(attack)) {
+            writeArchmageToolTick(actor, archmageAreaCooldownKey(attack), generation, eventTickCounter);
+        }
         switch (attack) {
             case ARCHMAGE_STEP -> writeArchmageToolTick(actor, keyWave7ArchmageStepTick,
                     generation, eventTickCounter);

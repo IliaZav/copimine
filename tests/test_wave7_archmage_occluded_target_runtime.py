@@ -43,6 +43,8 @@ def occluded_archmage_probe(tmp_path_factory):
         # The three-argument overload delegates to the timed one, so the probe must
         # compile the real timed body rather than resolve a missing overload.
         "private boolean finishNamedTrialAttack(Entity actor,\n            Wave7NamedTrialActorPolicy.Checkpoint checkpoint, long now, long cooldownMillis)",
+        "private boolean archmageCastReady(",
+        "private NamespacedKey archmageAreaCooldownKey(",
         "private static boolean isCommittedArchmageArea(",
         "private boolean resolveNamedTrialAttack(",
         "private boolean stepNamedTrialArchmage(",
@@ -290,7 +292,38 @@ public class OccludedArchmageProbe {
         Wave7AdmissionRuntimeChecks.boot();
         var p=new OccludedArchmageProbe();String mode=args[0];
         long ordinal=mode.startsWith("occluded-ordinal-")?Long.parseLong(mode.substring(17)):0L;
+        if(mode.equals("punish-rotation"))ordinal=5L;
         p.setup(mode.equals("marksman-occluded"),ordinal);
+        if(mode.equals("punish-rotation")){
+            p.eventTickCounter=100;
+            p.visible=true;
+            p.target.location.x=p.actor.getLocation().getX()+3;
+            p.recordArchmageToolUse(p.actor,Wave7NamedTrialActorPolicy.Attack.ARCHMAGE_FANGS,p.generation);
+            require(p.tickNamedTrialActor(p.actor,p.trial),"an active punish window must not stall rotation");
+            require(p.checkpoint().attack()==Wave7NamedTrialActorPolicy.Attack.ARCHMAGE_BEAM
+                &&p.checkpoint().attackIndex()==7L,"Step must yield to the next authored spell and advance the rotation");
+            return;
+        }
+        if(mode.equals("independent-cooldowns")){
+            var crown=Wave7NamedTrialActorPolicy.Attack.ARCHMAGE_CROWN;
+            var circle=Wave7NamedTrialActorPolicy.Attack.ARCHMAGE_CIRCLE;
+            var repulse=Wave7NamedTrialActorPolicy.Attack.ARCHMAGE_REPULSE;
+            p.eventTickCounter=100;
+            p.visible=true;
+            p.target.location.x=p.actor.getLocation().getX()+2;
+            p.recordArchmageToolUse(p.actor,crown,p.generation);
+            var window=Wave7ArchmagePunishPolicy.afterMajorCast(p.eventTickCounter);
+            require(!p.archmageCastReady(p.actor,crown,p.generation,Wave7ArchmagePunishPolicy.NEVER,window),
+                "Crown must honor its own cooldown");
+            require(p.archmageCastReady(p.actor,circle,p.generation,Wave7ArchmagePunishPolicy.NEVER,window),
+                "Crown cooldown must leave Circle available");
+            require(!p.archmageCastReady(p.actor,repulse,p.generation,Wave7ArchmagePunishPolicy.NEVER,window),
+                "Repulse must leave the melee punish window open");
+            p.eventTickCounter+=Wave7ArchmagePunishPolicy.PUNISH_TICKS;
+            require(p.archmageCastReady(p.actor,repulse,p.generation,Wave7ArchmagePunishPolicy.NEVER,window),
+                "Repulse should become available again when a player is still in reach");
+            return;
+        }
         if(mode.equals("cross-room-only")){
             Bukkit.players.clear();Bukkit.players.add(new Player(Wave7AdmissionRuntimeChecks.A));
         }
@@ -384,7 +417,7 @@ public class OccludedArchmageProbe {
     "safe-step", "blocked-path", "blocked-destination", "unsafe-floor", "teleport-cancelled",
     "target-invalid", "target-quit", "stale-generation", "stale-checkpoint",
     "cross-room-only", "connected-other-room", "same-room-with-nearer-other-room",
-    "no-target", "cooldown", "marksman-occluded", "visible-normal",
+    "no-target", "cooldown", "marksman-occluded", "visible-normal", "independent-cooldowns", "punish-rotation",
 ])
 def test_archmage_repositions_under_cover_without_bypassing_admission(occluded_archmage_probe, scenario):
     result = subprocess.run(

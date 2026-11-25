@@ -66,9 +66,12 @@ public class BossIncomingRosterProbe {
     }
     static class Bukkit {static int getCurrentTick(){return 1;}}
     record BossHealthCommit(BossRealHealthDamagePolicy.Result result,double shieldBlockedDamage){}
+    record ForgeAction(long startTick){}
     final LivingEntity currentBoss=new LivingEntity();
     EventPhase phase=EventPhase.BOSS_ACTIVE;
     long generation=4, cocoonFallGeneration=Long.MIN_VALUE;
+    long eventTickCounter;
+    ForgeAction overloadForge;
     CocoonFallPolicy.Stage cocoonFallStage=CocoonFallPolicy.Stage.COCOONED;
     BossPhase bossPhase=BossPhase.AWAKENING;
     BossAbilityState bossAbilityState=BossAbilityState.NONE;
@@ -124,6 +127,10 @@ public class BossIncomingRosterProbe {
             if(scenario.equals("fury-falling"))p.cocoonFallStage=CocoonFallPolicy.Stage.FALLING;
             if(scenario.equals("fury-landing"))p.cocoonFallStage=CocoonFallPolicy.Stage.LANDING;
         }
+        if(scenario.startsWith("forge-")) {
+            p.bossPhase=BossPhase.OVERLOAD;p.overloadForge=new ForgeAction(100);
+            p.eventTickCounter=scenario.equals("forge-exposed")?180:179;
+        }
         if(scenario.equals("outsider"))owner.admitted=false;
         if(scenario.equals("local-roster-fallback")){owner.admitted=false;p.localFallback=true;p.roster.clear();p.roster.add(UUID.randomUUID());}
         if(scenario.equals("diagnostic-member")){p.diagnostic=true;p.testCombatAiMode=true;p.roster.clear();}
@@ -146,6 +153,11 @@ public class BossIncomingRosterProbe {
         if(route.equals("event"))p.handleCurrentBossDamage(event,boss,source);
         else if(route.equals("proxy"))p.handleCurrentBossProjectileDamage(impact,boss,arrow);
         else p.applyCurrentBossProjectileDamage(boss,arrow);
+        if(scenario.startsWith("forge-")) {
+            check(boss.hp==4500-(scenario.equals("forge-exposed")?7.5:6),
+                    "forge exposure multiplier is out of phase via "+route+": "+boss.hp);
+            return;
+        }
         if(scenario.startsWith("fury-")) {
             check(boss.hp==4500-(scenario.equals("fury-active")?18:6),
                     "fury multiplier missing/repeated/leaked via "+route+": "+boss.hp);
@@ -205,4 +217,10 @@ def _run(out, route, scenario):
 @pytest.mark.parametrize("route", ["event", "proxy", "sweep"])
 @pytest.mark.parametrize("scenario", ["fury-active", "fury-stale", "fury-falling", "fury-landing"])
 def test_fury_triples_real_hp_damage_only_after_landing(incoming_boss_damage_probe, route, scenario):
+    _run(incoming_boss_damage_probe, route, scenario)
+
+
+@pytest.mark.parametrize("route", ["event", "proxy", "sweep"])
+@pytest.mark.parametrize("scenario", ["forge-overheated", "forge-exposed"])
+def test_forge_raises_incoming_damage_only_after_the_shell_breaks(incoming_boss_damage_probe, route, scenario):
     _run(incoming_boss_damage_probe, route, scenario)

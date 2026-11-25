@@ -50,6 +50,8 @@ def test_sky_hail_requires_a_cooperating_squad_and_never_casts_alone():
         "the third converged charge must be gated on a third live marksman")
     assert "squad.get(2)" in start, (
         "the second wave must be fired by the third marksman")
+    assert "emitTrialParticle(leader, ground.clone()" in start
+    assert "Sound.ENTITY_FIREWORK_ROCKET_LAUNCH" in start
 
 
 def test_sky_hail_releases_twelve_real_falling_arrows_per_wave():
@@ -60,6 +62,8 @@ def test_sky_hail_releases_twelve_real_falling_arrows_per_wave():
     assert "spawnArrow(" in release, (
         "the hail must be real falling arrows, not damage rays or particles")
     assert "arrow.setShooter(shooter);" in release
+    assert "arrow.setVisibleByDefault(true);" in release
+    assert "Sound.ENTITY_FIREWORK_ROCKET_BLAST" in release
     assert "MARKSMAN_SKY_HAIL" in release, (
         "each arrow must carry the named-trial attack identity so damage is attributed")
     # The arrows are presentation/collision real but land at validated marks.

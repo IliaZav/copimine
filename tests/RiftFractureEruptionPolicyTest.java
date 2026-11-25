@@ -157,14 +157,14 @@ public final class RiftFractureEruptionPolicyTest {
 
         // A shorter authored window is clamped into the contract band, never out.
         Stage shortWindow = new Stage(50L, 50L, 51L, 52L, 53L);
-        check("a too-short window is stretched to one second",
-                shortWindow.warningTicks(50L) == 20);
+        check("a too-short window is stretched to the visible rapid minimum",
+                shortWindow.warningTicks(50L) == 14);
         Stage longWindow = new Stage(50L, 50L, 500L, 600L, 700L);
         check("a too-long window is clamped to 24 ticks",
                 longWindow.warningTicks(50L) == 24);
         // An inverted window cannot erupt before its warning.
         check("an inverted window still warns first",
-                new Stage(200L, 100L, 50L, 40L, 30L).eruptionTick() == 220L);
+                new Stage(200L, 100L, 50L, 40L, 30L).eruptionTick() == 214L);
     }
 
     private static void targetedCells() {

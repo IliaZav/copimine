@@ -42,10 +42,7 @@ public final class Wave7AbilityEffectPolicyTest {
     private static void everyDispatchedAttackResolves() {
         List<String> dispatched = new ArrayList<>();
         for (Wave7NamedTrialActorPolicy.Attack attack : Wave7NamedTrialActorPolicy.Attack.values()) {
-            // These two never reach the renderer as their own id: NONE means "no
-            // cast" and NONE_INTERNAL means the Warden uses its native loop.
-            if (attack == Wave7NamedTrialActorPolicy.Attack.NONE
-                    || attack == Wave7NamedTrialActorPolicy.Attack.NONE_INTERNAL) continue;
+            if (bypassesAbilityEffectPolicy(attack)) continue;
             dispatched.add(attack.name());
         }
         // The fang cast is remapped to its group signature by the caller.
@@ -68,8 +65,7 @@ public final class Wave7AbilityEffectPolicyTest {
         Set<String> seen = new HashSet<>();
         List<String> ids = new ArrayList<>();
         for (Wave7NamedTrialActorPolicy.Attack attack : Wave7NamedTrialActorPolicy.Attack.values()) {
-            if (attack == Wave7NamedTrialActorPolicy.Attack.NONE
-                    || attack == Wave7NamedTrialActorPolicy.Attack.NONE_INTERNAL) continue;
+            if (bypassesAbilityEffectPolicy(attack)) continue;
             ids.add("WAVE7_" + attack.name());
         }
         ids.add("WAVE7_ARCHMAGE_FANGS_GROUP");
@@ -82,6 +78,13 @@ public final class Wave7AbilityEffectPolicyTest {
             check(abilityId + " has a shape no sibling already claimed",
                     seen.add(fingerprint));
         }
+    }
+
+    private static boolean bypassesAbilityEffectPolicy(Wave7NamedTrialActorPolicy.Attack attack) {
+        // Sky Hail owns a shared world-space warning, charge and burst in the squad runtime.
+        return attack == Wave7NamedTrialActorPolicy.Attack.MARKSMAN_SKY_HAIL
+                || attack == Wave7NamedTrialActorPolicy.Attack.NONE
+                || attack == Wave7NamedTrialActorPolicy.Attack.NONE_INTERNAL;
     }
 
     private static void eachSignatureIsLayeredEnoughToRead() {

@@ -28,6 +28,7 @@ public class HoldProbe {
   Object getWorld(){return WORLD;}boolean teleport(Location p){teleports++;return accepted;}
   void setVelocity(Vector v){velocityWrites++;}void setFallDistance(float v){fallWrites++;}}
  final Map<UUID,UUID> tentacleHeldPlayers=new HashMap<>();
+ final Map<UUID,UUID> tentacleLandingAttempts=new HashMap<>();
  boolean isActiveBossParticipant(Player p){return true;}
  boolean ownedBySession(ItemDisplay d,String e,long g){return d.owned;}
  boolean isArenaLocation(Location p){return arena;}

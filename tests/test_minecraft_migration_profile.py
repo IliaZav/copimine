@@ -308,8 +308,8 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # byte for byte on the same JDK.
     assert artifact['size'] == 30_771_060
     assert artifact['sha512'] == (
-        'de0605cc1b3c0e81c169c934ba162513c057cd16f7384e005a8c10a05c25256915d'
-        '408e2007cd5bc08f0f8d41d00e25a5ff5e7eb45bb8ecc7fe224fe7944b67e'
+        'de0605cc1b3c0e81c169c934ba162513c057cd16f7384e005a8c10a05c252569'
+        '15d408e2007cd5bc08f0f8d41d00e25a5ff5e7eb45bb8ecc7fe224fe7944b67e'
     )
 
 

@@ -10,7 +10,7 @@ public final class Wave7SkeletonElusivenessPolicyTest {
 
     public static void main(String[] args) {
         theFirstHideIsAlwaysAllowed();
-        aHideIsShortAndRepeats();
+        aHideLastsFiveSecondsAndRepeats();
         castingBlocksTheHide();
         aVanishedSkeletonDoesNotShoot();
         theGraceWindowGuaranteesAShotWindow();
@@ -28,9 +28,8 @@ public final class Wave7SkeletonElusivenessPolicyTest {
                 !Wave7SkeletonElusivenessPolicy.mayVanish(100L, -1L, true, false));
     }
 
-    private static void aHideIsShortAndRepeats() {
-        check("the hide is short enough to read", Wave7SkeletonElusivenessPolicy.VANISH_TICKS <= 40);
-        check("the hide still exists", Wave7SkeletonElusivenessPolicy.VANISH_TICKS >= 10);
+    private static void aHideLastsFiveSecondsAndRepeats() {
+        check("the hide lasts five seconds at 20 TPS", Wave7SkeletonElusivenessPolicy.VANISH_TICKS == 100);
         long start = 500L;
         check("hidden at the start",
                 Wave7SkeletonElusivenessPolicy.hidden(start, start));

@@ -50,8 +50,8 @@ public final class WardenV5CombatPolicyTest {
                 "a player behind the Warden is a miss");
         check(!WardenV5CombatPolicy.sweepHits(2.0D, 0.0D, 2.6D),
                 "a player on an unreachable ledge is a miss");
-        check(WardenV5CombatPolicy.SWEEP_PREP_TICKS >= 35
-                        && WardenV5CombatPolicy.SWEEP_PREP_TICKS <= 50,
+        check(WardenV5CombatPolicy.SWEEP_PREP_TICKS >= 14
+                        && WardenV5CombatPolicy.SWEEP_PREP_TICKS <= 20,
                 "the sweep preparation is 0.7..1.0 s");
     }
 

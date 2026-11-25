@@ -160,14 +160,14 @@ public final class ArchmageV5CombatPolicyTest {
     }
 
     private static void timingsStayInsideTheRatifiedBands() {
-        check(ArchmageV5CombatPolicy.FANG_LINE_WARNING_TICKS >= 35
-                        && ArchmageV5CombatPolicy.FANG_LINE_WARNING_TICKS <= 50,
+        check(ArchmageV5CombatPolicy.FANG_LINE_WARNING_TICKS >= 14
+                        && ArchmageV5CombatPolicy.FANG_LINE_WARNING_TICKS <= 20,
                 "the Fang Line warning is 0.7..1.0 s");
-        check(ArchmageV5CombatPolicy.CIRCLE_WARNING_TICKS >= 50
-                        && ArchmageV5CombatPolicy.CIRCLE_WARNING_TICKS <= 65,
+        check(ArchmageV5CombatPolicy.CIRCLE_WARNING_TICKS >= 20
+                        && ArchmageV5CombatPolicy.CIRCLE_WARNING_TICKS <= 26,
                 "the Circle warning is 1.0..1.3 s");
-        check(ArchmageV5CombatPolicy.REPULSE_WARNING_TICKS >= 25
-                        && ArchmageV5CombatPolicy.REPULSE_WARNING_TICKS <= 35,
+        check(ArchmageV5CombatPolicy.REPULSE_WARNING_TICKS >= 10
+                        && ArchmageV5CombatPolicy.REPULSE_WARNING_TICKS <= 14,
                 "the Repulse warning is 0.5..0.7 s");
         check(ArchmageV5CombatPolicy.CROWN_COOLDOWN_MIN_TICKS >= 900
                         && ArchmageV5CombatPolicy.CROWN_COOLDOWN_MAX_TICKS <= 1200,

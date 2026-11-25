@@ -1686,6 +1686,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * from the grab socket.</p>
      */
     private final Map<UUID, UUID> tentacleHeldPlayers = new HashMap<>();
+    private final Map<UUID, UUID> tentacleLandingAttempts = new HashMap<>();
     /** Last committed under-player ambush per player, for grab pressure. */
     private final Map<UUID, Long> tentacleAmbushTargetMillis = new HashMap<>();
     private UUID disposableBossOperator;
@@ -60451,6 +60452,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Location socket = display.getLocation().clone().add(0.0D, TENTACLE_GRAB_SOCKET_HEIGHT, 0.0D);
         if (!isArenaLocation(socket) || !isSafeTentacleHoldLocation(socket, target)
                 || !target.teleport(socket)) return false;
+        tentacleLandingAttempts.remove(target.getUniqueId());
         tentacleHeldPlayers.put(display.getUniqueId(), target.getUniqueId());
         target.setVelocity(new Vector());
         target.setFallDistance(0.0F);
@@ -60587,6 +60589,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      */
     private void dropTentacleHoldsForPlayer(UUID playerId, String reason) {
         if (playerId == null) return;
+        tentacleLandingAttempts.remove(playerId);
         int removed = (int) tentacleHeldPlayers.values().stream()
                 .filter(playerId::equals).count();
         tentacleHeldPlayers.values().removeIf(playerId::equals);
@@ -60606,11 +60609,58 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         double radius = config == null ? 12.0D : Math.max(4.0D, config.arenaRadius());
         Location safe = findSafeCombatLocation(anchor, player.getLocation(), radius,
                 MIN_WAVE_CORE_DISTANCE_BLOCKS, -1, player);
-        if (safe != null && safe.getWorld() != null && safe.getWorld().equals(player.getWorld())) {
-            player.teleport(safe);
-        }
         player.setVelocity(new Vector());
         player.setFallDistance(0.0F);
+        if (safe != null && safe.getWorld() != null && safe.getWorld().equals(player.getWorld())
+                && player.teleport(safe)) {
+            tentacleLandingAttempts.remove(playerId);
+            logTentacleHolderLanded(playerId, reason);
+            return;
+        }
+        getLogger().warning("RIFT_TENTACLE_HOLD_LANDING_DEFERRED event=" + eventId
+                + " player=" + playerId + " reason=" + reason);
+        if (!isEnabled()) return;
+        UUID attemptId = UUID.randomUUID();
+        tentacleLandingAttempts.put(playerId, attemptId);
+        wave6AnchorFallLeases.putIfAbsent(playerId,
+                new Wave6AnchorFallLease(player.getWorld().getUID(), System.currentTimeMillis() + 2_500L));
+        retryTentacleLanding(playerId, attemptId, player.getLocation(), eventId, generation, reason, 3);
+    }
+
+    private void retryTentacleLanding(UUID playerId, UUID attemptId, Location releaseOrigin,
+                                      String releaseEvent, long releaseGeneration, String reason, int attemptsLeft) {
+        Bukkit.getScheduler().runTaskLater(this, () -> {
+            if (!attemptId.equals(tentacleLandingAttempts.get(playerId))) return;
+            Player player = Bukkit.getPlayer(playerId);
+            Location anchor = coreCombatAnchorLocation();
+            if (releaseGeneration != generation || !Objects.equals(releaseEvent, eventId)
+                    || player == null || !player.isOnline() || player.isDead()
+                    || player.isOnGround() || !player.getWorld().equals(releaseOrigin.getWorld())
+                    || player.getLocation().distanceSquared(releaseOrigin) > 16.0D
+                    || anchor == null || !player.getWorld().equals(anchor.getWorld())) {
+                tentacleLandingAttempts.remove(playerId, attemptId);
+                return;
+            }
+            double radius = config == null ? 12.0D : Math.max(4.0D, config.arenaRadius());
+            Location safe = findSafeCombatLocation(anchor, player.getLocation(), radius,
+                    MIN_WAVE_CORE_DISTANCE_BLOCKS, -1, player);
+            if (safe != null && player.getWorld().equals(safe.getWorld()) && player.teleport(safe)) {
+                tentacleLandingAttempts.remove(playerId, attemptId);
+                player.setVelocity(new Vector());
+                player.setFallDistance(0.0F);
+                logTentacleHolderLanded(playerId, reason);
+            } else if (attemptsLeft > 1) {
+                retryTentacleLanding(playerId, attemptId, releaseOrigin, releaseEvent,
+                        releaseGeneration, reason, attemptsLeft - 1);
+            } else {
+                tentacleLandingAttempts.remove(playerId, attemptId);
+                getLogger().warning("RIFT_TENTACLE_HOLD_LANDING_UNAVAILABLE event=" + releaseEvent
+                        + " player=" + playerId + " reason=" + reason);
+            }
+        }, 3L);
+    }
+
+    private void logTentacleHolderLanded(UUID playerId, String reason) {
         getLogger().info("RIFT_TENTACLE_HOLD_RELEASED event=" + eventId
                 + " player=" + playerId + " reason=" + reason);
     }
@@ -66381,6 +66431,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     public void onPlayerChangedWorld(PlayerChangedWorldEvent event) {
         releaseBlackFogEffects(event.getPlayer());
         UUID uuid = event.getPlayer().getUniqueId();
+        dropTentacleHoldsForPlayer(uuid, "world-change");
         releaseSpiderPotionLeases(event.getPlayer());
         SpiderRootControlPolicy.clearPlayerState(uuid, rootedPlayersUntilTick,
                 rootedPlayerNextApplyTick, rootedPlayerOwners);

@@ -26,6 +26,9 @@ enum SpellContactMesh {
     SNARE("snare_contact", 0x423292, 0xcc9bff),
     WITHER("wither_contact", 0x518abd, 0xcbeaff),
     MAGMA("magma_contact", 0xb3230b, 0xffbf39),
+    INFERNO_VORTEX("inferno_vortex", 0x762041, 0xffb850),
+    INFERNO_FRONT("inferno_front", 0x6e233f, 0xffa142),
+    INFERNO_CINDER("inferno_cinder_contact", 0xcb3617, 0xffdf80),
     VOID("void_contact", 0x8428d9, 0xf1c9ff),
     BOLT("bolt_contact", 0x5474ff, 0xf5e9ff),
     BREATH("breath_contact", 0xb12d80, 0xffa9e3),
@@ -56,20 +59,88 @@ enum SpellContactMesh {
 
     int draw(PoseStack.Pose pose, VertexConsumer buffer, SpellCastPacket cast, double time,
              SpellVisualGeometry.Quality quality, boolean reducedMotion, int budget) {
-        if (cast.lanes().size() != 1 || cast.stage() != 2) return 0;
+        if (cast.lanes().isEmpty() || cast.stage() != 2) return 0;
+        if (this == INFERNO_FRONT) return drawFireFront(pose, buffer, cast, time, quality, reducedMotion, budget);
+        if (cast.lanes().size() != 1) return 0;
         SpellCastPacket.Lane lane = cast.lanes().getFirst();
         Vec3 origin = new Vec3(lane.x(), lane.y(), lane.z());
         double[] progress = {Math.min(1, time * 3.1), Math.pow(1 - time, 1.35)};
         return switch (this) {
             case AWAKENING, HUNT, RIFT, OVERLOAD, RAGE, LAST_SEAL ->
                     drawPhase(pose, buffer, origin, lane.radius(), time, quality, reducedMotion, budget);
+            case INFERNO_FRONT -> 0;
+            case INFERNO_VORTEX -> drawVortex(pose, buffer, origin, lane.radius(), lane.length(),
+                    time, quality, reducedMotion, budget);
             case WARDEN_ECHO, MINI_PULSE, VOID -> drawShell(pose, buffer, origin, lane.radius(), progress,
                     quality, budget);
             case GUARDIAN_BASIC, GUARDIAN_FAN, GUARDIAN_HEAVY, WITHER -> drawCleave(pose, buffer, origin, lane,
                     progress, quality, budget);
-            case GUARDIAN_LANCE, GUARDIAN_FIREBALL, MAGMA, BOLT, BREATH, WEB, SNARE -> drawFilaments(pose, buffer, origin, lane.radius(),
+            case GUARDIAN_LANCE, GUARDIAN_FIREBALL, MAGMA, INFERNO_CINDER, BOLT, BREATH, WEB, SNARE -> drawFilaments(pose, buffer, origin, lane.radius(),
                     cast.seed(), time, progress, quality, reducedMotion, budget);
         };
+    }
+
+    private int drawFireFront(PoseStack.Pose pose, VertexConsumer buffer, SpellCastPacket cast, double time,
+                              SpellVisualGeometry.Quality quality, boolean calm, int budget) {
+        double[][] section = SpellVisualRenderer.profile(quality, false);
+        int emitted = 0;
+        int nodes = quality.samples();
+        int required = section.length * (nodes + 1) * 4;
+        int index = 0;
+        double rise = Math.min(1D, .2 + time * 3.3);
+        double fade = Math.min(1D, (1 - time) * 2.1);
+        for (var lane : cast.lanes()) {
+            if (emitted + required > budget) break;
+            Vec3[] centers = new Vec3[nodes];
+            int[] colors = new int[nodes];
+            var radii = new ArrayList<Float>(nodes);
+            double heading = index++ * 2.39996;
+            for (int i = 0; i < nodes; i++) {
+                double t = i / (double) (nodes - 1);
+                double oscillation = Math.sin(heading + 5 * t - (calm ? 0 : time * 12));
+                double shift = lane.radius() * .28 * oscillation * t;
+                centers[i] = new Vec3(lane.x() + shift * Math.cos(heading), lane.y() + lane.length() * t * rise,
+                        lane.z() + shift * Math.sin(heading));
+                radii.add((float) (lane.radius() * (.04 + .82 * Math.pow(1 - t, .65))));
+                colors[i] = argb(t < .18 ? 0xffe5a2 : t < .62 ? core : body, 231 * (1 - t) * fade);
+            }
+            emitted += SpellVisualRenderer.tube(buffer, pose, centers, radii, colors, section);
+        }
+        return emitted;
+    }
+
+    private int drawVortex(PoseStack.Pose pose, VertexConsumer buffer, Vec3 origin, double radius,
+                           double height, double time, SpellVisualGeometry.Quality quality,
+                           boolean calm, int budget) {
+        if (height < 2 || radius < 2) return 0;
+        double[][] section = SpellVisualRenderer.profile(quality, true);
+        int nodes = quality.samples() * 2 + 3;
+        int required = section.length * (nodes + 1) * 4;
+        int strands = quality == SpellVisualGeometry.Quality.REDUCED ? 3 : 6;
+        double reveal = Math.min(1, time * 5);
+        double fade = Math.min(reveal, (1 - time) * 6);
+        double spin = calm ? 0 : time * TAU * 0.67;
+        int emitted = 0;
+        for (int arm = 0; arm < strands && emitted + required <= budget; arm++) {
+            Vec3[] centers = new Vec3[nodes];
+            int[] colors = new int[nodes];
+            var radii = new ArrayList<Float>(nodes);
+            boolean ash = (arm & 1) != 0;
+            for (int i = 0; i < nodes; i++) {
+                double t = i / (double) (nodes - 1);
+                double taper = Math.sin(Math.PI * t);
+                double heading = TAU * arm / strands + spin + t * TAU * (ash ? .9 : 1.2);
+                double opening = radius * (.19 + .81 * Math.pow(t, .88)) * (.75 + .25 * reveal);
+                double lift = height * (.12 + .82 * t) + height * .035 * taper * Math.sin(heading * 2);
+                centers[i] = origin.add(Math.cos(heading) * opening, lift, Math.sin(heading) * opening);
+                radii.add((float) ((.12 + .88 * taper) * (ash ? .66 : .34) * reveal + .02));
+                double ember = calm ? taper : taper * (.5 + .5 * Math.sin(t * 17 - spin * 2 + arm));
+                colors[i] = argb(ash ? body : ember > .55 ? 0xffe5a3 : core,
+                        (ash ? 102 : 209) * taper * fade);
+            }
+            emitted += SpellVisualRenderer.tube(buffer, pose, centers, radii, colors, section);
+        }
+        return emitted;
     }
 
     private int drawPhase(PoseStack.Pose pose, VertexConsumer buffer, Vec3 origin, double scale,

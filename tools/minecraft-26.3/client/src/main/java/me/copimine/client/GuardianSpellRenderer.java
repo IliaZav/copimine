@@ -24,8 +24,9 @@ public final class GuardianSpellRenderer {
     public static Pose thrownPose(Entity entity, float partialTick) {
         if (!(entity instanceof Snowball || entity instanceof Fireball)
                 || !(entity instanceof ItemSupplier item) || entity.isRemoved()) return null;
-        int model = EndRiftItemModelData.firstFloatAsExactInteger(
-                item.getItem().get(DataComponents.CUSTOM_MODEL_DATA));
+        var data = item.getItem().get(DataComponents.CUSTOM_MODEL_DATA);
+        int model = EndRiftItemModelData.firstFloatAsExactInteger(data);
+        boolean cinder = model == 830013 && Float.valueOf(830240F).equals(data.getFloat(1));
         String mesh = model == 830031 ? "rift_lance" : model == 830013 ? "inferno_core" : "";
         if (mesh.isEmpty() || GuardianSpellMesh.vertices(mesh).isEmpty()) return null;
         var velocity = entity.getDeltaMovement();
@@ -35,7 +36,8 @@ public final class GuardianSpellRenderer {
                 ? (float) -Math.toDegrees(Math.atan2(velocity.y, horizontal)) : entity.getXRot();
         if (!Float.isFinite(yaw) || !Float.isFinite(pitch)) return null;
         float age = entity.tickCount + partialTick;
-        return new Pose(mesh, yaw, pitch, SpellVisualRenderer.reducedMotion() ? 0F : age * 18F, model == 830013 ? 1.6F : 1.25F, age, 24F, 3);
+        return new Pose(mesh, yaw, pitch, SpellVisualRenderer.reducedMotion() ? 0F : age * 18F,
+                cinder ? .58F : model == 830013 ? 1.6F : 1.25F, age, 24F, 3);
     }
 
     public static Pose displayPose(Display entity, float partialTick) {

@@ -55900,7 +55900,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 projectile.setShooter(body);
                 projectile.setGravity(false);
                 projectile.setPersistent(false);
-                projectile.setItem(new ItemStack(Material.MAGMA_CREAM));
+                ItemStack dart = overlayItem(MODEL_RIFT_FIREBALL, "end_event_rift_fireball");
+                ItemMeta art = dart.getItemMeta();
+                me.copimine.endevent.presentation.ItemPresentationComponents.setVisualFloats(
+                        art, List.of((float) MODEL_RIFT_FIREBALL, 830240F));
+                dart.setItemMeta(art);
+                projectile.setItem(dart);
                 projectile.setVelocity(elite.lockedFacing.clone().multiply(0.9D));
             });
             infernoShots.put(shot.getUniqueId(), new InfernoShot(elite.id, generation, elite.castSequence, tick + 38L));
@@ -55988,13 +55993,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Entity owner = ownedEntities.get(state.actor());
         LivingEntity boss = liveBoss();
         if (boss != null && owner instanceof Mob body && body.isValid() && !body.isDead()
-                && state.generation() == generation && state.sequence() == bossCastSequence
+                && state.generation() == generation && state.sequence() == arenaInfernoSequence
                 && bossPhase == BossPhase.OVERLOAD && event.getHitEntity() instanceof Player player
                 && isActiveBossParticipant(player) && !isProtectedInfernoPlayer(player)
                 && applyBossActorAbilityDamage(boss, body, player, 3.0D)) {
             player.setFireTicks(Math.max(player.getFireTicks(), 30));
         }
-        shot.getWorld().spawnParticle(Particle.FLAME, shot.getLocation(), 10, .27D, .23D, .27D, .02D);
+        Location contact = shot.getLocation();
+        if (owner instanceof Mob body && state.generation() == generation
+                && state.sequence() == arenaInfernoSequence && bossPhase == BossPhase.OVERLOAD) {
+            publishSpellContact("inferno_cinder_contact", body, shot.getUniqueId(), contact,
+                    new Vector(0, 1, 0), .78D, 0, 12);
+            shot.getWorld().playSound(contact, Sound.BLOCK_FIRE_EXTINGUISH, SoundCategory.HOSTILE, .65F, 1.55F);
+        }
+        shot.getWorld().spawnParticle(Particle.FLAME, contact, 10, .27D, .23D, .27D, .02D);
         shot.remove();
     }
 
@@ -56003,7 +56015,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             InfernoShot shot = entry.getValue();
             Entity entity = Bukkit.getEntity(entry.getKey());
             if (entity == null || !entity.isValid()) return true;
-            if (shot.generation() != generation || shot.sequence() != bossCastSequence
+            if (shot.generation() != generation || shot.sequence() != arenaInfernoSequence
                     || eventTickCounter >= shot.expiresAt() || bossPhase != BossPhase.OVERLOAD) {
                 entity.remove();
                 return true;
@@ -56115,12 +56127,68 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * The layered overhead scenery, budgeted by the pure policy and rotated one
      * layer per few ticks so a large party never pays for every layer at once.
      */
+    private void publishInfernoVortex(LivingEntity boss) {
+        Location core = coreCombatAnchorLocation();
+        if (core == null || !boss.getWorld().equals(core.getWorld())) return;
+        double width = Math.min(Math.min(core.getX() - arenaMinX, arenaMaxX + 1D - core.getX()),
+                Math.min(core.getZ() - arenaMinZ, arenaMaxZ + 1D - core.getZ()));
+        double roof = arenaMaxY + 1D - combatLevelY();
+        double height = Math.min(9D, roof - 15D);
+        double radius = Math.min(11D, width - 1D);
+        if (height < 2D || radius < 2D) return;
+        Location origin = core.clone();
+        origin.setY(combatLevelY() + 15D);
+        List<Player> viewers = eventAudience().stream().filter(player -> isEventParticleViewer(player, origin)).toList();
+        spellCasts.publish(new me.copimine.endevent.runtime.SpellCastRuntime.CastKey(
+                        "inferno_vortex", arenaInfernoSequence, null),
+                eventId, generation, worldVfxDimension(origin), origin,
+                List.of(spellLane(origin, new Vector(0, 1, 0), (float) radius, (float) height)),
+                eventTickCounter, 80, 2, false, viewers, this::sendSpellCast);
+        boss.getWorld().playSound(origin, Sound.BLOCK_FIRE_AMBIENT, SoundCategory.HOSTILE, 1.3F, .65F);
+    }
+
+    private void publishInfernoFront(Location anchor, int castTick) {
+        var stage = arenaInfernoStage;
+        if (stage == null || arenaInfernoBlocks.isEmpty()) return;
+        int heating = InfernoArenaLifecyclePolicy.DEFAULT_HEATING_TICKS;
+        double behind = stage.heatProgress(0D, castTick - INFERNO_HEAT_STEP_TICKS, heating);
+        double edge = stage.heatProgress(0D, castTick, heating);
+        double ceiling = arenaMaxY - combatLevelY();
+        if (edge <= behind || ceiling < 2D) return;
+        var laneBySector = new me.copimine.endevent.domain.SpellCastPacket.Lane[12];
+        var north = new Vector(0, 1, 0);
+        for (Block block : arenaInfernoBlocks) {
+            var cell = new InfernoArenaLifecyclePolicy.Cell(block.getX(), block.getZ());
+            double radial = infernoNormalisedRadius(cell);
+            if (radial <= behind || radial > edge + 1.0E-9D) continue;
+            double x = block.getX() + .5D, z = block.getZ() + .5D;
+            double angle = Math.atan2(z - anchor.getZ(), x - anchor.getX());
+            int sector = Math.min(11, (int) (6D * (1D + angle / Math.PI)));
+            if (laneBySector[sector] != null) continue;
+            double height = Math.min(ceiling, 5D + 3D * ((sector * 7 + castTick) % 11) / 10D);
+            laneBySector[sector] = spellLane(new Location(anchor.getWorld(), x, combatLevelY(), z),
+                    north, .43F, (float) height);
+        }
+        List<Player> viewers = eventAudience().stream().filter(player -> isEventParticleViewer(player, anchor)).toList();
+        for (int group = 0; group < 4; group++) {
+            var lanes = Arrays.stream(laneBySector, group * 3, group * 3 + 3).filter(Objects::nonNull).toList();
+            if (lanes.isEmpty()) continue;
+            spellCasts.publish(new me.copimine.endevent.runtime.SpellCastRuntime.CastKey(
+                            "inferno_front", arenaInfernoSequence * 4 + group, null),
+                    eventId, generation, worldVfxDimension(anchor), anchor, lanes, eventTickCounter,
+                    13, 2, false, viewers, this::sendSpellCast);
+        }
+    }
+
     private void renderInfernoScenery(LivingEntity boss, int castTick) {
         World world = boss.getWorld();
         Location anchor = coreCombatAnchorLocation();
         if (world == null || anchor == null) {
             return;
         }
+        if (castTick >= 40 && (castTick - 40) % 80 == 0) publishInfernoVortex(boss);
+        if (castTick > 0 && castTick % INFERNO_HEAT_STEP_TICKS == 0)
+            publishInfernoFront(anchor, castTick);
         InfernoSceneryPolicy.Layer[] layers = InfernoSceneryPolicy.Layer.values();
         InfernoSceneryPolicy.Layer layer = layers[Math.floorMod(castTick / 4, layers.length)];
         List<Player> viewers = eventAudience().stream().filter(viewer -> isEventParticleViewer(viewer, anchor)).toList();
@@ -56367,6 +56435,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * forgets the cast once the exact originals are back.
      */
     private boolean clearArenaInferno() {
+        clearSpellVisualCue("inferno_vortex", arenaInfernoSequence);
+        for (int group = 0; group < 4; group++)
+            clearSpellVisualCue("inferno_front", arenaInfernoSequence * 4 + group);
         arenaInfernoSequence++;
         arenaInfernoArmorWear = 0;
         arenaInfernoVentBudget = 0;
@@ -57972,8 +58043,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 }
             }
             public void impact(Location origin, int kind) {
-                playEncounterAbilityAudioAt(origin, kind == me.copimine.protocol.KaguneSpellFrame.STAB
-                        ? "kagune_stab" : "kagune_eruption");
+                boolean stab = kind == me.copimine.protocol.KaguneSpellFrame.STAB;
+                playEncounterAbilityAudioAt(origin, stab ? "kagune_stab" : "kagune_eruption");
+                origin.getWorld().playSound(origin, stab ? Sound.ITEM_TRIDENT_THROW : Sound.BLOCK_SCULK_CATALYST_BLOOM,
+                        SoundCategory.HOSTILE, 1.15F, stab ? .63F : .52F);
                 spawnEventParticle(origin.clone().add(0D, .15D, 0D), Particle.POOF, 14, 1D, .15D, 1D, .025D);
             }
             public boolean hit(LivingEntity boss, Player player, double damage) {

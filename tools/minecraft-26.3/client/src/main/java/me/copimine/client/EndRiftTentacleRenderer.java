@@ -139,6 +139,7 @@ public final class EndRiftTentacleRenderer {
         FACING_BY_ENTITY.keySet().retainAll(candidateIds);
         if (candidateIds.isEmpty()) return;
         submitConstructEffects(context, world, cameraPos, tickDelta, candidateIds);
+        submitRingSeams(context, world, cameraPos, tickDelta, candidateIds);
         EndRiftRenderSubmission.submit(context, cameraPos, RenderTypes.entityTranslucent(TEXTURE), (matrices, buffer) -> {
             for (UUID entityUuid : candidateIds) {
                 Entity entity = ((ClientWorldAccessor) world).copimine$getEntities().get(entityUuid);
@@ -287,6 +288,44 @@ public final class EndRiftTentacleRenderer {
             values.add(value);
         }
         return KaguneRingFrame.decode(values);
+    }
+
+    private static void submitRingSeams(LevelRenderContext context, ClientLevel world, Vec3 camera,
+                                        float partialTick, List<UUID> candidates) {
+        var entities = ((ClientWorldAccessor) world).copimine$getEntities();
+        for (UUID id : candidates) {
+            if (!(entities.get(id) instanceof Display.ItemDisplay display) || display.isRemoved()
+                    || !isRingCarrier(display)) continue;
+            KaguneRingFrame frame = ringFrame(display);
+            Vec3 origin = display.getPosition(partialTick);
+            if (frame == null || !finite(origin)
+                    || Math.abs(origin.distanceTo(camera) - frame.radius()) > 44D) continue;
+            EndRiftRenderSubmission.submit(context, camera, SpellVisualRenderer.layer(), (matrices, buffer) -> {
+                var section = SpellVisualRenderer.profile(SpellVisualGeometry.Quality.REDUCED, false);
+                int count = frame.instances();
+                int stride = Math.max(2, (count + 31) / 32);
+                double radius = frame.previousRadius() + (frame.radius() - frame.previousRadius()) * partialTick;
+                double rise = frame.renderRise(partialTick);
+                for (int i = 0; i < count; i += stride) {
+                    if (!frame.drawsInstance(i)) continue;
+                    double angle = frame.direction(i);
+                    boolean nearGap = frame.gaps().stream().anyMatch(gap ->
+                            Math.abs(KaguneRingFrame.wrap(angle - gap)) * radius <= KaguneRingFrame.GAP_WIDTH / 2 + .36D);
+                    if (nearGap) continue;
+                    double x = Math.cos(angle), z = Math.sin(angle);
+                    Vec3 root = origin.add(x * radius, .07D, z * radius);
+                    double height = .12D + .96D * rise;
+                    int alpha = (int) (frame.stage() == KaguneRingFrame.RETRACT ? 189 * rise : 189);
+                    Vec3[] centers = {root.add(-x * .34D, 0, -z * .34D),
+                            root, root.add(x * .15D, height * .52D, z * .15D),
+                            root.add(-x * .21D, height, -z * .21D)};
+                    int[] colors = {alpha << 24 | 0x4a2378, alpha << 24 | 0xcb83ff,
+                            alpha << 24 | 0x8e3ee0, 0x00dfc8ff};
+                    SpellVisualRenderer.tube(buffer, matrices.last(), centers,
+                            List.of(.035F, .08F, .045F, .01F), colors, section);
+                }
+            });
+        }
     }
 
     /** All repeated rigs share one geometry submission, skin and sampled pose. */

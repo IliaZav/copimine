@@ -31,7 +31,8 @@ import java.util.*;
 import me.copimine.endevent.domain.RamMovingEarthquakePolicy;
 public class TrampleRuntimeProbe {
   enum Action { RECOVER }
-  enum Particle { BLOCK }
+  enum Particle { BLOCK, DUST, ASH; record DustOptions(Object color,float size){} }
+  static class Color { static Color fromRGB(int rgb){return new Color();} }
   enum Material { DEEPSLATE,OBSIDIAN,CRYING_OBSIDIAN; Object createBlockData(){return this;} }
   enum PotionEffectType { SLOWNESS }
   enum Sound { ENTITY_RAVAGER_STEP, BLOCK_ANVIL_LAND }
@@ -46,6 +47,7 @@ public class TrampleRuntimeProbe {
     double getX(){return x;}double getY(){return y;}double getZ(){return z;}
     World getWorld(){return world;}
     public Location clone(){return new Location(world,x,y,z);}
+    Location add(double dx,double dy,double dz){return new Location(world,x+dx,y+dy,z+dz);}
     double distanceSquared(Location o){return (x-o.x)*(x-o.x)+(y-o.y)*(y-o.y)+(z-o.z)*(z-o.z);}
   }
   static class Player {
@@ -57,6 +59,7 @@ public class TrampleRuntimeProbe {
     boolean isOnGround(){return grounded;}
     void spawnParticle(Particle p,double x,double y,double z,int count,double dx,double dy,double dz,double speed,Object data){packets++;}
     void spawnParticle(Particle p,Location l,int count,double a,double b,double c,double d,Object data){packets++;}
+    void spawnParticle(Particle p,Location l,int count,double a,double b,double c,double d){packets++;}
     void addPotionEffect(PotionEffect e){
       if(e.type()!=PotionEffectType.SLOWNESS
               ||e.ticks()!=RamMovingEarthquakePolicy.BEAT_SLOW_TICKS
@@ -74,6 +77,9 @@ public class TrampleRuntimeProbe {
   static class Host {
     List<Player> roster=new ArrayList<>();
     int floorY(){return 64;}
+    // The front is clipped to the legal arena footprint; the probe stands every
+    // sampled seam inside it so the sweep-count assertions stay meaningful.
+    boolean inArena(Location location){return true;}
     int particleBudget(){return 256;}
     int damageCalls;double lastAmount;Set<Double> amounts=new HashSet<>();
     boolean damage(Ram source,Player player,double amount){

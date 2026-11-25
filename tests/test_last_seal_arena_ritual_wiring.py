@@ -60,15 +60,26 @@ def test_the_arena_ritual_is_bounded_and_presentation_only():
         assert forbidden not in helper, f"the visual helper must not call {forbidden}"
 
 
-def test_the_ascension_burst_is_emitted_once_on_last_seal_entry():
+def test_the_ascension_burst_is_emitted_once_inside_the_merge_scene():
     monolith = MONOLITH.read_text("utf-8")
     entry = monolith.index("transition.entered().contains(BossPhase.LAST_SEAL)")
-    block = monolith[entry : entry + 1200]
-    assert "startCurrentLastSealVisuals(boss)" in block, (
-        "the entry must still start the repeating ritual"
+    block = monolith[entry : entry + 1600]
+    # The retired ~5 s last-stand intro claimed the transformation was done and
+    # is replaced by the directed 12-16 s five-shot merge scene (V6 §13.2).
+    assert "startArenaMergeScene(boss)" in block, (
+        "the entry must launch the directed arena-merge scene"
     )
-    assert "spawnLastSealAscensionBurst(boss)" in block, (
-        "the entry must fire the one-shot ascension read"
+    assert "ArenaMergeCinematicPolicy.totalMillis()" in block, (
+        "the body must be held for the full directed scene"
+    )
+    assert "LAST_STAND_INTRO_MILLIS" not in block, (
+        "the entry must not fall back to a short intro that fakes the transformation"
+    )
+    start = monolith.index("private void startArenaMergeScene(")
+    scene = monolith[start : monolith.index("private void playArenaMergeCue(", start)]
+    ignite = scene.index("ArenaMergeCinematicPolicy.Shot.LAST_SEAL_IGNITES")
+    assert "spawnLastSealAscensionBurst(boss)" in scene[ignite:], (
+        "the seal-ignite shot must own the single ascension read"
     )
     burst = _method(monolith, "private void spawnLastSealAscensionBurst(")
     # One-shot: it must not schedule a repeating task of its own.

@@ -357,6 +357,13 @@ public final class RaisedPrisonerAbilityFixture {
         enum Ability { HEAL,BATTLE_SURGE,GUARDIAN_LINK,TURNCOAT }
     }
     String worldName="CopiMine"; int arenaMinX=-12,arenaMaxX=28,arenaMinY=65,arenaMaxY=71,arenaMinZ=-59,arenaMaxZ=-19;
+    // The arena test now consults the Last Seal reveal first, so the fixture
+    // models that collaborator's two queries with a neutral stub.
+    static final class LastSealArenaReveal {
+        boolean protects(Location at,long generation) { return false; }
+        boolean contains(Location at,long generation) { return false; }
+    }
+    LastSealArenaReveal lastSealArena; long generation=7L;
     Player prisoner; Location ritualPrisonerAnchor; boolean wave6PrisonBroken;
     boolean isConfigured() { return true; }
     boolean isCurrentRitualPrisoner(Player p) { return p==prisoner; }

@@ -39,8 +39,16 @@ import java.util.function.Predicate;
 /** Changes only the cells pinned by a site plan. The journal also owns recovery without that plan. */
 final class LastSealArenaReveal {
     static final int DURATION_TICKS = 280;
-    private static final int MAX_CELLS = 320;
-    private static final int MAX_BYTES = 96_000;
+    // The approved site mask is authored, not generated, so the ceiling has to
+    // cover a genuinely large concealed corridor rather than the first 320
+    // cells: the V6 audit requires "the exact mask" be honoured in bounded
+    // batches, never that a real mask be rejected for exceeding a guess. The
+    // per-tick BATCH below still bounds world writes, the 32-chunk span guard
+    // still bounds chunk spread, and MAX_BYTES below bounds the journal/plan a
+    // single atomic recovery can carry. 1536 mirrors the RealitySplitBarrier
+    // ceiling so the two journaled block writers share one approved magnitude.
+    static final int MAX_CELLS = 1536;
+    static final int MAX_BYTES = 384_000;
     private static final int BATCH = 26;
     private static final int FALL_TICKS = 22;
     private static final String VERSION = "last-seal-v1";

@@ -53,7 +53,13 @@ public class TentacleThrowProtectionProbe {
     boolean testCombatAiMode=false;
     EventPhase phase=EventPhase.BOSS_ACTIVE;
     final String eventId="event-7"; final long generation=9;
+    static class TentacleRole { boolean temporary(){return false;} }
+    static class TentacleController { TentacleRole state(UUID id){return null;} }
+    final TentacleController tentacleController=new TentacleController();
     final Map<UUID,TentacleThrowPolicy.Launch> tentacleThrowLaunches=new HashMap<>();
+    // The hold ledger is cleared before any release guard runs, so the probe
+    // must model it even though this case only exercises the protection path.
+    final Map<UUID,UUID> tentacleHeldPlayers=new HashMap<>();
     final Map<UUID,UUID> tentacleHitboxesByDisplay=new HashMap<>();
     final Map<UUID,Entity> ownedEntities=new HashMap<>();
     record Wave6AnchorFallLease(UUID worldId,long untilMillis) { }

@@ -206,6 +206,10 @@ public class BossAttackAdmissionProbe {
             me.copimine.endevent.domain.BossSpellVisualCompositionPolicy.Composition composition){}
     void releaseBossHazardReservation(String s){}
     void registerEncounterTask(BukkitTask t){}
+    // Contact VFX is presentation-only. This probe exercises damage admission, so
+    // the shared contact publisher is stubbed while the dispatch runs for real.
+    void publishSpellContact(String token,LivingEntity actor,UUID contact,Location origin,
+            Vector direction,double radius,double reach,int ticks){}
     // The chest strike now owns a real spawned spell mesh. This probe exercises
     // damage admission, so the mesh lifecycle is stubbed at its leaves while the
     // production sweep body runs unchanged.

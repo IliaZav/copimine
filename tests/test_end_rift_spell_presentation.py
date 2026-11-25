@@ -694,6 +694,10 @@ def test_the_server_emits_exactly_the_client_authored_cue_tokens() -> None:
     assert len(client) == 12, client
     signed = set(re.findall(r'CastKey\("([a-z_]+)"', server_text))
     signed.update(re.findall(r'publishTrialFangCast\([^,]+,[^,]+,\s*"([a-z_]+)"', server_text))
+    # Contact cues are published through the same CastKey transport but are a
+    # different family: they are pinned against SpellContactMesh below. Leaving
+    # them in the cast roster would let a contact token masquerade as a spell.
+    signed = {token for token in signed if not token.endswith("_contact")}
     assert emitted | signed == client - {"sculk"}
     contact = CLIENT_SRC / "me/copimine/client/SpellContactMesh.java"
     contact_tokens = set(re.findall(r'"([a-z_]+_contact)"', contact.read_text(encoding="utf-8")))

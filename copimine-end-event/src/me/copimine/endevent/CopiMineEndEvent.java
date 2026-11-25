@@ -103,6 +103,7 @@ import me.copimine.endevent.domain.BossIntent;
 import me.copimine.endevent.domain.BossMovementPolicy;
 import me.copimine.endevent.domain.BossPhase;
 import me.copimine.endevent.domain.BossPhasePolicy;
+import me.copimine.endevent.domain.ArenaMergeCinematicPolicy;
 import me.copimine.endevent.domain.BossPhaseTransitionCinematicPolicy;
 import me.copimine.endevent.domain.BossPerceptionSnapshot;
 import me.copimine.endevent.domain.BossRepelPolicy;
@@ -1658,6 +1659,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Set<UUID> tentacleContactResolved = new HashSet<>();
     private final Set<UUID> tentacleReleaseResolved = new HashSet<>();
     private final Map<UUID, TentacleThrowPolicy.Launch> tentacleThrowLaunches = new HashMap<>();
+    /**
+     * display id → player id for every tentacle currently holding a body.
+     *
+     * <p>The hold is enforced by a per-tick teleport, so the display is the only
+     * thing keeping the body at the socket. If that display dies, is removed, a
+     * phase resets or the player logs out, nobody would move the body again and
+     * they would be left in the air. This ledger is what lets every teardown
+     * path put a held player back on a validated floor instead of dropping them
+     * from the grab socket.</p>
+     */
+    private final Map<UUID, UUID> tentacleHeldPlayers = new HashMap<>();
     /** Last committed under-player ambush per player, for grab pressure. */
     private final Map<UUID, Long> tentacleAmbushTargetMillis = new HashMap<>();
     private UUID disposableBossOperator;
@@ -1758,6 +1770,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * destroyed in this encounter generation. A slot in here never respawns.
      */
     private GuardianDeathLedger guardianDeaths = new GuardianDeathLedger(1L);
+    /**
+     * The guardian count frozen at the moment the Last Seal defensive Kagune
+     * first appeared. The escalation cadence reads its destroyed fraction
+     * against this number, never against the current party: a player leaving or
+     * a respawn must not slide the whole band mid-fight. Zero means the roster
+     * has not been frozen yet for this attempt.
+     */
+    private int guardianRosterOriginal;
     private final Set<Integer> tentacleGuardianWarnedSlots = new HashSet<>();
     private final Map<Integer, Integer> tentacleGuardianSpawnFailures = new HashMap<>();
     /** Once all defenders die, no subsequent respawn may re-enable healing in this generation. */
@@ -1979,6 +1999,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     /** Terminal health commit deferred so the authored Dying2 clip can play. */
     private BukkitTask bossDefeatDeathTask;
     private BukkitTask currentLastSealVisualTask;
+    /**
+     * True once the approved Last Seal site plan has already fired its own
+     * ascension burst during the directed merge scene, so the scene's ignite
+     * shot does not fire a second one.
+     */
+    private boolean arenaMergeRevealOwnsAscension;
     private BukkitTask waveFrontVisualTask;
     private BukkitTask portalVisualTask;
     private BukkitTask diagnosticsWatchdogTask;
@@ -2188,8 +2214,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private String bossHitboxAnimationId = BossAnimationId.IDLE_BREATH.wireId();
     private long bossHitboxAnimationStartedMillis;
     private long bossPhasePresentationUntilMillis;
-    /** 5.2 s last-stand intro: head down, snap up, roar, stand. */
-    private static final long LAST_STAND_INTRO_MILLIS = 5_200L;
     private long bossLastStandIntroUntilMillis;
     private long lastBossRecoilMillis;
     private long bossCastDeadlineMillis;
@@ -22130,6 +22154,100 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             case "void_mark" -> "guardian_mark";
             case "summon_servants" -> "guardian_summon";
             case "arena_inferno" -> "guardian_inferno";
+            default -> null;
+        };
+        if (audio != null) playEncounterAbilityAudio(boss, audio);
+    }
+
+    /**
+     * V6 §13.2: launches the directed RAGE → LAST SEAL arena-merge scene.
+     *
+     * <p>Draws all five shots through {@link BossPresentationEffects}, posts each
+     * shot's authored banner, cue and pose in the runtime hook, and commits the
+     * approved physical square→round reveal exactly once, at the wall-collapse
+     * shot. The boss is pinned above the Core for the final phase, so the scene
+     * is presentation only: it never shields the boss, never moves a player and
+     * never decides damage. If there is no safe floor to anchor the scene, the
+     * honest fallback is the ongoing seal visuals — never a claim that the arena
+     * has already transformed.
+     */
+    private void startArenaMergeScene(LivingEntity boss) {
+        if (boss == null || config == null || taskRegistry == null) return;
+        Location anchor = lastSealSealFloor(boss);
+        if (anchor == null) {
+            getLogger().warning("BOSS_ARENA_MERGE_SKIPPED event=" + eventId
+                    + " reason=no-safe-floor");
+            startCurrentLastSealVisuals(boss);
+            return;
+        }
+        double radius = Math.max(4.0D, boundedCombatRadius(config.arenaRadius()));
+        UUID owner = boss.getUniqueId();
+        String ownerEvent = eventId;
+        long ownerGeneration = generation;
+        BossPhase ownerPhase = bossPhase;
+        java.util.concurrent.atomic.AtomicBoolean revealCommitted =
+                new java.util.concurrent.atomic.AtomicBoolean(false);
+        BossPresentationEffects.playArenaMerge(this, boss, anchor, radius,
+                beat -> onArenaMergeBeat(boss, beat, revealCommitted),
+                () -> taskRegistry != null && taskRegistry.owns(ownerGeneration)
+                        && generation == ownerGeneration && Objects.equals(eventId, ownerEvent)
+                        && Objects.equals(bossUuid, owner)
+                        && ownedBySession(boss, ownerEvent, ownerGeneration)
+                        && bossPhase == ownerPhase,
+                this::eventAudience, this::isEventParticleViewer, this::registerEncounterTask);
+        getLogger().info("BOSS_ARENA_MERGE_STARTED event=" + eventId + " boss=" + owner
+                + " total_ms=" + ArenaMergeCinematicPolicy.totalMillis()
+                + " reveal_commit_ms=" + ArenaMergeCinematicPolicy.revealCommitMillis()
+                + " radius=" + radius);
+    }
+
+    /**
+     * One shot of the arena-merge scene: banner, authored cue, pose and — at the
+     * two directed boundaries — the physical reveal commit and the ascension
+     * burst. Everything is fenced to the entering attempt.
+     */
+    private void onArenaMergeBeat(LivingEntity boss, ArenaMergeCinematicPolicy.Beat beat,
+            java.util.concurrent.atomic.AtomicBoolean revealCommitted) {
+        if (boss == null || beat == null) return;
+        announceEventTitle("§5" + beat.title(), "§f" + beat.subtitle(), true);
+        playArenaMergeCue(boss, beat);
+        sendBossAnimationVisualUpdate(boss, beat.pose());
+        if (beat.shot() == ArenaMergeCinematicPolicy.Shot.WALL_COLLAPSE
+                && revealCommitted.compareAndSet(false, true)) {
+            boolean started = startLastSealArenaReveal(boss);
+            arenaMergeRevealOwnsAscension = started;
+            getLogger().info("BOSS_ARENA_MERGE_REVEAL event=" + eventId
+                    + " committed=" + started + " reason="
+                    + (started ? "approved-plan" : "no-approved-plan"));
+            if (!started) startCurrentLastSealVisuals(boss);
+        }
+        if (beat.shot() == ArenaMergeCinematicPolicy.Shot.LAST_SEAL_IGNITES
+                && !arenaMergeRevealOwnsAscension) {
+            spawnLastSealAscensionBurst(boss);
+        }
+    }
+
+    /** Voices one merge shot through the authored cue catalogue, like a phase cue. */
+    private void playArenaMergeCue(LivingEntity boss, ArenaMergeCinematicPolicy.Beat beat) {
+        if (boss == null || beat == null) return;
+        BossVisualCuePolicy.Cue cue = BossVisualCuePolicy.cue(beat.cueBase(), beat.cueStage());
+        Location origin = boss.getLocation();
+        if (cue == null || origin == null || origin.getWorld() == null) return;
+        Sound sound = bossCueSound(cue.soundId());
+        if (sound != null) {
+            for (Player viewer : eventAudience()) {
+                if (viewer == null || !viewer.isOnline()
+                        || !viewer.getWorld().equals(origin.getWorld())
+                        || !isEventParticleViewer(viewer, origin)) {
+                    continue;
+                }
+                viewer.playSound(origin, sound, SoundCategory.HOSTILE, 0.85F, 1.0F);
+            }
+        }
+        String audio = switch (beat.cueBase()) {
+            case "rift_obelisks" -> "guardian_void";
+            case "arena_inferno" -> "guardian_inferno";
+            case "summon_servants" -> "guardian_summon";
             default -> null;
         };
         if (audio != null) playEncounterAbilityAudio(boss, audio);
@@ -49672,7 +49790,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private long lastSealSpellIntervalMillis(LivingEntity boss) {
-        int roster = Math.max(1, permanentTentacleTarget(isTestBoss(boss)));
+        int liveTarget = Math.max(1, permanentTentacleTarget(isTestBoss(boss)));
+        // Freeze the escalation denominator: the band is a property of this
+        // fight, not of the party that happens to be online for this cast.
+        // Falling back to the live target only covers the tick before the
+        // roster is frozen.
+        int roster = guardianRosterOriginal > 0 ? guardianRosterOriginal : liveTarget;
         int band = Math.clamp(4 * guardianDeaths.destroyedCount() / roster, 0, 3);
         int[] lower = {7000, 5000, 4000, 3000};
         int[] upper = {9000, 7000, 5500, 4500};
@@ -50020,17 +50143,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // permanent orphan or, worse, be mistaken for the real boss.
         if (transition.entered().contains(BossPhase.LAST_SEAL)) {
             clearEchoDecoys("entered-last-seal");
-            if (startLastSealArenaReveal(boss)) return;
-            startCurrentLastSealVisuals(boss);
-            // One-shot arena-wide ascension read: a single expanding seal and a
-            // roar, drawn once per viewer as the final phase opens.
-            spawnLastSealAscensionBurst(boss);
-            // Owner's last-stand brief: hold the head down, snap it up, roar,
-            // then stand into the final fight. The clip owns the performance;
-            // the existing presentation window owns the body for its length so
-            // the boss neither casts nor chases over the intro.
+            // V6 §13.2 / OV4.6: the RAGE→LAST SEAL hand-off is one directed
+            // 12–16 s, five-shot arena-merge scene, not a single 5 s intro. The
+            // scene draws the fracture, the falling square walls, the colliding
+            // worlds, the rising cocoon and the igniting overhead sigil. The
+            // approved physical reveal is committed once, at the wall-collapse
+            // shot, through the fail-closed site-plan executor; nothing claims
+            // the transformation is finished before the scene actually closes.
+            arenaMergeRevealOwnsAscension = false;
+            startArenaMergeScene(boss);
             bossPhasePresentationUntilMillis = System.currentTimeMillis()
-                    + LAST_STAND_INTRO_MILLIS;
+                    + ArenaMergeCinematicPolicy.totalMillis();
             bossLastStandIntroUntilMillis = bossPhasePresentationUntilMillis;
         }
     }
@@ -57029,6 +57152,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     eventTickCounter);
         }
         trimTentacles(permanentTarget, temporaryTarget);
+        if (permanentTarget > 0 && guardianRosterOriginal <= 0) {
+            // Freeze the roster at phase entry: the escalation denominator is a
+            // property of this fight, never of the current party or respawns.
+            guardianRosterOriginal = permanentTarget;
+        }
         if (permanentTarget <= 0) {
             resetTentacleGuardianLedger();
         } else if (tentacleGuardianHealth.isEmpty()) {
@@ -58944,6 +59072,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private void resetTentacleGuardianLedger() {
         guardianHeavyContactUntil.clear();
         guardianPressureGeneration = generation;
+        guardianRosterOriginal = 0;
         clearGuardianShieldOrbit("guardian-ledger-reset");
         // A fresh encounter generation starts with no destroyed defenders. The
         // ledger is generation-scoped, so this is the only place a kill record
@@ -60024,6 +60153,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Location socket = display.getLocation().clone().add(0.0D, TENTACLE_GRAB_SOCKET_HEIGHT, 0.0D);
         if (!isArenaLocation(socket) || !isSafeTentacleHoldLocation(socket, target)
                 || !target.teleport(socket)) return false;
+        tentacleHeldPlayers.put(display.getUniqueId(), target.getUniqueId());
         target.setVelocity(new Vector());
         target.setFallDistance(0.0F);
         return true;
@@ -60056,6 +60186,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void releaseTentaclePlayer(ItemDisplay display, Player target) {
+        // The normal throw owns its own landing lease, so the hold ledger must
+        // stop tracking the body before any guard can early-return.
+        if (display != null) tentacleHeldPlayers.remove(display.getUniqueId());
         TentacleThrowPolicy.Launch launch = display == null ? null
                 : tentacleThrowLaunches.remove(display.getUniqueId());
         if (display == null || target == null || !target.isOnline()
@@ -60124,6 +60257,64 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " launch=" + String.format(Locale.ROOT, "%.3f,%.3f,%.3f",
                 launch.x(), launch.y(), launch.z())
                 + " horizontal=" + String.format(Locale.ROOT, "%.3f", launch.horizontalLength()));
+    }
+
+    /**
+     * Forget and safely land any body held by {@code displayId}. Called from
+     * every teardown path — guardian death, display removal, phase reset and
+     * encounter clear — so a hold can never outlive the tentacle that enforced
+     * it. The player is put back on a validated arena cell, never left at the
+     * grab socket to fall or hang there after a reconnect.
+     */
+    private void releaseTentacleHolder(UUID displayId, String reason) {
+        if (displayId == null) return;
+        UUID playerId = tentacleHeldPlayers.remove(displayId);
+        if (playerId != null) dropHeldTentaclePlayer(playerId, reason);
+    }
+
+    /** Release every tracked hold; used when the whole tentacle set is cleared. */
+    private void releaseAllTentacleHolders(String reason) {
+        if (tentacleHeldPlayers.isEmpty()) return;
+        for (UUID playerId : new HashSet<>(tentacleHeldPlayers.values())) {
+            dropHeldTentaclePlayer(playerId, reason);
+        }
+        tentacleHeldPlayers.clear();
+    }
+
+    /**
+     * Drop the ledger entry for a dead or disconnected player. No teleport is
+     * attempted: a corpse must stay where it fell and an offline body has no
+     * entity to move. The next login starts from the player's own position, not
+     * from a stale grab socket re-applied by a surviving display.
+     */
+    private void dropTentacleHoldsForPlayer(UUID playerId, String reason) {
+        if (playerId == null) return;
+        int removed = (int) tentacleHeldPlayers.values().stream()
+                .filter(playerId::equals).count();
+        tentacleHeldPlayers.values().removeIf(playerId::equals);
+        if (removed > 0) {
+            getLogger().info("RIFT_TENTACLE_HOLD_DROPPED event=" + eventId
+                    + " player=" + playerId + " reason=" + reason);
+        }
+    }
+
+    /** Put a still-valid released body on a safe arena cell and stop its motion. */
+    private void dropHeldTentaclePlayer(UUID playerId, String reason) {
+        Player player = playerId == null ? null : Bukkit.getPlayer(playerId);
+        if (player == null || !player.isOnline() || player.isDead()) return;
+        Location anchor = coreCombatAnchorLocation();
+        if (anchor == null || anchor.getWorld() == null
+                || !anchor.getWorld().equals(player.getWorld())) return;
+        double radius = config == null ? 12.0D : Math.max(4.0D, config.arenaRadius());
+        Location safe = findSafeCombatLocation(anchor, player.getLocation(), radius,
+                MIN_WAVE_CORE_DISTANCE_BLOCKS, -1, player);
+        if (safe != null && safe.getWorld() != null && safe.getWorld().equals(player.getWorld())) {
+            player.teleport(safe);
+        }
+        player.setVelocity(new Vector());
+        player.setFallDistance(0.0F);
+        getLogger().info("RIFT_TENTACLE_HOLD_RELEASED event=" + eventId
+                + " player=" + playerId + " reason=" + reason);
     }
 
     /** The living tentacle owns this hit; boss-only multipliers must not apply. */
@@ -60290,6 +60481,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (entityId == null) {
             return;
         }
+        releaseTentacleHolder(entityId, reason);
         tentacleController.remove(entityId);
         tentacleContactResolved.remove(entityId);
         tentacleReleaseResolved.remove(entityId);
@@ -60340,6 +60532,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             removeTentacle(entityId, reason);
         }
         tentacleController.clear();
+        releaseAllTentacleHolders(reason);
         tentacleContactResolved.clear();
         tentacleReleaseResolved.clear();
         tentacleThrowLaunches.clear();
@@ -65052,6 +65245,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         releaseBlackFogEffects(event.getPlayer());
         updateCurrentCarrierSlowness(event.getPlayer(), false);
         UUID uuid = event.getPlayer().getUniqueId();
+        dropTentacleHoldsForPlayer(uuid, "disconnect");
         reassignWaveTwoEntitiesFor(uuid, "disconnect");
         releaseSpiderPotionLeases(event.getPlayer());
         SpiderRootControlPolicy.clearPlayerState(uuid, rootedPlayersUntilTick,
@@ -65112,6 +65306,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (event.isCancelled()) return;
         releaseBlackFogEffects(event.getEntity());
         UUID uuid = event.getEntity().getUniqueId();
+        dropTentacleHoldsForPlayer(uuid, "death");
         reassignWaveTwoEntitiesFor(uuid, "death");
         releaseSpiderPotionLeases(event.getEntity());
         SpiderRootControlPolicy.clearPlayerState(uuid, rootedPlayersUntilTick,

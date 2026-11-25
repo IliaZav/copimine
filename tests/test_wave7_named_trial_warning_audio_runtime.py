@@ -31,6 +31,7 @@ public class Wave7WarningAudioProbe {
         BLOCK_RESPAWN_ANCHOR_CHARGE, ITEM_TRIDENT_RETURN }
     static class Wave7NamedTrialActorPolicy {
         enum Attack { MARKSMAN_QUICK_SHOT, MARKSMAN_HEAVY_SHOT, MARKSMAN_SPREAD_SHOT,
+            MARKSMAN_SKY_HAIL,
             MARKSMAN_SUPPORT, ARCHMAGE_FANGS, ARCHMAGE_SPEAR, ARCHMAGE_STEP,
             ARCHMAGE_BEAM, ARCHMAGE_CIRCLE, ARCHMAGE_CROWN, ARCHMAGE_REPULSE, NONE }
     }
@@ -60,6 +61,7 @@ public class Wave7WarningAudioProbe {
         @Override public Location clone(){return new Location(world,x,y,z);}
         Location add(double dx,double dy,double dz){x+=dx;y+=dy;z+=dz;return this;}
         Location add(Vector vector){return add(vector.x,vector.y,vector.z);}
+        Location subtract(double dx,double dy,double dz){x-=dx;y-=dy;z-=dz;return this;}
         void setY(double y){this.y=y;}
         double getY(){return y;}
         double getYaw(){return 0.0D;}

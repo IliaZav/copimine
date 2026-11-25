@@ -58,6 +58,10 @@ int effectsReleased,wipes,overlayChanges,carrierSlownessReleases;
     void restoreRitualPrisonerGravity(Player p){effectsReleased++;}
     void releaseCurrentCarrierHolder(UUID id,String reason){effectsReleased++;}
     void releaseCurrentHuntTarget(UUID id,String reason){effectsReleased++;}
+    // The hold ledger is dropped on a committed death; this probe's death event
+    // is cancelled, so the call is never reached, but the adapter must compile.
+    final Map<UUID,UUID> tentacleHeldPlayers=new HashMap<>();
+    void dropTentacleHoldsForPlayer(UUID id,String reason){tentacleHeldPlayers.values().removeIf(id::equals);}
     void endRitualPrisonerAbilitySessionForPlayer(UUID id,String reason){effectsReleased++;}
     UUID ritualPrisonerId(){return prisoner;}
     boolean isOfficialAttemptActive(){return true;}

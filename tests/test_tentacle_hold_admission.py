@@ -19,12 +19,15 @@ public class HoldProbe {
  static class Vector{}
  static class Location {public Location clone(){return this;} Location add(double x,double y,double z){return this;}}
  static class ItemDisplay {boolean valid=true,dead,owned=true;
+  final UUID id=UUID.randomUUID(); UUID getUniqueId(){return id;}
   boolean isValid(){return valid;} boolean isDead(){return dead;} Object getWorld(){return WORLD;}
   Location getLocation(){return new Location();}}
  static class Player {boolean online=true,dead,immune,accepted;int teleports,velocityWrites,fallWrites;
+  final UUID id=UUID.randomUUID(); UUID getUniqueId(){return id;}
   boolean isOnline(){return online;} boolean isDead(){return dead;} boolean isInvulnerable(){return immune;}
   Object getWorld(){return WORLD;}boolean teleport(Location p){teleports++;return accepted;}
   void setVelocity(Vector v){velocityWrites++;}void setFallDistance(float v){fallWrites++;}}
+ final Map<UUID,UUID> tentacleHeldPlayers=new HashMap<>();
  boolean isActiveBossParticipant(Player p){return true;}
  boolean ownedBySession(ItemDisplay d,String e,long g){return d.owned;}
  boolean isArenaLocation(Location p){return arena;}

@@ -203,6 +203,10 @@ public class ConvertedArrowProbe {
     int readInt(Entity e,Object key,int fallback){return e.wave;}
     void tag(Entity e,String kind,int wave,boolean official){e.kind=kind;e.wave=wave;e.official=official;e.event=eventId;e.generation=generation;ownedEntities.put(e.id,e);}
     void tagArrowSpell(Arrow a,String spell){a.data.set(keyArrowSpell,PersistentDataType.STRING,spell);}
+    // The shared arrow-flight sync now asks the named-trial attack key and draws
+    // the authored lance trail for THE HEAVY SHOT; neither changes arrow admission.
+    Object namedTrialProjectileAttackKey(){return "namedTrialAttack";}
+    void renderMarksmanLanceFlight(LivingEntity marksman,Arrow arrow){}
     final Object keyEliteArrowModel="eliteArrowModel";
     void tagEliteArrowModel(Arrow a,String model){}
     void attachEliteArrowVisual(Arrow a){}

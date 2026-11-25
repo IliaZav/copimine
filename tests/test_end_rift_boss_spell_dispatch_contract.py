@@ -26,8 +26,15 @@ def test_automatic_spell_cooldown_is_consumed_only_after_a_cast_is_accepted() ->
     assert "BOSS_SPELL_RETRY" in tick_body
     accepted_branch = tick_body[tick_body.index("if (accepted) {"):]
     accepted_branch = accepted_branch[:accepted_branch.index("} else {")]
-    assert "nextSpellMillis = now + scaledBossDelayMillis(" in accepted_branch, (
+    assert "nextSpellMillis = now + (bossPhase == BossPhase.LAST_SEAL" in accepted_branch, (
         "only an accepted cast may consume the major-spell cooldown")
+    # The accepted cadence has two sanctioned sources: the Last Seal
+    # destroyed-fraction escalation while the cocoon is intact, and the generic
+    # party-scaled delay everywhere else.
+    assert "lastSealSpellIntervalMillis(boss)" in accepted_branch, (
+        "an intact Last Seal cocoon must use the escalation interval")
+    assert "scaledBossDelayMillis(" in accepted_branch, (
+        "the generic cadence must remain reachable for other phases")
     assert "bossSpellRetryAtMillis = 0L" in accepted_branch, (
         "an accepted cast must clear the refusal back-off")
     refusal_branch = tick_body[tick_body.index("} else {", tick_body.index("if (accepted) {")):]

@@ -408,7 +408,8 @@ def test_the_miniboss_body_lease_is_keyed_to_the_miniboss():
     assert "spawnSpellModelDisplay(" in lease
 
     # And the boss path must keep its own lease.
-    boss = _method(event, "private void playBossSpellModel(")
+    # The 5-arg overload only delegates; the lease itself lives in the 6-arg body.
+    boss = _method(event, "boolean followChest, boolean impact) {")
     assert "bossUuid" in boss and "bossCastSequence" in boss
 
 

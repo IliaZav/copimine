@@ -54121,11 +54121,33 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " reason=" + reason + " arrows_restored=" + arrows);
     }
 
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onCrushingGravityArrowLaunch(ProjectileLaunchEvent event) {
+        Projectile projectile = event.getEntity();
+        if (!(projectile instanceof org.bukkit.entity.AbstractArrow arrow)
+                || !(arrow instanceof Arrow || arrow instanceof org.bukkit.entity.SpectralArrow)
+                || crushingGravityGeneration != generation || crushingGravityBounds == null
+                || CrushingGravityPolicy.beat((int) (eventTickCounter - crushingGravityStartTick))
+                    != CrushingGravityPolicy.Beat.LIVE
+                || !gravityAffectsEntity(arrow)
+                || !(arrow.getShooter() instanceof Player player) || !isActiveBossParticipant(player)) return;
+        if (!crushingGravityArrows.add(arrow.getUniqueId())) return;
+        Vector motion = arrow.getVelocity();
+        motion.setX(motion.getX() * CrushingGravityPolicy.ARROW_HORIZONTAL_RETENTION);
+        motion.setZ(motion.getZ() * CrushingGravityPolicy.ARROW_HORIZONTAL_RETENTION);
+        arrow.setVelocity(motion);
+    }
+
+    private boolean gravityAffectsEntity(Entity entity) {
+        return entity.getWorld() == crushingGravityWorld
+                && crushingGravityBounds.contains(entity.getX(), entity.getY(), entity.getZ())
+                && isArenaLocation(entity.getLocation());
+    }
+
     private void applyCrushingGravityPull() {
         if (crushingGravityBounds == null) return;
         for (Player player : activeLivingPlayers()) {
-            if (!isActiveBossParticipant(player) || player.getWorld() != crushingGravityWorld
-                    || !crushingGravityBounds.contains(player.getX(), player.getY(), player.getZ())) continue;
+            if (!isActiveBossParticipant(player) || !gravityAffectsEntity(player)) continue;
             crushingGravityPlayers.add(player.getUniqueId());
             Vector velocity = player.getVelocity();
             if (!player.isOnGround()) {
@@ -54143,7 +54165,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         for (Entity entity : crushingGravityWorld.getNearbyEntities(volume,
                 value -> value instanceof Arrow || value instanceof org.bukkit.entity.SpectralArrow)) {
             if (!(entity instanceof org.bukkit.entity.AbstractArrow arrow) || !arrow.isValid()
-                    || arrow.isDead() || arrow.isInBlock() || !bounds.contains(arrow.getX(), arrow.getY(), arrow.getZ())
+                    || arrow.isDead() || arrow.isInBlock() || !gravityAffectsEntity(arrow)
                     || !(arrow.getShooter() instanceof Player shooter) || !isActiveBossParticipant(shooter)) continue;
             Vector velocity = arrow.getVelocity();
             if (crushingGravityArrows.add(arrow.getUniqueId())) {
@@ -54174,6 +54196,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (elapsed == 0 || elapsed % 10 == 0 || elapsed == CrushingGravityPolicy.WARNING_TICKS
                 || elapsed == CrushingGravityPolicy.WARNING_TICKS + CrushingGravityPolicy.ACTIVE_TICKS) {
             publishCrushingGravityField(center, beat);
+        }
+        int liveAt = CrushingGravityPolicy.WARNING_TICKS;
+        int collapseAt = liveAt + CrushingGravityPolicy.ACTIVE_TICKS;
+        if (elapsed == liveAt || elapsed == collapseAt) {
+            boolean release = elapsed == liveAt;
+            if (!guardianPhysicalMoveActive && bossAbilityState == BossAbilityState.NONE)
+                sendBossAnimationVisualUpdate(boss, release ? BossAnimationId.GROUND_SLAM.wireId()
+                        : BossAnimationId.IDLE_BREATH.wireId());
+            for (Player player : activeBossParticipants()) {
+                if (!gravityAffectsEntity(player)) continue;
+                Location bank = player.getLocation().add(0, -.2D, 0);
+                player.playSound(bank, release ? Sound.ENTITY_WARDEN_SONIC_BOOM : Sound.BLOCK_RESPAWN_ANCHOR_DEPLETE,
+                        SoundCategory.HOSTILE, release ? .9F : .7F, release ? .55F : .7F);
+            }
         }
         if (elapsed % 4 != 0) return;
         Vector axisA = new Vector(1.0D, 0.0D, 0.0D);
@@ -54223,8 +54259,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         float rz = (float) ((bounds.maxZ() - bounds.minZ()) * 0.5D);
         float height = (float) Math.max(0, bounds.maxY() - center.getY());
         if (rx > 256 || rz > 256 || height > 256) return;
-        var lanes = List.of(spellLane(center, new Vector(1, 0, 0), 0.10f, rx),
-                spellLane(center, new Vector(0, 0, 1), 0.10f, rz),
+        boolean expanded = lastSealArena != null && lastSealArena.opened(generation) != null;
+        var lanes = List.of(spellLane(center, new Vector(1, 0, 0), expanded ? 0F : .10F, rx),
+                spellLane(center, new Vector(0, 0, 1), .10F, rz),
                 spellLane(center, new Vector(0, 1, 0), 0.10f, height));
         List<Player> viewers = eventAudience().stream().filter(viewer ->
                 viewer.getWorld() == center.getWorld() && isEventVisualViewer(viewer)).toList();
@@ -54242,6 +54279,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private CrushingGravityPolicy.Bounds crushingGravityArenaBounds(LivingEntity boss) {
         if (boss.getWorld() != Bukkit.getWorld(worldName) || arenaMinX >= arenaMaxX
                 || arenaMinY >= arenaMaxY || arenaMinZ >= arenaMaxZ) return null;
+        var expanded = lastSealArena == null ? null : lastSealArena.opened(generation);
+        if (expanded != null) {
+            double x = expanded.x() + .5D, z = expanded.z() + .5D, radius = expanded.radius();
+            return new CrushingGravityPolicy.Bounds(x - radius, expanded.floor(), z - radius,
+                    x + radius, arenaMaxY + .95D, z + radius);
+        }
         return new CrushingGravityPolicy.Bounds(arenaMinX, arenaMinY, arenaMinZ,
                 arenaMaxX + 0.95D, arenaMaxY + 0.95D, arenaMaxZ + 0.95D);
     }
@@ -54705,15 +54748,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         bossChestBeamCooldownUntilTick = eventTickCounter + ChestBeamPolicy.COOLDOWN_TICKS;
         bossCastDeadlineMillis = System.currentTimeMillis() + ChestBeamPolicy.TOTAL_TICKS * 50L;
         bossSpellPauseUntilMillis = bossCastDeadlineMillis;
-        sendBossAnimationVisualUpdate(boss, BossVisualCuePolicy.releaseAnimation(
-                EndRiftAiPolicy.BossSpell.CHEST_BEAM.id()));
-        playBossVisualCue(boss, bossCueId(EndRiftAiPolicy.BossSpell.CHEST_BEAM.id(),
-                BossVisualCuePolicy.CueStage.RELEASE), chest, false);
-        world.playSound(chest, Sound.ENTITY_ENDER_DRAGON_GROWL, SoundCategory.HOSTILE, 1.0F, 0.9F);
-        // 9H.01/9H.02 shot 4: the opened chest socket must stay visible while
-        // the shaft is live, not vanish the instant the telegraph model expires.
+        sendBossAnimationVisualUpdate(boss, BossAnimationId.CAST_CHARGE.wireId());
+        world.playSound(chest, Sound.BLOCK_RESPAWN_ANCHOR_CHARGE, SoundCategory.HOSTILE, 1.3F, .54F);
         playBossSpellModel(boss, EndRiftAiPolicy.BossSpell.CHEST_BEAM.id(), chest,
-                ChestBeamPolicy.FIRE_TICKS + ChestBeamPolicy.AFTERMATH_TICKS, false);
+                ChestBeamPolicy.CHARGE_TICKS, true);
         getLogger().info("BOSS_CHEST_BEAM_FIRE event=" + eventId + " boss=" + bossId
                 + " lanes=" + aims.size() + " targets=" + participants.size()
                 + " phase=" + bossPhase + " generation=" + callbackGeneration);
@@ -54741,12 +54779,23 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             // Shot 4/5 beats: the crown detonates at the real collision end of
             // every locked lane, then the fracturing shell spits its recoil.
             if (tick == ChestBeamPolicy.CHARGE_TICKS) {
+                sendBossAnimationVisualUpdate(boss, BossVisualCuePolicy.releaseAnimation(
+                        EndRiftAiPolicy.BossSpell.CHEST_BEAM.id()));
+                playBossVisualCue(boss, bossCueId(EndRiftAiPolicy.BossSpell.CHEST_BEAM.id(),
+                        BossVisualCuePolicy.CueStage.RELEASE), chest, false);
+                world.playSound(chest, Sound.ENTITY_WARDEN_SONIC_BOOM, SoundCategory.HOSTILE, 1.7F, .68F);
+                playBossSpellModel(boss, EndRiftAiPolicy.BossSpell.CHEST_BEAM.id(), chest,
+                        ChestBeamPolicy.FIRE_TICKS + ChestBeamPolicy.AFTERMATH_TICKS, false);
                 for (ChestBeamPolicy.Aim aim : aims) {
-                    Location end = new Location(world, aim.tipX(), aim.tipY(), aim.tipZ());
-                    world.playSound(end, Sound.ENTITY_WARDEN_SONIC_BOOM,
-                            SoundCategory.HOSTILE, 1.6F, 1.1F);
-                    spawnEventParticle(end, Particle.EXPLOSION_EMITTER, 1, 0.0D, 0.0D, 0.0D, 0.0D);
-                    spawnEventParticle(end, Particle.END_ROD, 12, 1.1D, 0.7D, 1.1D, 0.03D);
+                    Vector direction = new Vector(aim.dx(), aim.dy(), aim.dz());
+                    Location tip = new Location(world, aim.tipX(), aim.tipY(), aim.tipZ());
+                    var surface = world.rayTraceBlocks(chest, direction, chest.distance(tip),
+                            org.bukkit.FluidCollisionMode.NEVER, true);
+                    if (surface == null) continue;
+                    Location impact = surface.getHitPosition().toLocation(world).subtract(direction.multiply(.12D));
+                    world.playSound(impact, Sound.BLOCK_DEEPSLATE_BREAK, SoundCategory.HOSTILE, 1.2F, .64F);
+                    spawnEventParticle(impact, Particle.EXPLOSION, 2, .42D, .42D, .42D, 0D);
+                    spawnEventParticle(impact, Particle.END_ROD, 16, 1.1D, 0.7D, 1.1D, 0.035D);
                 }
             }
             if (tick == ChestBeamPolicy.CHARGE_TICKS + ChestBeamPolicy.FIRE_TICKS) {
@@ -54834,7 +54883,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // cadence rather than every tick, so a 20-player render stays bounded
         // while the silhouette still reads as one continuous ray.
         boolean drawBody = firing ? elapsedTicks % 2 == 0 : elapsedTicks % 3 == 0;
-        boolean refreshBeam = elapsedTicks % 4 == 0;
+        boolean refreshBeam = elapsedTicks % 4 == 0 || elapsedTicks == ChestBeamPolicy.CHARGE_TICKS
+                || elapsedTicks == ChestBeamPolicy.CHARGE_TICKS + ChestBeamPolicy.FIRE_TICKS;
         if (!drawBody && !refreshBeam) {
             return;
         }
@@ -54872,7 +54922,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             // so the shipped silhouette hugs the real 1.7-block capsule without
             // streaming per-vertex geometry. The rails below still mark the exact
             // capsule boundary and the thin world beams keep a known fallback.
-            broadcastSpellVisualCue("beam", bossChestBeamCueSeed + lane, chest, tip, hue, firing ? 1 : 0);
+            broadcastSpellVisualCue("beam", bossChestBeamCueSeed + lane, chest, tip, hue, firing ? 1 : 2);
             // The wire protocol caps one beam at 0.45 blocks, but the real
             // swept capsule is BEAM_RADIUS = 1.7 either side. Draw a bounded
             // cross-section instead of a hairline: a hot core, a vertical pair
@@ -54970,6 +55020,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                             1, 0D, 0D, 0D, 0D, dust);
                 }
                 viewer.spawnParticle(Particle.END_ROD, chest.clone(), 2, 0.05D, 0.05D, 0.05D, 0.01D);
+            }
+        }
+        if (tick % 5 == 0) {
+            for (int lane = 0; lane < aims.size(); lane++) {
+                ChestBeamPolicy.Aim aim = aims.get(lane);
+                broadcastSpellVisualCue("beam", bossChestBeamCueSeed + lane, chest,
+                        new Location(chest.getWorld(), aim.tipX(), aim.tipY(), aim.tipZ()), hue, 0);
             }
         }
         renderChestBeamLaneRails(chest, aims, hue, tick);
@@ -60811,25 +60868,39 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         RiftFractureEruptionPolicy.Stage stage = state.stage();
         if (eventTickCounter % 3L != 0L && eventTickCounter != stage.preparedAt()
-                && eventTickCounter != stage.eruptionTick()) {
+                && eventTickCounter != stage.eruptionTick() && eventTickCounter != stage.collapseStart()) {
             return;
         }
         RiftFractureEruptionPolicy.Phase phase = stage.phase(eventTickCounter);
         double height = stage.geyserHeight(eventTickCounter);
         double radius = RiftFractureEruptionPolicy.GEYSER_RADIUS_BLOCKS;
-        for (Location center : state.centers()) {
-            // N23-P1-08: one compact v51-geyser cue per live column, so the
-            // shipped 26.3 client rebuilds the authored rock/obsidian throat,
-            // volumetric flame sheets, ash, debris and collapse locally from
-            // the cast clock instead of only reading the sparse particles. It
-            // rides the existing bounded beam transport and is refreshed while
-            // the column exists; the key is stable per fracture for the whole
-            // eruption, so the animation clock never restarts.
-            if (height > 0.0D && center != null && center.getWorld() != null) {
-                broadcastSpellVisualCue("geyser", cueSeedFor(state.id()), center,
-                        center.clone().add(0.0D, height, 0.0D), 0xFF8A2B);
+        List<Location> centers = state.centers();
+        List<Player> audience = eventAudience();
+        for (int root = 0; root < centers.size(); root++) {
+            Location center = centers.get(root);
+            if (center == null || center.getWorld() == null) continue;
+            int visualStage = switch (phase) {
+                case PREPARE, WARNING -> 0;
+                case ERUPTION -> 1;
+                case COLLAPSE -> 2;
+                default -> -1;
+            };
+            long seed = geyserCueSeed(state.id(), root);
+            if (visualStage >= 0) {
+                var lane = spellLane(center, new Vector(0, 1, 0), (float) radius, (float) height);
+                List<Player> viewers = audience.stream().filter(viewer -> isEventParticleViewer(viewer, center)).toList();
+                spellCasts.publish(new me.copimine.endevent.runtime.SpellCastRuntime.CastKey("geyser", seed, null),
+                        eventId, generation, worldVfxDimension(center), center, List.of(lane), eventTickCounter,
+                        16, visualStage, true, viewers, this::sendSpellCast);
+                if (eventTickCounter == stage.preparedAt()) {
+                    center.getWorld().playSound(center, Sound.BLOCK_DEEPSLATE_HIT, SoundCategory.HOSTILE, .85F, .53F);
+                } else if (eventTickCounter == stage.eruptionTick()) {
+                    center.getWorld().playSound(center, Sound.ENTITY_GENERIC_EXPLODE, SoundCategory.HOSTILE, 1.1F, .72F);
+                } else if (eventTickCounter == stage.collapseStart()) {
+                    center.getWorld().playSound(center, Sound.BLOCK_FIRE_EXTINGUISH, SoundCategory.HOSTILE, .85F, .62F);
+                }
             }
-            for (Player viewer : eventAudience()) {
+            for (Player viewer : audience) {
                 if (!isEventParticleViewer(viewer, center)) {
                     continue;
                 }
@@ -60873,10 +60944,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
 
+    private static long geyserCueSeed(UUID fracture, int root) {
+        return cueSeedFor(fracture) * 31L + root;
+    }
+
     private void removeCurrentRiftFracture(RiftFractureRuntimeState state, String reason) {
         if (state == null || !activeCurrentRiftFractures.remove(state.id(), state)) {
             return;
         }
+        for (int root = 0; root < state.centers().size(); root++)
+            clearSpellVisualCue("geyser", geyserCueSeed(state.id(), root));
         for (BlockCellKey cell : state.cells()) {
             currentRiftFractureCells.remove(cell, state.id());
         }

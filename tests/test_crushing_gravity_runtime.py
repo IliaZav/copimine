@@ -18,6 +18,7 @@ def test_crushing_gravity_moves_real_players_and_arrows_and_restores(tmp_path):
     source = SOURCE.read_text(encoding="utf-8")
     production = "\n".join(extract_method(source, signature) for signature in (
         "private void applyCrushingGravityPull(",
+        "private boolean gravityAffectsEntity(",
         "private void releaseCrushingGravityPull(",
         "private void endCrushingGravityStateOnly(",
     ))
@@ -82,6 +83,7 @@ public class CrushingGravityProbe {
     final List<Player> players=new ArrayList<>();
     List<Player> activeLivingPlayers(){return players;}
     boolean isActiveBossParticipant(Player player){return players.contains(player);}
+    boolean isArenaLocation(Location location){return location.getX() != 12;}
 
 """ + production + r"""
     static void require(boolean yes,String message){if(!yes)throw new AssertionError(message);}
@@ -106,7 +108,8 @@ public class CrushingGravityProbe {
         Arrow outArrow=new Arrow(world);outArrow.place(100,7,7);outArrow.velocity=new Vector(2.0,0.5,0.0);
         SpectralArrow spectral=new SpectralArrow(world);spectral.place(9,7,7);spectral.velocity=new Vector(2,0.5,0);
         inArrow.shooter=airborne; outArrow.shooter=airborne; spectral.shooter=airborne;
-        p.players.addAll(List.of(airborne,jumping,outside));
+        Player shelter=new Player(world);shelter.place(12,5,12);shelter.velocity=new Vector(0,.1,0);
+        p.players.addAll(List.of(airborne,jumping,outside,shelter));
         world.entities.addAll(List.of(inArrow,outArrow,spectral));
 
         p.applyCrushingGravityPull();
@@ -115,6 +118,7 @@ public class CrushingGravityProbe {
         close(jumping.velocity.getY(),0.40*CrushingGravityPolicy.JUMP_IMPULSE_SCALE,
                 "a jump is weighed down, never removed");
         close(outside.velocity.getY(),0.10,"a player outside the frozen bounds is untouched");
+        close(shelter.velocity.getY(),0.10,"a protected cell inside the AABB is untouched");
         close(inArrow.velocity.getY(),0.5-0.05*(CrushingGravityPolicy.ARROW_GRAVITY_MULTIPLIER-1.0D),
                 "a real arrow inside the field falls harder but keeps flying");
         close(inArrow.velocity.getX(),2.0*(1.0D-CrushingGravityPolicy.ARROW_INFLIGHT_BLEED),

@@ -96,6 +96,10 @@ public final class SpellVisualRenderer {
         if (spell == SpellVisualGeometry.Spell.BEAM && cast.lanes().size() == 1) {
             return drawChestBeam(matrices.last(), buffer, cast, now - start, expires - now, tier, budget);
         }
+        if (spell == SpellVisualGeometry.Spell.GEYSER && cast.lanes().size() == 1
+                && cast.lanes().getFirst().radius() >= 1F) {
+            return drawGeyser(matrices.last(), buffer, cast, now - start, expires - now, tier, budget);
+        }
         if (SpellCastPacketCodec.isFangGeometry(cast.spellId())) {
             return drawFangs(matrices.last(), buffer, cast, (now - start) / (double) (expires - start), tier, budget);
         }
@@ -125,9 +129,27 @@ public final class SpellVisualRenderer {
         int vertices = (nodes + 1) * section.length * 4;
         double visibility = Math.min(1, remaining / 100.0);
         boolean charging = cast.stage() == 0;
+        boolean cooling = cast.stage() == 2;
+        double cool = 1D - Math.min(1D, elapsed / 720D);
         double clock = reducedMotion ? 0 : elapsed * 0.009;
-        int passes = charging ? 2 : 4;
+        int passes = charging ? 2 : cooling ? 2 : 5;
         int count = 0;
+        if (charging) {
+            count += drawCollar(pose, buffer, origin, normal, binormal, lane.radius(), 0.035F,
+                    0xe9ded1ff, section, budget - count);
+            count += drawCollar(pose, buffer, origin.add(forward.scale(lane.length())), normal, binormal,
+                    lane.radius(), 0.035F, 0xebded1ff, section, budget - count);
+            if (budget - count >= 32) {
+                for (int side = 0; side < 4; side++) {
+                    double angle = side * Math.PI / 2;
+                    Vec3 radial = normal.scale(Math.cos(angle)).add(binormal.scale(Math.sin(angle)));
+                    Vec3 from = origin.add(radial.scale(lane.radius()));
+                    ribbon(buffer, pose, from, from.add(forward.scale(lane.length())),
+                            forward.cross(radial), .028F, .028F, 0xa7d683ff, 0xa7f9ddff);
+                    count += 8;
+                }
+            }
+        }
         for (int pass = 0; pass < passes && count + vertices <= budget; pass++) {
             var path = new Vec3[nodes];
             var radii = new java.util.ArrayList<Float>(nodes);
@@ -135,25 +157,87 @@ public final class SpellVisualRenderer {
             for (int i = 0; i < nodes; i++) {
                 double t = i / (double) (nodes - 1);
                 double edge = 0.2 + 0.8 * Math.sin(Math.PI * Math.pow(t, 0.55));
-                double angle = t * 14 - clock + pass * Math.PI;
-                double offset = pass < 2 ? 0 : lane.radius() * (0.45 + 0.21 * edge);
+                double angle = t * (pass == 4 ? 29 : 14) - clock * (pass == 3 ? -1 : 1) + pass * 2.0944;
+                double offset = pass < 2 ? 0 : lane.radius() * (0.43 + 0.32 * edge);
                 path[i] = origin.add(forward.scale(lane.length() * t))
                         .add(normal.scale(offset * Math.cos(angle))).add(binormal.scale(offset * Math.sin(angle)));
                 double flow = 0.82 + 0.18 * Math.cos(angle);
                 double radius = switch (pass) {
-                    case 0 -> charging ? 0.12 : 0.46;
-                    case 1 -> charging ? 0.32 : 1.0;
-                    default -> 0.10;
+                    case 0 -> charging ? 0.12 : cooling ? .15 * cool : 0.46;
+                    case 1 -> charging ? 0.32 : cooling ? .56 * cool : 1.0;
+                    default -> pass == 4 ? .042 : .10;
                 };
-                radii.add((float) (lane.radius() * radius * (pass == 1 && !charging ? 1 : edge)));
+                radii.add((float) Math.max(.012, lane.radius() * radius * (pass == 1 && !charging ? 1 : edge)));
                 int alpha = (int) ((pass == 0 ? 243 : pass == 1 ? 82 : 182) * visibility * flow);
                 if (charging) alpha /= 2;
-                int color = pass == 0 ? 0xffefed : pass == 1 ? 0x9e32f4 : 0xff7ad9;
+                if (cooling) alpha = (int) (alpha * cool * .55);
+                int color = pass == 0 ? 0xffefed : pass == 1 ? 0x9e32f4 : pass == 3 ? 0xd7bdff : 0xff7ad9;
                 colors[i] = alpha << 24 | color;
             }
             count += tube(buffer, pose, path, radii, colors, section);
         }
         return count;
+    }
+
+    private static int drawCollar(PoseStack.Pose pose, VertexConsumer buffer, Vec3 center, Vec3 a, Vec3 b,
+                                  double radius, float thickness, int tint, double[][] section, int budget) {
+        if (budget < section.length * 8) return 0;
+        int count = 0;
+        for (int i = 0; i < section.length; i++) {
+            double[] p = section[i], q = section[(i + 1) % section.length];
+            Vec3 from = center.add(a.scale(radius * p[0])).add(b.scale(radius * p[1]));
+            Vec3 to = center.add(a.scale(radius * q[0])).add(b.scale(radius * q[1]));
+            if (budget - count < 8) break;
+            ribbon(buffer, pose, from, to, from.add(to).scale(.5).subtract(center).normalize(),
+                    thickness, thickness, tint, tint);
+            count += 8;
+        }
+        return count;
+    }
+
+    private static int drawGeyser(PoseStack.Pose pose, VertexConsumer buffer, SpellCastPacket cast,
+                                  long age, long remaining, SpellVisualGeometry.Quality tier, int budget) {
+        var lane = cast.lanes().getFirst();
+        Vec3 root = new Vec3(lane.x(), lane.y() + .07, lane.z());
+        double radius = lane.radius();
+        double[][] section = profile(tier, true);
+        boolean warning = cast.stage() == 0;
+        boolean collapsing = cast.stage() == 2;
+        int emitted = drawCollar(pose, buffer, root, new Vec3(1, 0, 0), new Vec3(0, 0, 1),
+                radius, .045F, warning ? 0xeaff7d3b : 0xd5ffb26b, section, budget);
+        int knots = tier.samples() + 2;
+        int tubeCost = (knots + 1) * section.length * 4;
+        int tongues = switch (tier) {
+            case FULL -> 6;
+            case BALANCED -> 4;
+            case REDUCED -> 3;
+        };
+        double phase = reducedMotion ? 0 : age * .009;
+        double pressure = Math.min(1D, age / 950D);
+        double height = warning ? .18 + 1.3 * Math.pow(pressure, 3) : lane.length();
+        double fade = Math.min(1D, remaining / 100D) * (collapsing ? Math.max(.2D, 1 - age / 650D) : 1D);
+        for (int strand = 0; strand < tongues && budget - emitted >= tubeCost; strand++) {
+            var centers = new Vec3[knots];
+            var radii = new java.util.ArrayList<Float>(knots);
+            var colors = new int[knots];
+            double heading = strand * Math.PI * 2 / tongues;
+            for (int n = 0; n < knots; n++) {
+                double t = n / (double) (knots - 1);
+                double angle = heading + (warning ? t * .24 : t * 2.7 - phase);
+                double radial = warning ? radius * (.91 - .83 * t) :
+                        strand == 0 ? radius * .09 * t : radius * (.48 + .25 * t);
+                double lift = warning ? height * Math.pow(t, 2.4) : height * t;
+                centers[n] = root.add(Math.cos(angle) * radial, lift, Math.sin(angle) * radial);
+                double taper = Math.pow(1 - t, .7);
+                radii.add((float) (.018 + radius * taper * (warning ? .045 : strand == 0 ? .38 : .105)));
+                int hue = warning ? 0xf58054 : strand == 0 ? (t < .65 ? 0xffedbb : 0xff7541)
+                        : (strand & 1) == 0 ? 0x702451 : 0xff6d28;
+                int alpha = (int) ((warning ? 150 + 70 * pressure : strand == 0 ? 238 : 162) * fade * (.24 + .76 * taper));
+                colors[n] = alpha << 24 | hue;
+            }
+            emitted += tube(buffer, pose, centers, radii, colors, section);
+        }
+        return emitted;
     }
 
     private static int drawAuthored(PoseStack matrices, VertexConsumer buffer, SpellVisualGeometry.Spell spell,
@@ -270,15 +354,21 @@ public final class SpellVisualRenderer {
         double rz = cast.lanes().get(1).length();
         double height = cast.lanes().get(2).length();
         double x = cast.x(), y = cast.y(), z = cast.z();
-        Vec3[] floor = {new Vec3(x - rx, y, z - rz), new Vec3(x + rx, y, z - rz),
-                new Vec3(x + rx, y, z + rz), new Vec3(x - rx, y, z + rz)};
+        boolean circular = cast.lanes().get(0).radius() == 0;
         int ink = cast.stage() == 1 ? 0xc8ba9cff : 0xb48468e8;
         int count = 0;
-        for (int i = 0; i < floor.length; i++) {
-            Vec3 from = floor[i], to = floor[(i + 1) & 3];
-            Vec3 side = to.subtract(from).cross(UP).normalize();
-            ribbon(buffer, pose, from, to, side, 0.08f, 0.08f, ink, ink);
-            count += 8;
+        if (circular) {
+            count += drawCollar(pose, buffer, new Vec3(x, y, z), new Vec3(1, 0, 0),
+                    new Vec3(0, 0, 1), rx, .08F, ink, SECTIONS_12, budget);
+        } else {
+            Vec3[] floor = {new Vec3(x - rx, y, z - rz), new Vec3(x + rx, y, z - rz),
+                    new Vec3(x + rx, y, z + rz), new Vec3(x - rx, y, z + rz)};
+            for (int i = 0; i < floor.length; i++) {
+                Vec3 from = floor[i], to = floor[(i + 1) & 3];
+                Vec3 side = to.subtract(from).cross(UP).normalize();
+                ribbon(buffer, pose, from, to, side, 0.08f, 0.08f, ink, ink);
+                count += 8;
+            }
         }
         if (height < 0.2) return count;
         int columns = switch (tier) {
@@ -288,26 +378,34 @@ public final class SpellVisualRenderer {
         };
         double[][] section = profile(tier, false);
         if (budget - count < section.length * 24) return count;
-        double flow = reducedMotion ? 0.5 : (tickMillis / 650.0) % 1.0;
-        double extent = switch (cast.stage()) {
-            case 0 -> Math.min(1.0, tickMillis / 2000.0) * 0.30;
-            case 2 -> Math.max(0.12, 1.0 - tickMillis / 650.0) * 0.38;
-            default -> 1.0;
-        };
-        int[] shades = {0x309b73e7, 0xb0c5a9ff, 0xc8ecdcff, 0x688d69e0, 0x186642c8};
-        List<Float> radii = List.of(0.045f, 0.15f, 0.19f, 0.12f, 0.045f);
-        for (int column = 0; column < columns && budget - count >= section.length * 24; column++) {
-            double angle = column * (Math.PI * 2.0 / columns);
-            double radial = 0.50 + (column % 3) * 0.19;
-            double localPhase = (flow + column * 0.618) % 1;
-            double low = cast.stage() == 0 ? 0 : height * (1 - localPhase) * 0.37;
-            Vec3[] path = new Vec3[5];
+        boolean warning = cast.stage() == 0;
+        boolean collapse = cast.stage() == 2;
+        double progress = Math.clamp(tickMillis / (warning ? 1900.0 : 1500.0), 0, 1);
+        double flow = reducedMotion ? .48 : (tickMillis / (warning ? 2200.0 : 1520.0)) % 1;
+        double fade = collapse ? (1 - progress) * (1 - progress) : 1;
+        List<Float> radii = List.of(.025F, .10F, .22F, .16F, .09F, .022F);
+        int cost = (radii.size() + 1) * section.length * 4;
+        int alpha = (int) (fade * (warning ? 128 : 202));
+        int[] shades = {(alpha / 5) << 24 | 0x5b4bad, (alpha / 2) << 24 | 0xa28bda,
+                alpha << 24 | 0xe0d2ff, (alpha * 3 / 4) << 24 | 0xa170ea,
+                (alpha / 2) << 24 | 0x7254ca, 0x00472b89};
+        for (int column = 0; column < columns && budget - count >= cost; column++) {
+            double angle = column * 2.39996323;
+            double radial = .13 + .74 * Math.sqrt((column + 1) / (double) columns);
+            double drift = (flow + column * .618034) % 1;
+            double top = height * (1.0 - drift * (warning ? .24 : .77));
+            if (collapse) top *= 1 - .76 * progress;
+            double tail = height * (warning ? .17 + .26 * progress : .24 + .31 * (1 - drift));
+            double bottom = Math.max(.12D, top - tail);
+            if (top - bottom < .12D) continue;
+            Vec3[] path = new Vec3[radii.size()];
             for (int i = 0; i < path.length; i++) {
                 double t = i / (double) (path.length - 1);
-                double turn = angle + t * 0.30;
-                path[i] = new Vec3(x + Math.cos(turn) * radial * rx,
-                        y + Math.min(height, low + height * t * extent),
-                        z + Math.sin(turn) * radial * rz);
+                double turn = angle + .19 * t * t;
+                double inward = radial * (1 - .22 * t * t);
+                path[i] = new Vec3(x + Math.cos(turn) * inward * rx,
+                        y + top + (bottom - top) * t,
+                        z + Math.sin(turn) * inward * rz);
             }
             count += tube(buffer, pose, path, radii, shades, section);
         }

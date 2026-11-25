@@ -132,7 +132,6 @@ import me.copimine.endevent.domain.CoreInteractionGuard;
 import me.copimine.endevent.domain.CreativeTestAdmissionPolicy;
 import me.copimine.endevent.domain.EndEventStateMachine;
 import me.copimine.endevent.domain.EndRiftAiPolicy;
-import me.copimine.endevent.domain.EventRealHealthDamagePolicy;
 import me.copimine.endevent.domain.EventPhase;
 import me.copimine.endevent.domain.EventMusicLoopPolicy;
 import me.copimine.endevent.domain.EventMusicSyncPolicy;
@@ -962,8 +961,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * transaction by event identity lets MONITOR diagnostics report that
      * distinction without treating a deliberately-cancelled event as lost.
      */
-    private final Map<EntityDamageEvent, EventRealHealthDamagePolicy.Result> authoritativeEventMobDamage =
-            new IdentityHashMap<>();
     /** Marks the exact events whose final damage was written to real HP. */
     private final Map<EntityDamageEvent, Boolean> authoritativeCombatTraceEvents =
             new IdentityHashMap<>();
@@ -3948,6 +3945,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             event.setCancelled(true);
             return;
         }
+        // Escalate later groups within the same roster and melee admission caps.
+        double pressure = 1.0D + 0.08D * Math.clamp(waveSpawnGroupIndex - 1, 0, 2);
+        event.setDamage(event.getDamage() * pressure);
         pendingWaveTwoMeleeAdmissions.put(event,
                 new WaveTwoMeleeAttackEventToken(admitted, true));
     }
@@ -6651,7 +6651,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         clearClientEffects();
         pendingCombatTraces.clear();
         authoritativeCombatTraceEvents.clear();
-        authoritativeEventMobDamage.clear();
         boolean preserveWave1ForRestart = activeWave == 1 && phase == EventPhase.WAVE_1
                 && isOfficialAttempt() && (currentCarrierState == null
                 || currentCarrierState.generation() == generation);
@@ -15447,25 +15446,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return null;
     }
 
-    /**
-     * Wave mobs retain real Bukkit entity health, but normal living-entity
-     * hurt resistance keeps only the difference from a previous attack while
-     * its 20-tick window is active.  Combat Trace reproduced that as a
-     * non-cancelled 2.440 hit becoming a 0.358 health change.  Once every
-     * earlier protection listener has allowed a player hit, apply the already
-     * computed final damage once to the real health value and cancel only the
-     * duplicate native application.  This does not reset noDamageTicks or
-     * bypass an earlier cancellation.
-     */
+    /** Paper owns the actual hit so cooldown, crits, sweep and splash retain native semantics. */
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onWaveMobPlayerDamageAuthoritative(EntityDamageByEntityEvent event) {
         if (!(event.getEntity() instanceof LivingEntity victim)
                 || !isWaveCombatKind(readString(victim, keyKind))
-                || !ownedEntities.containsKey(victim.getUniqueId())) {
-            return;
-        }
-        // HIGHEST listeners have no cross-listener ordering guarantee. Re-check
-        // the caster admission lock inside the health transaction itself.
+                || !ownedEntities.containsKey(victim.getUniqueId())) return;
         if (ritualCasterDamageLocked(victim)) {
             event.setCancelled(true);
             return;
@@ -15473,68 +15459,24 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (blockRitualCasterShieldHit(event, victim)) return;
         if (!victim.isValid() || victim.isDead() || victim.getHealth() <= 0.0D) {
             event.setCancelled(true);
-            getLogger().fine("WAVE_MOB_DAMAGE_BLOCKED event=" + eventId
-                    + " mob=" + victim.getUniqueId() + " reason=dead-or-removed");
             return;
         }
-        Player attacker = playerDamageAttacker(event.getDamager());
-        if (attacker == null || !isCombatTarget(attacker)) {
-            return;
-        }
-        if (isChamberWaveEntity(victim)
-                && !realitySplitTargetAllowed(victim, attacker)) {
-            event.setCancelled(true);
-            getLogger().info("WAVE_6_ATTACK_CROSS_ROOM_BLOCKED event=" + eventId
-                    + " attacker=" + attacker.getUniqueId()
-                    + " target=" + victim.getUniqueId()
-                    + " chamber=" + realitySplitChamberId(victim));
-            return;
-        }
-        if ("JUGGERNAUT".equals(readString(victim, keyTrialRole))
-                && !realitySplitTrialController.mayDamageJuggernaut(
-                generation, realitySplitChamberId(victim))) {
+        Player attacker = waveDamageOwner(event);
+        if (attacker == null) return;
+        if (!isCombatTarget(attacker) || !ownedBySession(victim, eventId, generation)
+                || isChamberWaveEntity(victim) && !realitySplitTargetAllowed(victim, attacker)
+                || "JUGGERNAUT".equals(readString(victim, keyTrialRole))
+                    && !realitySplitTrialController.mayDamageJuggernaut(generation, realitySplitChamberId(victim))) {
             event.setCancelled(true);
             return;
         }
-        alertRitualGuardGroup(victim, attacker);
-        armPortalWaveNoKnockback(victim);
-        if (usesNativeWaveFighterDamage(victim)) {
-            // Player.attack needs a successful native hurt transaction to
-            // continue into its sweep, critical feedback and attack cooldown.
-            return;
-        }
-        EventRealHealthDamagePolicy.Result result = EventRealHealthDamagePolicy.apply(
-                victim.getHealth(), victim.getMaxHealth(), event.getFinalDamage());
-        if (!result.applied()) {
-            return;
-        }
-        var profileContext = isCombatProfileTarget(victim) ? combatProfileContext(attacker) : null;
-        if (isCurrentRitualCaster(victim)) {
-            markRitualCasterAwakened(victim, attacker);
-        }
-        authoritativeEventMobDamage.put(event, result);
-        event.setCancelled(true);
-        float hurtYaw = (float) Math.toDegrees(Math.atan2(
-                attacker.getLocation().getX() - victim.getLocation().getX(),
-                attacker.getLocation().getZ() - victim.getLocation().getZ()));
-        victim.playHurtAnimation(hurtYaw);
-        victim.setHealth(result.remainingHealth());
-        if (combatProfileListener != null)
-            combatProfileListener.recordAcceptedHit(event, attacker, profileContext);
-        authoritativeCombatTraceEvents.put(event, Boolean.TRUE);
-        getLogger().fine("WAVE_MOB_REAL_HEALTH_DAMAGE event=" + eventId
-                + " mob=" + victim.getType() + ":" + victim.getUniqueId()
-                + " attacker=" + attacker.getUniqueId()
-                + " cause=" + event.getCause() + " final=" + event.getFinalDamage()
-                + " health_before=" + result.healthBefore()
-                + " health_after=" + result.remainingHealth());
+        if (event.getFinalDamage() > 0.0D) armPortalWaveNoKnockback(victim);
     }
 
-    private boolean usesNativeWaveFighterDamage(LivingEntity entity) {
-        int wave = readInt(entity, keyWave, 0);
-        if (wave < 1 || wave >= MAX_EVENT_WAVE) return false;
-        String kind = readString(entity, keyKind);
-        return EVENT_KIND_WAVE_MOB.equals(kind) || EVENT_KIND_ELITE.equals(kind);
+    private Player waveDamageOwner(EntityDamageByEntityEvent event) {
+        Player owner = playerDamageAttacker(event.getDamager());
+        return owner != null || event.getDamageSource() == null ? owner
+                : playerDamageAttacker(event.getDamageSource().getCausingEntity());
     }
 
     /**
@@ -15545,22 +15487,25 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      */
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = false)
     public void onWaveMobDamagedByPlayer(EntityDamageByEntityEvent event) {
-        Player attacker = playerDamageAttacker(event.getDamager());
+        Player attacker = waveDamageOwner(event);
         if (!(event.getEntity() instanceof LivingEntity victim)
                 || !isWaveCombatKind(readString(victim, keyKind))
                 || !ownedEntities.containsKey(victim.getUniqueId())
                 || attacker == null || !isCombatTarget(attacker)) {
             return;
         }
-        EventRealHealthDamagePolicy.Result authoritative = authoritativeEventMobDamage.remove(event);
-        double before = authoritative == null ? victim.getHealth() : authoritative.healthBefore();
+        double before = victim.getHealth();
         double finalDamage = event.getFinalDamage();
         UUID victimId = victim.getUniqueId();
         int victimWave = readInt(victim, keyWave, 0);
         long observedGeneration = generation;
         String observedEventId = eventId;
         Location victimLocation = victim.getLocation().clone();
-        boolean acceptedAtDispatch = authoritative != null || !event.isCancelled();
+        boolean acceptedAtDispatch = !event.isCancelled() && finalDamage > 0.0D;
+        if (acceptedAtDispatch) {
+            alertRitualGuardGroup(victim, attacker);
+            if (isCurrentRitualCaster(victim)) markRitualCasterAwakened(victim, attacker);
+        }
         boolean normalSkeleton = victim instanceof Skeleton
                 && EVENT_KIND_WAVE_MOB.equals(readString(victim, keyKind))
                 && isLiveOwnedEntity(victimId)
@@ -15574,7 +15519,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " cause=" + event.getCause()
                 + " final=" + finalDamage
                 + " cancelled=" + event.isCancelled()
-                + " authoritative_real_health=" + (authoritative != null)
                 + " health_before=" + before
                 + " no_damage_ticks=" + victim.getNoDamageTicks());
         Bukkit.getScheduler().runTask(this, () -> {
@@ -15583,9 +15527,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             getLogger().info("WAVE_MOB_PLAYER_DAMAGE_APPLIED event=" + eventId
                     + " mob=" + victim.getType() + ":" + victim.getUniqueId()
                     + " attacker=" + attacker.getUniqueId()
-                    + " accepted_before=" + (authoritative != null || !event.isCancelled())
-                    + " authoritative_real_health=" + (authoritative != null)
-                    + " delta=" + delta
+                    + " accepted_before=" + acceptedAtDispatch
+                        + " delta=" + delta
                     + " health_before=" + before
                     + " health_after=" + after
                     + " no_damage_ticks_after=" + victim.getNoDamageTicks());
@@ -15598,8 +15541,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     /**
      * Retaliate only after the player hit has changed real skeleton health.
-     * This is deferred from MONITOR because the event-mob health adapter cancels
-     * native damage after applying its own accepted transaction.
+     * Paper applies native damage after MONITOR.
      */
     private void respondToWaveSkeletonDamage(UUID skeletonId, Location skeletonLocation,
                                              int skeletonWave, String expectedEventId,
@@ -21904,6 +21846,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         long ownerGeneration = generation;
         BossPhase ownerPhase = bossPhase;
         UUID owner = boss.getUniqueId();
+        for (BossPhase previous : BossPhase.values()) {
+            if (previous != ownerPhase) {
+                String token = BossPhaseTransitionCinematicPolicy.forPhase(previous).id() + "_contact";
+                spellCasts.cancel(new me.copimine.endevent.runtime.SpellCastRuntime.CastKey(
+                                token, cueSeedFor(owner), owner),
+                        generation, eventAudience(), this::sendSpellCast);
+            }
+        }
+        double scale = ownerPhase == BossPhase.LAST_SEAL ? 13.0D : ownerPhase == BossPhase.RIFT ? 6.0D : 4.8D;
+        publishSpellContact(cinematic.id() + "_contact", boss, owner, origin,
+                new Vector(0, 1, 0), scale, 0, (int) Math.min(80, cinematic.durationMillis() / 50));
         BossPresentationEffects.playPhaseTransition(this, boss, cinematic.signature(), origin, 3.8D,
                 cinematic.rgb(), cinematic.durationMillis(),
                 () -> taskRegistry != null && taskRegistry.owns(ownerGeneration)
@@ -30257,9 +30210,44 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         currentCarrierChargeLocation = null;
     }
 
+    private long waveTwoPresentedIntro;
+    private int waveTwoLastIntroBeat = -1;
+
+    /** One spatial cue per chapter of the existing ten-second countdown. */
+    private void tickWaveTwoIntroPresentation(long now) {
+        if (waveTwoIntroStartedMillis <= 0L) return;
+        long age = WaveTwoCinematicPolicy.age(waveTwoIntroStartedMillis, now);
+        int beat = age < 2_600L ? 0 : age < 6_100L ? 1 : age < 8_800L ? 2 : age < 10_000L ? 3 : 4;
+        if (waveTwoPresentedIntro != waveTwoIntroStartedMillis) {
+            waveTwoPresentedIntro = waveTwoIntroStartedMillis;
+            waveTwoLastIntroBeat = -1;
+        }
+        if (beat <= waveTwoLastIntroBeat) return;
+        waveTwoLastIntroBeat = beat;
+        Location core = coreCombatAnchorLocation();
+        if (core == null || core.getWorld() == null) return;
+        Sound sound = switch (beat) {
+            case 0 -> Sound.AMBIENT_CAVE;
+            case 1 -> Sound.BLOCK_SCULK_SENSOR_CLICKING;
+            case 2 -> Sound.ENTITY_WARDEN_HEARTBEAT;
+            case 3 -> Sound.ENTITY_ENDERMAN_STARE;
+            default -> Sound.BLOCK_RESPAWN_ANCHOR_DEPLETE;
+        };
+        for (Player viewer : activeWaveParticipants()) {
+            if (!isEventParticleViewer(viewer, core)) continue;
+            viewer.playSound(core, sound, SoundCategory.HOSTILE,
+                    beat == 2 ? 1.1F : .75F, beat == 4 ? .58F : .70F);
+            if (beat < 1 || beat >= 4) continue;
+            double reach = 2.5D + 1.8D * beat;
+            spawnPatternRing(viewer, core.clone().add(0, .10D, 0),
+                    new Vector(1, 0, 0), new Vector(0, 0, 1), reach, 24, beat * .57D, Particle.REVERSE_PORTAL);
+        }
+    }
+
     private void tickCurrentHuntObjective(long now) {
         if (waveSpawnGroupIndex == 0) {
             updateMarkedTargetObjective(now);
+            tickWaveTwoIntroPresentation(now);
             if (!WaveTwoCinematicPolicy.combatReady(waveTwoIntroStartedMillis, now)) return;
             Location core = coreCombatAnchorLocation();
             if (core == null || core.getWorld() == null) return;
@@ -50526,6 +50514,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 event.getDamage(), event.getFinalDamage(), 0.0D,
                 boss.getHealth(), boss.getHealth(), "incoming-damage-event");
         if (bossHitboxController != null && bossHitboxController.hasBoss(boss.getUniqueId())
+                && !isPlayerAreaDamageToBoss(event, boss, source)
                 && (source == null || !bossHitboxController.carrierRayIntersects(
                 boss, source, bossHitboxPoseOffsets(), 8.0D))) {
             event.setCancelled(true);
@@ -50590,6 +50579,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // which prevents Paper's native hurt window from dropping a second
         // player hit in the same tick.
         handleCurrentBossDamage(event, boss, source);
+    }
+
+    private boolean isPlayerAreaDamageToBoss(EntityDamageEvent event, LivingEntity boss, Entity source) {
+        if (activeBossDamageOwner(event, boss, source) == null) return false;
+        return switch (event.getCause()) {
+            case ENTITY_SWEEP_ATTACK, ENTITY_EXPLOSION, BLOCK_EXPLOSION -> true;
+            case MAGIC -> event.getDamageSource() != null && event.getDamageSource().isIndirect();
+            default -> false;
+        };
     }
 
     private boolean isCurrentBossCarrier(LivingEntity boss) {
@@ -52962,9 +52960,23 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     /** Fire the Fan or Heavy when its own cooldown has elapsed, in rotation order. */
     private boolean commitGuardianRotationIfReady(LivingEntity boss, long now, Player target) {
         List<GuardianV5MeleePolicy.Move> rotation = GuardianV5MeleePolicy.committedRotation();
+        Location origin = boss.getLocation();
+        Vector facing = horizontalDirection(origin, target.getLocation());
+        long exposed = activeLivingPlayers().stream()
+                .filter(player -> player.getWorld().equals(origin.getWorld()))
+                .filter(player -> Math.abs(player.getY() - origin.getY()) <= GuardianV5MeleePolicy.FAN_VERTICAL_BLOCKS)
+                .filter(player -> {
+                    double dx = player.getX() - origin.getX(), dz = player.getZ() - origin.getZ();
+                    return GuardianV5MeleePolicy.fanHits(dx * facing.getX() + dz * facing.getZ(),
+                            Math.abs(dx * facing.getZ() - dz * facing.getX()));
+                }).limit(2).count();
+        GuardianV5MeleePolicy.Move preferred = exposed >= 2 ? GuardianV5MeleePolicy.Move.FAN
+                : bossPhase == BossPhase.RAGE || bossPhase == BossPhase.LAST_SEAL
+                    ? GuardianV5MeleePolicy.Move.HEAVY : rotation.get(guardianCommittedIndex % rotation.size());
+        int first = rotation.indexOf(preferred);
         int size = rotation.size();
         for (int probe = 0; probe < size; probe++) {
-            int index = (guardianCommittedIndex + probe) % size;
+            int index = (first + probe) % size;
             GuardianV5MeleePolicy.Move move = rotation.get(index);
             long readyAt = move == GuardianV5MeleePolicy.Move.FAN
                     ? nextGuardianFanMillis : nextGuardianHeavyMillis;
@@ -65505,7 +65517,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     /** Keep Paper's native hurt window bounded only for owned event combat. */
     private void configureEventCombatHurtWindow(LivingEntity entity) {
-        if (entity == null || usesNativeWaveFighterDamage(entity)) {
+        if (entity == null || !EVENT_KIND_BOSS.equals(readString(entity, keyKind))) {
             return;
         }
         int boundedMaximum = Math.max(1, Math.min(EVENT_ENTITY_MAX_NO_DAMAGE_TICKS,

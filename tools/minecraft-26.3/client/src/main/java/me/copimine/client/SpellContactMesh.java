@@ -10,6 +10,12 @@ import java.util.List;
 
 /** Short meshes that start on the server's committed swing, landing or collision tick. */
 enum SpellContactMesh {
+    AWAKENING("phase_awakening_contact", 0x4d2794, 0xffbbf4),
+    HUNT("phase_hunt_contact", 0x236d81, 0xd1feff),
+    RIFT("phase_rift_contact", 0xd84823, 0xffbc79),
+    OVERLOAD("phase_overload_contact", 0xa62515, 0xffeb82),
+    RAGE("phase_rage_contact", 0x90234d, 0xff8bab),
+    LAST_SEAL("phase_last_seal_contact", 0x5130b2, 0xefd9ff),
     GUARDIAN_BASIC("guardian_basic_contact", 0x398d82, 0xb0fff2),
     GUARDIAN_LANCE("guardian_lance_contact", 0x3750f4, 0xcffbff),
     GUARDIAN_FIREBALL("guardian_fireball_contact", 0xba210f, 0xffde73),
@@ -55,6 +61,8 @@ enum SpellContactMesh {
         Vec3 origin = new Vec3(lane.x(), lane.y(), lane.z());
         double[] progress = {Math.min(1, time * 3.1), Math.pow(1 - time, 1.35)};
         return switch (this) {
+            case AWAKENING, HUNT, RIFT, OVERLOAD, RAGE, LAST_SEAL ->
+                    drawPhase(pose, buffer, origin, lane.radius(), time, quality, reducedMotion, budget);
             case WARDEN_ECHO, MINI_PULSE, VOID -> drawShell(pose, buffer, origin, lane.radius(), progress,
                     quality, budget);
             case GUARDIAN_BASIC, GUARDIAN_FAN, GUARDIAN_HEAVY, WITHER -> drawCleave(pose, buffer, origin, lane,
@@ -62,6 +70,63 @@ enum SpellContactMesh {
             case GUARDIAN_LANCE, GUARDIAN_FIREBALL, MAGMA, BOLT, BREATH, WEB, SNARE -> drawFilaments(pose, buffer, origin, lane.radius(),
                     cast.seed(), time, progress, quality, reducedMotion, budget);
         };
+    }
+
+    private int drawPhase(PoseStack.Pose pose, VertexConsumer buffer, Vec3 origin, double scale,
+                          double time, SpellVisualGeometry.Quality quality, boolean calm, int budget) {
+        int desired = switch (this) {
+            case LAST_SEAL -> 12;
+            case RIFT, OVERLOAD -> 8;
+            default -> 6;
+        };
+        int strands = quality == SpellVisualGeometry.Quality.REDUCED ? desired / 2 : desired;
+        int nodes = quality.samples() + 2;
+        double[][] section = SpellVisualRenderer.profile(quality, this == LAST_SEAL);
+        int required = (nodes + 1) * section.length * 4;
+        int emitted = 0;
+        double grow = Math.min(1, time * 3);
+        double fade = Math.min(1, (1 - time) * 2.4);
+        for (int i = 0; i < strands && emitted + required <= budget; i++) {
+            double heading = TAU * i / strands;
+            double delayed = Math.max(0, (grow - (i % 3) * 0.13) / (1 - (i % 3) * 0.13));
+            var path = new Vec3[nodes];
+            var radii = new ArrayList<Float>(nodes);
+            var colors = new int[nodes];
+            for (int n = 0; n < nodes; n++) {
+                double t = n / (double) (nodes - 1);
+                double arch = Math.sin(Math.PI * t);
+                double travel = switch (this) {
+                    case AWAKENING -> (1 - t) * 0.88;
+                    case HUNT -> 0.12 + t * .72;
+                    case RIFT -> t * (0.72 + (i & 1) * 0.18);
+                    case OVERLOAD -> 0.7 - arch * .30;
+                    case RAGE -> 0.23 + arch * .60;
+                    default -> 0.87 + arch * .09 - t * .17;
+                };
+                double bend = switch (this) {
+                    case HUNT -> -.8 * t;
+                    case RIFT -> .22 * Math.sin(t * 3 * Math.PI);
+                    case OVERLOAD -> 1.05 * t;
+                    case RAGE -> -.75 * arch;
+                    default -> .53 * arch;
+                };
+                double lift = switch (this) {
+                    case HUNT -> .24 + arch * .4;
+                    case RIFT -> .20 + arch * (i % 3 + 1) * .83;
+                    case OVERLOAD -> arch * 3.7;
+                    case RAGE -> arch * 1.9;
+                    case LAST_SEAL -> arch * 6.5 + t * .6;
+                    default -> arch * 2.9;
+                };
+                double angle = heading + bend + (calm ? 0 : 0.2 * time * arch);
+                double radius = scale * (0.24 + 0.76 * delayed) * travel;
+                path[n] = origin.add(Math.cos(angle) * radius, .08 + lift * delayed, Math.sin(angle) * radius);
+                radii.add((float) ((.035 + .15 * arch) * (.45 + delayed * .55)));
+                colors[n] = argb(arch > .77 ? core : body, (65 + 145 * arch) * fade * delayed);
+            }
+            emitted += SpellVisualRenderer.tube(buffer, pose, path, radii, colors, section);
+        }
+        return emitted;
     }
 
     private int drawShell(PoseStack.Pose pose, VertexConsumer buffer, Vec3 origin, double radius,

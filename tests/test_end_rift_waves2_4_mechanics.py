@@ -284,6 +284,7 @@ public final class Waves24MechanicsHarness {
     void clearWaveCombatCue(UUID owner) {}
     int countLiveWaveEntitiesForWave(int wave) { return wave == 2 ? liveWaveEntitiesForWave2 : 0; }
     // The real method warns FIRST and books the group on a LATER call, so a
+    void tickWaveTwoIntroPresentation(long now){}
     // stub that answers a flat false leaves waveSpawnGroupIndex frozen at 0
     // and no wave 2 subwave can ever be booked. Model both halves instead:
     // the first call starts the warning and reports \"started\", and every

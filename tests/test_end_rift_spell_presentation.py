@@ -698,5 +698,9 @@ def test_the_server_emits_exactly_the_client_authored_cue_tokens() -> None:
     contact = CLIENT_SRC / "me/copimine/client/SpellContactMesh.java"
     contact_tokens = set(re.findall(r'"([a-z_]+_contact)"', contact.read_text(encoding="utf-8")))
     emitted_contacts = set(re.findall(r'"([a-z_]+_contact)"', server_text))
-    assert contact_tokens <= emitted_contacts
+    phase_tokens = set(re.findall(r'"(phase_[a-z_]+)",',
+        (ROOT / "copimine-end-event/src/me/copimine/endevent/domain/BossPhaseTransitionCinematicPolicy.java")
+        .read_text(encoding="utf-8")))
+    assert 'cinematic.id() + "_contact"' in server_text
+    assert contact_tokens <= emitted_contacts | {token + "_contact" for token in phase_tokens}
     assert "spellCasts.publishScoped(" in server_text

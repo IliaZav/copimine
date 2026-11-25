@@ -99,8 +99,12 @@ void main() {
         float floorLayer = exp(-height * 1.4) * smoothstep(0.20, 0.74, ash);
         float eyeLayer = exp(-abs(height - 1.40) * 1.25) * smoothstep(0.49, 0.79, streamer);
         float upperLayer = smoothstep(1.1, 2.75, height) * smoothstep(0.12, 0.78, veil);
+        // Crosswinds compress the eye-height layer into rolling banks. The signed
+        // arena clip, near-ground visibility and guide glow still run independently.
+        float front = smoothstep(0.39, 0.72,
+                cloudNoise(point * vec3(0.37, 0.19, 0.52) - drift * 1.35));
         float density = VolumeState.y * nearGain
-                * clamp(0.68 + floorLayer * 0.54 + eyeLayer * 0.37 + upperLayer * 0.35, 0.68, 1.70);
+                * clamp(0.64 + floorLayer * 0.55 + eyeLayer * (0.35 + front * 0.42) + upperLayer * 0.39, 0.64, 1.88);
         float extinction = 1.0 - exp(-density * stride);
         vec3 charcoal = vec3(0.010, 0.006, 0.011);
         vec3 coalAsh = vec3(0.080, 0.041, 0.026);
@@ -109,6 +113,7 @@ void main() {
         ink = mix(ink, violet, clamp(upperLayer * 0.65 + eyeLayer * 0.55, 0.0, 0.7));
         float wispCore = pow(streamer, 8.0) * eyeLayer;
         ink += wispCore * vec3(0.11, 0.036, 0.14);
+        ink *= 0.78 + 0.22 * front;
         scattered += transmittance * extinction * ink;
         transmittance *= 1.0 - extinction;
         if (transmittance < 0.004) break;

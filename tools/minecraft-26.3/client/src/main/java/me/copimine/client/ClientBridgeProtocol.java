@@ -781,6 +781,11 @@ public final class ClientBridgeProtocol {
 
     public static void clearEndEventState() {
         END_EVENT_STATE.clear();
+        clearEndEventLocalPresentation();
+    }
+
+    /** Death hides local player effects while keeping signed entity model bindings. */
+    public static void clearEndEventLocalPresentation() {
         END_EVENT_WORLD_VFX.clear();
         END_SPELL_VISUALS.suspend();
         END_EVENT_BLACK_FOG.clear();

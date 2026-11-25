@@ -147,14 +147,16 @@ def test_wave_targets_and_objectives_use_arena_eligible_wave_players():
         assert "activeLivingPlayers()" not in body
 
 
-def test_authoritative_accepted_mob_damage_emits_one_hurt_animation():
+def test_wave_mob_admission_preserves_native_damage_and_hurt_animation():
     source = _source()
     damage = _method(source, "public void onWaveMobPlayerDamageAuthoritative(")
 
-    assert "if (!result.applied())" in damage
-    assert "victim.playHurtAnimation(" in damage
-    assert damage.index("if (!result.applied())") < damage.index("victim.playHurtAnimation(")
-    assert damage.index("victim.playHurtAnimation(") < damage.index("victim.setHealth(")
+    assert "victim.playHurtAnimation(" not in damage
+    assert "victim.setHealth(" not in damage
+    assert "event.getFinalDamage() > 0.0D" in damage
+    assert "!ownedBySession(victim, eventId, generation)" in damage
+    owner = _method(source, "private Player waveDamageOwner(")
+    assert "event.getDamageSource().getCausingEntity()" in owner
 
 
 def test_wave5_safe_zone_failure_does_not_advance_to_fog():

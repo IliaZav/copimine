@@ -66,7 +66,7 @@ def test_authoritative_health_consumer_rechecks_its_own_casters_guards_before_da
     # order cannot be used as a guarantee before a direct setHealth transaction.
     body = method('public void onWaveMobPlayerDamageAuthoritative(')
     assert 'blockRitualCasterShieldHit(event, victim)' in body
-    assert body.index('blockRitualCasterShieldHit(event, victim)') < body.index('EventRealHealthDamagePolicy.apply(')
+    assert body.index('blockRitualCasterShieldHit(event, victim)') < body.index('Player attacker = waveDamageOwner(event)')
     gate = method('private boolean blockRitualCasterShieldHit(')
     assert 'ritualGuardsByCaster.getOrDefault(caster.getUniqueId()' in gate
     assert 'ritualGuardCasters.get(guardId)' in gate
@@ -74,10 +74,10 @@ def test_authoritative_health_consumer_rechecks_its_own_casters_guards_before_da
     assert 'event.setCancelled(true)' in gate
 
 
-def test_accepted_guard_hit_sets_alarm_before_the_native_damage_is_cancelled():
-    body = method('public void onWaveMobPlayerDamageAuthoritative(')
+def test_accepted_guard_hit_sets_alarm_only_after_damage_admission():
+    body = method('public void onWaveMobDamagedByPlayer(')
     assert 'alertRitualGuardGroup(victim, attacker)' in body
-    assert body.index('alertRitualGuardGroup(victim, attacker)') < body.index('EventRealHealthDamagePolicy.apply(')
+    assert body.index('if (acceptedAtDispatch)') < body.index('alertRitualGuardGroup(victim, attacker)')
     alert = method('private void alertRitualGuardGroup(')
     assert 'isCurrentRitualGuard(guard)' in alert
     assert 'ritualGuardCasters.get(guardId)' in alert

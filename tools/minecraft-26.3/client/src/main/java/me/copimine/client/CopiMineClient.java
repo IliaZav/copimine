@@ -71,12 +71,14 @@ public final class CopiMineClient implements ClientModInitializer {
         });
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             visualManager.tick(ClientBridgeProtocol::sendVisualFinished);
-            if (client.player != null && client.player.isDeadOrDying()) {
+            boolean dead = client.player != null && client.player.isDeadOrDying();
+            if (dead && !observedLocalDeath) {
                 if (visualManager.hasActiveVisuals()) {
                     visualManager.clearAll(ClientBridgeProtocol::sendVisualFinished, "death", true);
                 }
-                ClientBridgeProtocol.clearEndEventState();
+                ClientBridgeProtocol.clearEndEventLocalPresentation();
             }
+            observedLocalDeath = dead;
             ClientBridgeProtocol.tickNetwork(client);
             BlackFogSmokeRuntime.tick(client);
         });
@@ -86,6 +88,8 @@ public final class CopiMineClient implements ClientModInitializer {
         });
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             PrisonerTargetSelector.invalidatePreview();
+            observedLocalDeath = false;
+            eventPresentationDimension = "";
             ClientBridgeProtocol.onDisconnect();
             BlackFogSmokeRuntime.clear();
             EndRiftBossBarHud.resetTrackingForTest();
@@ -96,7 +100,13 @@ public final class CopiMineClient implements ClientModInitializer {
         ClientLevelEvents.AFTER_CLIENT_LEVEL_CHANGE.register((client, level) -> {
             PrisonerTargetSelector.invalidatePreview();
             visualManager.clearAll(ClientBridgeProtocol::sendVisualFinished, "world_change", true);
-            ClientBridgeProtocol.clearEndEventState();
+            String dimension = level == null ? "" : level.dimension().identifier().toString();
+            if (dimension.isEmpty() || !dimension.equals(eventPresentationDimension)) {
+                ClientBridgeProtocol.clearEndEventState();
+            } else {
+                ClientBridgeProtocol.clearEndEventLocalPresentation();
+            }
+            eventPresentationDimension = dimension;
             BlackFogSmokeRuntime.clear();
             EndRiftBossBarHud.resetTrackingForTest();
             RiftRamBossBarHud.clearState();
@@ -105,6 +115,9 @@ public final class CopiMineClient implements ClientModInitializer {
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> registerCommands(dispatcher));
         CopiMineClientLogger.info("CopiMineClient bootstrap finished");
     }
+
+    private boolean observedLocalDeath;
+    private String eventPresentationDimension = "";
 
     private void registerCommands(CommandDispatcher<FabricClientCommandSource> dispatcher) {
         dispatcher.register(

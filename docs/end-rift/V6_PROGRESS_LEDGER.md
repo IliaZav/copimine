@@ -64,6 +64,50 @@
 
 ## 4. Completed work (newest first)
 
+### 4.8 Phase 4 fire-arena expansion: decay + two signature spells (2026-11-25)
+
+Owner request (latest): make the Phase 4 fire arena genuinely detailed, add the
+rotating fire ring and the "Infernal Forge"/«Адская кузня» signature spells, make
+cold patches decay with the fight, gate the new spells once per HP threshold, and
+keep safe zones reachable. Implemented as pure, tested owners plus a thin adapter:
+
+- **NEW `domain/InfernoDecayPolicy.java`** — cold patches decay with the
+  Guardian's health fraction: fewer (never below `MIN_PATCHES = 3`) and no larger
+  than the full-health radius as the fight drags; relocation cadence shortens
+  from 160 ticks to the five-second floor; and `selectCovering(...)` chooses the
+  patches for *reachability* (every walkable cell within
+  `MAX_SAFE_SPACING_BLOCKS = 7` Chebyshev blocks of one), distinct from the
+  existing minimum-spacing `safeCells`.
+- **NEW `domain/RiftFireRingPolicy.java`** — the new rotating fire ring:
+  `GATHER → FLIGHT → BURST → ENDED`, 14 segments on a spinning 2.8-block ring,
+  locked (non-homing) heading, detonates on a real player/floor contact, real
+  hit/burst radii, damage + ignite, and a 1000-tick cooldown.
+- **NEW `domain/InfernalForgePolicy.java`** — «Адская кузня»:
+  `GATHER → OVERHEAT (3 strikes, each a directed fire impulse) → SLAM (two-limb)
+  → VULNERABLE`; the broken shell takes `2.0×` damage in an 80-tick window;
+  `spawnsExtraMobs()` is `false` (medium difficulty).
+- **NEW `domain/BossSignatureCastGatePolicy.java`** — the shared once-per-HP-
+  threshold gate: a signature fires at each configured threshold exactly once,
+  spending the earliest-crossed one first so a fast drop cannot skip a threshold.
+- **Adapter wiring** in `CopiMineEndEvent`: `arenaInferno` now sizes and places
+  its cold patches from `InfernoDecayPolicy` and `tickArenaInferno` relocates
+  them on the decay cadence (`relocateInfernoSafeCells`, `bossHealthFraction`);
+  `tickOverloadSignatureCasts` runs from the main boss loop and starts
+  `startRiftFireRing`/`startInfernalForge` on staggered threshold sets
+  (`{0.40, 0.30}` ring, `{0.36, 0.26}` forge); the forge's vulnerable window
+  feeds `currentBossIncomingDamageMultiplier`; leaving OVERLOAD retires both
+  ledgers.
+- Evidence: `pytest tests/test_phase4_infernal_expansion.py
+  tests/test_phase4_infernal_wiring.py tests/test_end_rift_cocoon_contract.py
+  tests/test_tentacle_guardian_role_separation.py
+  tests/test_end_rift_last_seal_arena_reveal.py
+  tests/test_last_seal_structural_geometry.py
+  tests/test_minecraft_migration_profile.py → 76 passed, 1 skipped`;
+  `PLUGIN BUILD EXIT=0`.
+- Remaining: Phase 5 echo-copy upgrades, Phase 6 boss-bar animation + tentacle
+  coil, Phase 4 music track, the transition cinematic and native VFX/audio
+  capture (still `NATIVE_BLOCKED`).
+
 ### 4.7 Build-and-verify pass: migration pack, gate, VFX reel (2026-11-25)
 
 - **26.3 migration resource-pack candidate rebuilt and digest-verified offline.**

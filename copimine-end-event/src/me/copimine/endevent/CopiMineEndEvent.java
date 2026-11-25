@@ -49,10 +49,14 @@ import me.copimine.artifacts.api.EventArtifactRewardRequest;
 import me.copimine.artifacts.api.EventArtifactRewardService;
 import me.copimine.artifacts.api.RewardIssueResult;
 import me.copimine.endevent.domain.ArenaInfernoPolicy;
+import me.copimine.endevent.domain.BossSignatureCastGatePolicy;
 import me.copimine.endevent.domain.CoreMemorialLayoutPolicy;
 import me.copimine.endevent.domain.InfernoArenaLifecyclePolicy;
+import me.copimine.endevent.domain.InfernoDecayPolicy;
 import me.copimine.endevent.domain.InfernoMobWindowPolicy;
 import me.copimine.endevent.domain.InfernoSceneryPolicy;
+import me.copimine.endevent.domain.InfernalForgePolicy;
+import me.copimine.endevent.domain.RiftFireRingPolicy;
 import me.copimine.endevent.domain.EndEventDisplayItems;
 import me.copimine.endevent.domain.WaveSixSequencePolicy;
 import me.copimine.endevent.domain.Wave7MarksmanDefenderPolicy;
@@ -867,6 +871,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final int INFERNO_HEAT_STEP_TICKS = 5;
     /** Chessboard spacing two cold patches must keep, so routes stay passable. */
     private static final int INFERNO_SAFE_CELL_SPACING = 3;
+    /**
+     * Owner request: the Phase 4 signature spells fire at most once at each of
+     * these HP thresholds. The two lists are staggered so the ring and the forge
+     * alternate rather than landing together.
+     */
+    private static final List<Double> OVERLOAD_FIRE_RING_THRESHOLDS = List.of(0.40D, 0.30D);
+    private static final List<Double> OVERLOAD_INFERNAL_FORGE_THRESHOLDS = List.of(0.36D, 0.26D);
     /** Cycle-scoped seed base; the cast seed mixes in event, generation and time. */
     private static final long INFERNO_CYCLE_SEED = 7_919L;
     private static final int MAX_ACTIVE_WORLD_VFX = 64;
@@ -992,6 +1003,25 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Map<UUID, Long> arenaInfernoLastDamageTick = new HashMap<>();
     private int arenaInfernoArmorWear;
     private List<Location> arenaInfernoVentRoots = List.of();
+    /**
+     * Owner request: the longer the Phase 4 fight drags (the lower the Guardian's
+     * health), the more often the cold patches go out and come back. The stage
+     * policy owns the cadence; these fields only remember it between ticks.
+     */
+    private long arenaInfernoRelocateIntervalTicks = InfernoDecayPolicy.FULL_HEALTH_RELOCATE_TICKS;
+    private int arenaInfernoLastRelocateTick = -1_000_000;
+    /**
+     * Owner request: the Phase 4 signature spells (Rift Fire Ring, Infernal
+     * Forge) fire at most once per configured HP threshold. Each set records the
+     * thresholds already spent this phase generation, so a signature never spams
+     * the same window twice.
+     */
+    private final Set<Double> overloadFireRingSpentThresholds = new LinkedHashSet<>();
+    private final Set<Double> infernalForgeSpentThresholds = new LinkedHashSet<>();
+    private long overloadFireRingLastCastTick = Long.MIN_VALUE;
+    private long infernalForgeLastCastTick = Long.MIN_VALUE;
+    /** Absolute tick until which the broken Infernal Forge shell stays vulnerable. */
+    private long infernalForgeVulnerableUntilTick = Long.MIN_VALUE;
     /**
      * N23-P1-09: the owned Phase 4 infernal pack, by entity id.
      *
@@ -49718,6 +49748,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (!isBossCombatRuntimeActive(boss)) {
             return;
         }
+        // Owner request: the two Phase 4 signature spells fire at most once per
+        // configured HP threshold, so the fight is never overloaded.
+        tickOverloadSignatureCasts(boss);
         observeCocoonPressure(boss);
         if (guardianPhysicalMoveActive && tickGuardianCommittedMove(boss, now)) return;
         if (tickBossCastLocomotion(boss, now, finalSealPinned)) return;
@@ -50543,7 +50576,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // V5.1: a phase change restores the Guardian melee clocks and ends any
         // running Crushing Gravity field so no old field survives the transition.
         resetGuardianV5State();
-        if (bossPhase != BossPhase.OVERLOAD) clearArenaInferno();
+        if (bossPhase != BossPhase.OVERLOAD) {
+            clearArenaInferno();
+            // Owner request: each signature spell is a once-per-threshold cast
+            // for one phase generation; leaving OVERLOAD retires its ledger.
+            overloadFireRingSpentThresholds.clear();
+            infernalForgeSpentThresholds.clear();
+            infernalForgeVulnerableUntilTick = Long.MIN_VALUE;
+        }
         if (bossPhase == BossPhase.LAST_SEAL) clearVoidMarkZones();
     }
 
@@ -52244,6 +52284,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private double currentBossIncomingDamageMultiplier() {
+        // Owner request: the Infernal Forge's overheated shell breaks and the
+        // Guardian is briefly easier to break; the recovery window is the reward
+        // for dodging the strike series.
+        if (infernalForgeVulnerableUntilTick != Long.MIN_VALUE
+                && bossPhase == BossPhase.OVERLOAD
+                && eventTickCounter < infernalForgeVulnerableUntilTick) {
+            return InfernalForgePolicy.VULNERABILITY_DAMAGE_MULTIPLIER;
+        }
         return isCurrentBossMeleeFury()
                 ? CocoonFallPolicy.acceptedDamageMultiplier(cocoonFallStage) : 1.0D;
     }
@@ -55505,13 +55553,23 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 originalsByCell.put(cell, floor.getBlockData().getAsString());
             }
         }
-        // 14.3: visibly cold patches, relocated per cycle, spaced apart so the
-        // party can actually walk between them.
-        List<InfernoArenaLifecyclePolicy.Cell> safeCells = InfernoArenaLifecyclePolicy.safeCells(
-                arena, protectedCells, InfernoArenaLifecyclePolicy.MAX_SAFE_CELLS,
-                InfernoArenaLifecyclePolicy.safeCellCountForPlayers(players),
-                INFERNO_SAFE_CELL_SPACING, INFERNO_CYCLE_SEED * (long) eventId.hashCode()
-                        + 31L * generation + eventTickCounter / 20L);
+        // 14.3 + owner request: visibly cold patches that DECAY with the fight.
+        // They are chosen for REACHABILITY (no walkable cell further than a few
+        // blocks from one), so the party can always find a refuge; the patch
+        // count and the relocation cadence come from InfernoDecayPolicy so the
+        // arena churns harder as the Guardian's health drops. Only cells that are
+        // really part of this cast (blocksByCell) may be a refuge, so a chosen
+        // patch is always paintable.
+        double hpFraction = bossHealthFraction(boss);
+        arenaInfernoRelocateIntervalTicks = InfernoDecayPolicy.relocateIntervalTicks(hpFraction);
+        arenaInfernoLastRelocateTick = 0;
+        List<InfernoArenaLifecyclePolicy.Cell> safeCells = InfernoDecayPolicy.selectCovering(
+                new ArrayList<>(blocksByCell.keySet()), Set.of(),
+                InfernoDecayPolicy.safePatchCount(hpFraction, players),
+                InfernoDecayPolicy.MAX_SAFE_SPACING_BLOCKS,
+                INFERNO_CYCLE_SEED * (long) eventId.hashCode() + 31L * generation);
+        getLogger().info("BOSS_SPELL_ARENA_INFERNO_DECAY event=" + eventId + " "
+                + InfernoDecayPolicy.describe(hpFraction, players));
         int safeIndex = 0;
         for (InfernoArenaLifecyclePolicy.Cell safe : safeCells) {
             Block block = blocksByCell.get(safe);
@@ -55764,6 +55822,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                                   InfernoArenaLifecyclePolicy.Stage stage) {
         if (stage == null) {
             return;
+        }
+        // Owner request: the longer the fight drags (lower Guardian health), the
+        // more often the cold patches go out and come back. The cadence is the
+        // decay policy's; this tick only obeys it.
+        if (castTick - arenaInfernoLastRelocateTick >= arenaInfernoRelocateIntervalTicks) {
+            arenaInfernoLastRelocateTick = castTick;
+            relocateInfernoSafeCells(boss, castTick);
         }
         // 14.2: the flame front moves outward once per authored heat step; a
         // cell joins the fire only after the wave reaches it.
@@ -56415,6 +56480,414 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         World world = Bukkit.getWorld(worldName);
         return world == null ? null : world.getBlockAt(cell.x(), combatLevelY() - 1, cell.z());
+    }
+
+    /** The Guardian's current health fraction, clamped to a real 0..1 value. */
+    private double bossHealthFraction(LivingEntity boss) {
+        if (boss == null) {
+            return 1.0D;
+        }
+        double max = Math.max(1.0D, bossMaxHealth(boss));
+        return InfernoDecayPolicy.clampFraction(boss.getHealth() / max);
+    }
+
+    /**
+     * Owner request: relocate the Phase 4 cold patches mid-cast.
+     *
+     * <p>The new patches are chosen for reachability over the cells this cast
+     * really mutated, so the coverage guarantee survives. A cell that stops being
+     * cold is re-lit through the one authored burning writer; a cell that becomes
+     * cold is painted with the one authored safe writer and dropped from the
+     * burning set, so {@link #restoreArenaInfernoBlocks()} still restores every
+     * original from the shared journal.</p>
+     */
+    private void relocateInfernoSafeCells(LivingEntity boss, int castTick) {
+        if (boss == null || arenaInfernoOriginalBlocks.isEmpty()) {
+            return;
+        }
+        List<InfernoArenaLifecyclePolicy.Cell> burnable = blocksByCellSnapshot();
+        if (burnable.isEmpty()) {
+            return;
+        }
+        double hpFraction = bossHealthFraction(boss);
+        int players = Math.max(1, activeLivingPlayers().size());
+        List<InfernoArenaLifecyclePolicy.Cell> nextSafe = InfernoDecayPolicy.selectCovering(
+                burnable, Set.of(),
+                InfernoDecayPolicy.safePatchCount(hpFraction, players),
+                InfernoDecayPolicy.MAX_SAFE_SPACING_BLOCKS,
+                INFERNO_CYCLE_SEED * (long) eventId.hashCode() + 131L * generation + castTick);
+        Set<HazardPlanner.Point> nextPoints = new HashSet<>();
+        for (InfernoArenaLifecyclePolicy.Cell cell : nextSafe) {
+            nextPoints.add(new HazardPlanner.Point(cell.x(), cell.z()));
+        }
+        // Cells that stop being cold burn again.
+        for (HazardPlanner.Point point : new ArrayList<>(arenaInfernoSafeBlocks.keySet())) {
+            if (nextPoints.contains(point)) {
+                continue;
+            }
+            arenaInfernoSafeBlocks.remove(point);
+            arenaInfernoSafeSurface.remove(point);
+            Block block = infernoBlockFor(new InfernoArenaLifecyclePolicy.Cell(point.x(), point.z()));
+            if (block != null) {
+                applyInfernoBurningBlock(block);
+                arenaInfernoBlocks.add(block);
+            }
+        }
+        // Cells that become cold are painted safe and stop burning.
+        int safeIndex = 0;
+        for (InfernoArenaLifecyclePolicy.Cell cell : nextSafe) {
+            HazardPlanner.Point point = new HazardPlanner.Point(cell.x(), cell.z());
+            Block block = infernoBlockFor(cell);
+            if (block == null) {
+                continue;
+            }
+            if (!arenaInfernoSafeBlocks.containsKey(point)) {
+                arenaInfernoSafeBlocks.put(point, block);
+                arenaInfernoSafeSurface.put(point,
+                        InfernoArenaLifecyclePolicy.safeSurfaceFor(safeIndex));
+                block.setBlockData(infernoSafeBlockData(cell), false);
+                arenaInfernoBlocks.remove(block);
+            }
+            safeIndex++;
+        }
+        getLogger().info("PHASE4_INFERNO_RELOCATE event=" + eventId + " cast_tick=" + castTick
+                + " " + InfernoDecayPolicy.describe(hpFraction, players)
+                + " safe_cells=" + arenaInfernoSafeBlocks.size());
+    }
+
+    // --- Phase 4 signature spells (owner request) ---------------------------
+
+    /**
+     * Owner request: the Phase 4 signature casts fire at most once per HP
+     * threshold. The ring and the forge use staggered thresholds, so the phase
+     * gains two authored set-pieces without ever stacking them on one window.
+     * A signature only starts when nothing else owns the major cast slot.
+     */
+    private void tickOverloadSignatureCasts(LivingEntity boss) {
+        if (boss == null || bossPhase != BossPhase.OVERLOAD || bossDefeatCinematicStarted
+                || bossAbilityState != BossAbilityState.NONE || bossHazardReservationId != null
+                || bossAmbushOwnsMajorCast() || isKaguneRingCastActive()) {
+            return;
+        }
+        if (phase != EventPhase.BOSS_ACTIVE && !isTestBoss(boss)) {
+            return;
+        }
+        double hpFraction = bossHealthFraction(boss);
+        BossSignatureCastGatePolicy.Gate ring = BossSignatureCastGatePolicy.gate(
+                hpFraction, OVERLOAD_FIRE_RING_THRESHOLDS, overloadFireRingSpentThresholds);
+        if (ring.allowed() && RiftFireRingPolicy.mayCast(overloadFireRingLastCastTick, eventTickCounter)) {
+            overloadFireRingSpentThresholds.add(ring.threshold());
+            overloadFireRingLastCastTick = eventTickCounter;
+            startRiftFireRing(boss);
+            return;
+        }
+        BossSignatureCastGatePolicy.Gate forge = BossSignatureCastGatePolicy.gate(
+                hpFraction, OVERLOAD_INFERNAL_FORGE_THRESHOLDS, infernalForgeSpentThresholds);
+        if (forge.allowed() && InfernalForgePolicy.mayCast(infernalForgeLastCastTick, eventTickCounter)) {
+            infernalForgeSpentThresholds.add(forge.threshold());
+            infernalForgeLastCastTick = eventTickCounter;
+            startInfernalForge(boss);
+        }
+    }
+
+    /** Owner request: the rotating Rift Fire Ring signature. */
+    private void startRiftFireRing(LivingEntity boss) {
+        if (boss == null || boss.getWorld() == null) {
+            return;
+        }
+        LivingEntity owner = boss;
+        World world = boss.getWorld();
+        String callbackEvent = eventId;
+        long callbackGeneration = generation;
+        Player nearest = null;
+        double best = Double.MAX_VALUE;
+        for (Player player : activeBossParticipants()) {
+            if (player == null || !player.getWorld().equals(world)) {
+                continue;
+            }
+            double distance = boss.getLocation().distanceSquared(player.getLocation());
+            if (distance < best) {
+                best = distance;
+                nearest = player;
+            }
+        }
+        if (nearest == null) {
+            return;
+        }
+        // Lock the heading at cast time: the ring never homes.
+        Vector heading = nearest.getLocation().toVector().subtract(boss.getLocation().toVector());
+        heading.setY(0.0D);
+        if (heading.lengthSquared() < 1.0E-4D) {
+            heading = new Vector(0.0D, 0.0D, 1.0D);
+        }
+        final Vector headingFixed = heading.normalize();
+        bossAbilityState = BossAbilityState.EXECUTING;
+        bossCastDeadlineMillis = System.currentTimeMillis() + 50L
+                * (RiftFireRingPolicy.GATHER_TICKS + RiftFireRingPolicy.FLIGHT_TICKS_MAX
+                + RiftFireRingPolicy.BURST_TICKS);
+        announceEventTitle("§6ОГНЕННОЕ КОЛЬЦО", "§cРазлом собирает жар — уклоняйся!", true);
+        world.playSound(boss.getLocation(), Sound.ENTITY_BLAZE_SHOOT, SoundCategory.HOSTILE, 1.2F, 0.6F);
+        getLogger().info("BOSS_SPELL_RIFT_FIRE_RING event=" + eventId + " " + RiftFireRingPolicy.describe());
+        final int[] elapsed = {0};
+        final boolean[] detonated = {false};
+        final Location[] centre = {boss.getLocation().clone()};
+        BukkitTask[] holder = new BukkitTask[1];
+        holder[0] = Bukkit.getScheduler().runTaskTimer(this, () -> {
+            if (!Objects.equals(eventId, callbackEvent) || generation != callbackGeneration
+                    || bossPhase != BossPhase.OVERLOAD || !owner.isValid() || owner.isDead()
+                    || taskRegistry != null && !taskRegistry.owns(callbackGeneration)) {
+                if (!detonated[0]) {
+                    detonateRiftFireRing(owner, centre[0]);
+                    detonated[0] = true;
+                }
+                holder[0].cancel();
+                return;
+            }
+            int tick = elapsed[0]++;
+            switch (RiftFireRingPolicy.phaseFor(tick)) {
+                case GATHER -> renderRiftFireRingGather(owner, tick);
+                case FLIGHT -> {
+                    int flightTick = tick - RiftFireRingPolicy.GATHER_TICKS;
+                    Location next = centre[0].clone()
+                            .add(headingFixed.clone().multiply(RiftFireRingPolicy.travelPerTick()));
+                    centre[0] = next;
+                    renderRiftFireRing(owner, next, RiftFireRingPolicy.rotationDegrees(flightTick));
+                    Player hit = firstRiftFireRingContact(world, next);
+                    boolean floor = next.getBlock().getType().isSolid();
+                    if (RiftFireRingPolicy.detonates(
+                            hit == null ? Double.NaN : next.distance(hit.getLocation().add(0.0D, 1.0D, 0.0D)),
+                            floor)) {
+                        detonateRiftFireRing(owner, next);
+                        detonated[0] = true;
+                        holder[0].cancel();
+                    }
+                }
+                case BURST -> {
+                    if (!detonated[0]) {
+                        detonateRiftFireRing(owner, centre[0]);
+                        detonated[0] = true;
+                    }
+                }
+                case ENDED -> {
+                    if (!detonated[0]) {
+                        detonateRiftFireRing(owner, centre[0]);
+                        detonated[0] = true;
+                    }
+                    finishSignatureCast(owner);
+                    holder[0].cancel();
+                }
+                default -> { }
+            }
+        }, 0L, 1L);
+        registerEncounterTask(holder[0]);
+    }
+
+    private void renderRiftFireRingGather(LivingEntity owner, int tick) {
+        World world = owner.getWorld();
+        Location core = owner.getLocation().add(0.0D, 1.0D, 0.0D);
+        if (world == null) {
+            return;
+        }
+        double spin = tick * 24.0D;
+        for (int index = 0; index < RiftFireRingPolicy.SEGMENTS; index++) {
+            double[] offset = RiftFireRingPolicy.segmentOffset(index, spin);
+            Location point = core.clone().add(offset[0], 0.25D, offset[1]);
+            spawnEventParticle(point, index % 2 == 0 ? Particle.FLAME : Particle.SOUL_FIRE_FLAME,
+                    2, 0.06D, 0.06D, 0.06D, 0.0D);
+        }
+    }
+
+    private void renderRiftFireRing(LivingEntity owner, Location centre, double spin) {
+        World world = owner.getWorld();
+        if (world == null) {
+            return;
+        }
+        for (int index = 0; index < RiftFireRingPolicy.SEGMENTS; index++) {
+            double[] offset = RiftFireRingPolicy.segmentOffset(index, spin);
+            Location point = centre.clone().add(offset[0], 0.35D, offset[1]);
+            spawnEventParticle(point, Particle.FLAME, 3, 0.05D, 0.05D, 0.05D, 0.0D);
+        }
+    }
+
+    private Player firstRiftFireRingContact(World world, Location centre) {
+        double radiusSquared = RiftFireRingPolicy.HIT_RADIUS * RiftFireRingPolicy.HIT_RADIUS;
+        for (Player player : activeBossParticipants()) {
+            if (player == null || !player.getWorld().equals(world)) {
+                continue;
+            }
+            if (centre.distanceSquared(player.getLocation().add(0.0D, 1.0D, 0.0D)) <= radiusSquared) {
+                return player;
+            }
+        }
+        return null;
+    }
+
+    private void detonateRiftFireRing(LivingEntity owner, Location centre) {
+        World world = centre.getWorld();
+        if (world == null) {
+            return;
+        }
+        world.playSound(centre, Sound.ENTITY_GENERIC_EXPLODE, SoundCategory.HOSTILE, 1.5F, 0.8F);
+        spawnEventParticle(centre, Particle.LAVA, 40,
+                RiftFireRingPolicy.BURST_RADIUS, 0.6D, RiftFireRingPolicy.BURST_RADIUS, 0.12D);
+        spawnEventParticle(centre, Particle.SOUL_FIRE_FLAME, 30,
+                RiftFireRingPolicy.BURST_RADIUS, 0.6D, RiftFireRingPolicy.BURST_RADIUS, 0.02D);
+        for (Player player : activeBossParticipants()) {
+            if (player == null || !player.getWorld().equals(world)) {
+                continue;
+            }
+            double distance = Math.sqrt(
+                    centre.distanceSquared(player.getLocation().add(0.0D, 1.0D, 0.0D)));
+            if (RiftFireRingPolicy.burstConnects(distance)
+                    && applyBossAbilityDamage(owner, player, RiftFireRingPolicy.BURST_DAMAGE)) {
+                player.setFireTicks(Math.max(player.getFireTicks(), RiftFireRingPolicy.IGNITE_TICKS));
+            }
+        }
+    }
+
+    /** Owner request: the Infernal Forge ("Адская кузня") signature. */
+    private void startInfernalForge(LivingEntity boss) {
+        if (boss == null || boss.getWorld() == null) {
+            return;
+        }
+        LivingEntity owner = boss;
+        World world = boss.getWorld();
+        String callbackEvent = eventId;
+        long callbackGeneration = generation;
+        long totalTicks = InfernalForgePolicy.totalTicks();
+        bossAbilityState = BossAbilityState.EXECUTING;
+        bossCastDeadlineMillis = System.currentTimeMillis() + 50L * totalTicks;
+        announceEventTitle("§6АДСКАЯ КУЗНЯ", "§cКузня втягивает огонь арены — уклоняйся!", true);
+        world.playSound(boss.getLocation(), Sound.ENTITY_BLAZE_AMBIENT, SoundCategory.HOSTILE, 1.4F, 0.5F);
+        getLogger().info("BOSS_SPELL_INFERNAL_FORGE event=" + eventId + " " + InfernalForgePolicy.describe());
+        final int[] elapsed = {0};
+        BukkitTask[] holder = new BukkitTask[1];
+        holder[0] = Bukkit.getScheduler().runTaskTimer(this, () -> {
+            if (!Objects.equals(eventId, callbackEvent) || generation != callbackGeneration
+                    || bossPhase != BossPhase.OVERLOAD || !owner.isValid() || owner.isDead()
+                    || taskRegistry != null && !taskRegistry.owns(callbackGeneration)) {
+                holder[0].cancel();
+                return;
+            }
+            int tick = elapsed[0]++;
+            switch (InfernalForgePolicy.phaseFor(tick)) {
+                case GATHER -> renderInfernalForgeGather(owner, tick);
+                case OVERHEAT -> {
+                    renderInfernalForgeOverheat(owner);
+                    for (int index = 0; index < InfernalForgePolicy.STRIKE_COUNT; index++) {
+                        if (tick == (int) InfernalForgePolicy.impulseTick(index)) {
+                            fireForgeImpulse(owner);
+                        }
+                    }
+                }
+                case SLAM -> {
+                    if (tick == (int) InfernalForgePolicy.slamImpactTick()) {
+                        forgeGroundSlam(owner);
+                    }
+                }
+                case VULNERABLE -> {
+                    infernalForgeVulnerableUntilTick = eventTickCounter
+                            + InfernalForgePolicy.VULNERABLE_TICKS;
+                    renderInfernalForgeVulnerable(owner);
+                }
+                case ENDED -> {
+                    finishSignatureCast(owner);
+                    holder[0].cancel();
+                }
+                default -> { }
+            }
+        }, 0L, 1L);
+        registerEncounterTask(holder[0]);
+    }
+
+    private void renderInfernalForgeGather(LivingEntity owner, int tick) {
+        Location core = owner.getLocation().add(0.0D, 1.0D, 0.0D);
+        int radius = (int) Math.floor(Math.max(2.0D,
+                Math.min(config.arenaRadius(), boundedCombatRadius(config.arenaRadius()))));
+        // Molten streams run inward toward the body; the ring closes as heat is
+        // gathered, so the pull is readable rather than a static glow.
+        int ring = Math.max(1, radius - (tick / 6));
+        for (int step = 0; step < 12; step++) {
+            double angle = Math.toRadians(step * 30.0D + tick * 8.0D);
+            Location point = core.clone().add(Math.cos(angle) * ring, 0.0D, Math.sin(angle) * ring);
+            spawnEventParticle(point, step % 2 == 0 ? Particle.LAVA : Particle.FLAME,
+                    2, 0.1D, 0.1D, 0.1D, 0.0D);
+        }
+    }
+
+    private void renderInfernalForgeOverheat(LivingEntity owner) {
+        Location core = owner.getLocation().add(0.0D, owner.getHeight() * 0.6D, 0.0D);
+        spawnEventParticle(core, Particle.SOUL_FIRE_FLAME, 10, 0.4D, 0.5D, 0.4D, 0.01D);
+        spawnEventParticle(core, Particle.LAVA, 4, 0.3D, 0.5D, 0.3D, 0.0D);
+    }
+
+    private void renderInfernalForgeVulnerable(LivingEntity owner) {
+        Location core = owner.getLocation().add(0.0D, owner.getHeight() * 0.5D, 0.0D);
+        spawnEventParticle(core, Particle.END_ROD, 12, 0.5D, 0.6D, 0.5D, 0.02D);
+    }
+
+    private void fireForgeImpulse(LivingEntity owner) {
+        World world = owner.getWorld();
+        if (world == null) {
+            return;
+        }
+        Vector facing = contactFacing(owner.getLocation());
+        Location origin = owner.getLocation().add(0.0D, 1.0D, 0.0D);
+        world.playSound(origin, Sound.ENTITY_BLAZE_SHOOT, SoundCategory.HOSTILE, 1.0F, 1.1F);
+        int steps = (int) Math.round(InfernalForgePolicy.IMPULSE_REACH_BLOCKS);
+        for (int step = 1; step <= steps; step++) {
+            Location point = origin.clone().add(facing.clone().multiply(step));
+            spawnEventParticle(point, Particle.FLAME, 4, 0.2D, 0.2D, 0.2D, 0.01D);
+        }
+        for (Player player : activeBossParticipants()) {
+            if (player == null || !player.getWorld().equals(world)) {
+                continue;
+            }
+            Vector to = player.getLocation().toVector().subtract(origin.toVector());
+            double distance = Math.hypot(to.getX(), to.getZ());
+            double forward = facing.getX() * to.getX() + facing.getZ() * to.getZ();
+            double angle = distance < 1.0E-4D ? 0.0D
+                    : Math.toDegrees(Math.acos(Math.max(-1.0D, Math.min(1.0D, forward / distance))));
+            if (InfernalForgePolicy.impulseConnects(distance, angle)
+                    && hasProjectileBlockLineOfSight(origin, player.getEyeLocation())
+                    && applyBossAbilityDamage(owner, player, InfernalForgePolicy.IMPULSE_DAMAGE)) {
+                player.setFireTicks(Math.max(player.getFireTicks(), RiftFireRingPolicy.IGNITE_TICKS));
+            }
+        }
+    }
+
+    private void forgeGroundSlam(LivingEntity owner) {
+        World world = owner.getWorld();
+        if (world == null) {
+            return;
+        }
+        Location centre = owner.getLocation();
+        world.playSound(centre, Sound.ENTITY_GENERIC_EXPLODE, SoundCategory.HOSTILE, 1.6F, 0.6F);
+        spawnEventParticle(centre, Particle.LAVA, 60,
+                InfernalForgePolicy.SLAM_RADIUS, 0.5D, InfernalForgePolicy.SLAM_RADIUS, 0.12D);
+        for (Player player : activeBossParticipants()) {
+            if (player == null || !player.getWorld().equals(world)) {
+                continue;
+            }
+            double distance = Math.sqrt(centre.distanceSquared(player.getLocation()));
+            if (InfernalForgePolicy.slamConnects(distance)
+                    && applyBossAbilityDamage(owner, player, InfernalForgePolicy.SLAM_DAMAGE)) {
+                Vector push = player.getLocation().toVector().subtract(centre.toVector());
+                push.setY(0.0D);
+                if (push.lengthSquared() < 1.0E-4D) {
+                    push = new Vector(0.0D, 0.0D, 1.0D);
+                }
+                player.setVelocity(push.normalize().multiply(0.7D).setY(0.35D));
+                player.setFireTicks(Math.max(player.getFireTicks(), RiftFireRingPolicy.IGNITE_TICKS));
+            }
+        }
+    }
+
+    /** The signature cast releases the major slot into a short recovery. */
+    private void finishSignatureCast(LivingEntity owner) {
+        bossAbilityState = BossAbilityState.RECOVERY;
+        bossCastDeadlineMillis = 0L;
+        bossSpellPauseUntilMillis = System.currentTimeMillis() + 1_000L;
     }
 
     private void renderArenaInferno(LivingEntity boss, int castTick,

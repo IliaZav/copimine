@@ -70,7 +70,11 @@ public class InfernoRuntimeCadenceProbe {
     BukkitTask arenaInfernoTask;final Registry taskRegistry=null;
     String eventId="event";long generation=7,arenaInfernoSequence;
     EventPhase phase=EventPhase.BOSS_ACTIVE;BossPhase bossPhase=BossPhase.OVERLOAD;
-    int floorCalls,arenaInfernoVentBudget,rosterSize=1;boolean cleared,admitted=true;
+    List<Location> arenaInfernoVentRoots=List.of();
+    int floorCalls,rosterSize=1;boolean cleared,admitted=true;
+    boolean protectedTarget;
+    boolean isProtectedInfernoPlayer(Player player){return protectedTarget;}
+    void presentInfernoVentColumn(Location point,int index,List<Player> viewers){}
     LivingEntity liveBoss(){return boss;}
     void clearArenaInferno(){arenaInfernoSequence++;cleared=true;}
     void renderArenaInferno(LivingEntity boss,int castTick,InfernoArenaLifecyclePolicy.Stage stage){floorCalls++;}
@@ -141,6 +145,10 @@ public class InfernoRuntimeCadenceProbe {
         viewer.startArenaInfernoTicker(120);
         for(int tick=0;tick<=16;tick++)Bukkit.scheduler.callback.run();
         check(viewer.target.hits==0 && viewer.target.impulses==0,"a nearby nonparticipant was hit by an event vent");
+        var sheltered=new InfernoRuntimeCadenceProbe();sheltered.protectedTarget=true;
+        sheltered.startArenaInfernoTicker(120);
+        for(int tick=0;tick<=16;tick++)Bukkit.scheduler.callback.run();
+        check(sheltered.target.hits==0 && sheltered.target.impulses==0,"a vent reached into a safe cell");
         var replacement=new InfernoRuntimeCadenceProbe();replacement.startArenaInfernoTicker(120);
         Runnable stale=Bukkit.scheduler.callback;
         replacement.clearArenaInferno();replacement.cleared=false;replacement.startArenaInfernoTicker(120);
@@ -155,7 +163,10 @@ public class InfernoRuntimeCadenceProbe {
         roster.startArenaInfernoTicker(120);Bukkit.scheduler.callback.run();
         check(WORLD.lavaWarnings==1,"one lava warning is sent at the start of the cycle");
         roster.rosterSize=9;
+        Location warned = roster.arenaInfernoVentRoots.getFirst();
+        roster.arenaInfernoBlocks.addFirst(new Block());
         for(int tick=1;tick<=16;tick++)Bukkit.scheduler.callback.run();
+        check(roster.arenaInfernoVentRoots.getFirst()==warned,"heating moved an already warned vent");
         check(roster.target.hits==1,"roster growth introduced unwarned eruption points");
         // The vent cadence and the simultaneous-vent budget now come from
         // InfernoArenaLifecyclePolicy (contract 14.3), and the budget is

@@ -990,7 +990,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     /** Per-player last damage tick: the ledger that makes a hit single. */
     private final Map<UUID, Long> arenaInfernoLastDamageTick = new HashMap<>();
     private int arenaInfernoArmorWear;
-    private int arenaInfernoVentBudget;
+    private List<Location> arenaInfernoVentRoots = List.of();
     /**
      * N23-P1-09: the owned Phase 4 infernal pack, by entity id.
      *
@@ -56329,31 +56329,26 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         InfernoArenaLifecyclePolicy.VentPhase phase = InfernoArenaLifecyclePolicy.ventPhase(castTick);
-        if (phase == InfernoArenaLifecyclePolicy.VentPhase.REMOVE) {
-            return;
-        }
         World world = boss.getWorld();
-        List<Block> blocks = new ArrayList<>(arenaInfernoBlocks);
-        if (blocks.isEmpty()) {
-            return;
+        boolean opensCycle = Math.floorMod(castTick, InfernoArenaLifecyclePolicy.VENT_PERIOD_TICKS) == 0;
+        if (opensCycle) {
+            List<Block> heated = new ArrayList<>(arenaInfernoBlocks);
+            int budget = InfernoArenaLifecyclePolicy.ventCountForPlayers(Math.max(1, activeLivingPlayers().size()));
+            int stride = Math.max(1, heated.size() / Math.max(1, budget));
+            var roots = new ArrayList<Location>(budget);
+            for (int i = 0; i < heated.size() && roots.size() < budget; i += stride)
+                roots.add(heated.get(i).getLocation().add(.5D, 1D, .5D));
+            arenaInfernoVentRoots = List.copyOf(roots);
         }
-        int stride = Math.max(1, blocks.size()
-                / Math.max(1, InfernoArenaLifecyclePolicy.ventCountForPlayers(
-                Math.max(1, activeLivingPlayers().size()))));
-        if (Math.floorMod(castTick, InfernoArenaLifecyclePolicy.VENT_PERIOD_TICKS) == 0) {
-            arenaInfernoVentBudget = InfernoArenaLifecyclePolicy.ventCountForPlayers(
-                    Math.max(1, activeLivingPlayers().size()));
-        }
-        int ventBudget = arenaInfernoVentBudget;
-        int vents = 0;
-        for (int index = 0; index < blocks.size() && vents < ventBudget;
-                index += stride, vents++) {
-            Location point = blocks.get(index).getLocation().add(0.5D, 1.0D, 0.5D);
+        if (phase == InfernoArenaLifecyclePolicy.VentPhase.REMOVE) return;
+        List<Player> viewers = eventAudience();
+        for (int i = 0; i < arenaInfernoVentRoots.size(); i++) {
+            Location point = arenaInfernoVentRoots.get(i);
             switch (phase) {
                 case WARN -> {
                     world.spawnParticle(Particle.CAMPFIRE_COSY_SMOKE, point, 8, 0.3D, 0.4D, 0.3D, 0.01D);
                     world.spawnParticle(Particle.SMOKE, point, 6, 0.25D, 0.25D, 0.25D, 0.02D);
-                    if (castTick % InfernoArenaLifecyclePolicy.VENT_PERIOD_TICKS == 0) {
+                    if (opensCycle) {
                         world.spawnParticle(Particle.DRIPPING_LAVA, point, 3,
                                 0.2D, 0.12D, 0.2D, 0.0D);
                         world.playSound(point, Sound.BLOCK_LAVA_AMBIENT,
@@ -56361,13 +56356,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     }
                 }
                 case ERUPT -> {
-                    for (Player viewer : eventAudience()) {
+                    presentInfernoVentColumn(point, i, viewers);
+                    for (Player viewer : viewers) {
                         if (isEventParticleViewer(viewer, point)) {
                             recordParticleEmission(ArenaInfernoGeyserEffects.erupt(viewer, point));
                         }
                     }
-                    for (Player player : eventAudience()) {
+                    for (Player player : viewers) {
                         if (isActiveBossParticipant(player) && player.getWorld().equals(world)
+                                && !isProtectedInfernoPlayer(player)
                                 && player.getLocation().distanceSquared(point) <= 2.25D) {
                             if (applyBossAbilityDamage(boss, player, 3.0D)) {
                                 player.setVelocity(player.getVelocity().setY(0.9D));
@@ -56380,6 +56377,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 }
             }
         }
+    }
+
+    private void presentInfernoVentColumn(Location point, int index, List<Player> viewers) {
+        point.getWorld().playSound(point, Sound.BLOCK_LAVA_EXTINGUISH, SoundCategory.HOSTILE, 1.0F, .65F);
+        double height = Math.min(6D, arenaMaxY - point.getY());
+        if (height < 1D) return;
+        spellCasts.publish(new me.copimine.endevent.runtime.SpellCastRuntime.CastKey("inferno_vent_contact",
+                        arenaInfernoSequence * InfernoArenaLifecyclePolicy.MAX_VENTS + index, null),
+                eventId, generation, worldVfxDimension(point), point,
+                List.of(spellLane(point, new Vector(0, 1, 0), 1.5F, (float) height)), eventTickCounter,
+                20, 2, false, viewers, this::sendSpellCast);
     }
 
     /** Renders the inferno floor without changing blocks. */
@@ -56438,9 +56446,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         clearSpellVisualCue("inferno_vortex", arenaInfernoSequence);
         for (int group = 0; group < 4; group++)
             clearSpellVisualCue("inferno_front", arenaInfernoSequence * 4 + group);
+        for (int i = 0; i < InfernoArenaLifecyclePolicy.MAX_VENTS; i++)
+            clearSpellVisualCue("inferno_vent_contact", arenaInfernoSequence * InfernoArenaLifecyclePolicy.MAX_VENTS + i);
         arenaInfernoSequence++;
         arenaInfernoArmorWear = 0;
-        arenaInfernoVentBudget = 0;
+        arenaInfernoVentRoots = List.of();
         // N23-P1-09: no infernal summon may survive the cast that spawned it.
         clearInfernoElites("arena-inferno-clear");
         if (arenaInfernoTask != null) {

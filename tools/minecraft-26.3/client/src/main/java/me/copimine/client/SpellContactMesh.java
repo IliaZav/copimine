@@ -28,6 +28,7 @@ enum SpellContactMesh {
     MAGMA("magma_contact", 0xb3230b, 0xffbf39),
     INFERNO_VORTEX("inferno_vortex", 0x762041, 0xffb850),
     INFERNO_FRONT("inferno_front", 0x6e233f, 0xffa142),
+    INFERNO_VENT("inferno_vent_contact", 0x672340, 0xffc768),
     INFERNO_CINDER("inferno_cinder_contact", 0xcb3617, 0xffdf80),
     VOID("void_contact", 0x8428d9, 0xf1c9ff),
     BOLT("bolt_contact", 0x5474ff, 0xf5e9ff),
@@ -60,7 +61,8 @@ enum SpellContactMesh {
     int draw(PoseStack.Pose pose, VertexConsumer buffer, SpellCastPacket cast, double time,
              SpellVisualGeometry.Quality quality, boolean reducedMotion, int budget) {
         if (cast.lanes().isEmpty() || cast.stage() != 2) return 0;
-        if (this == INFERNO_FRONT) return drawFireFront(pose, buffer, cast, time, quality, reducedMotion, budget);
+        if (this == INFERNO_FRONT || this == INFERNO_VENT)
+            return drawFireFront(pose, buffer, cast, time, quality, reducedMotion, budget);
         if (cast.lanes().size() != 1) return 0;
         SpellCastPacket.Lane lane = cast.lanes().getFirst();
         Vec3 origin = new Vec3(lane.x(), lane.y(), lane.z());
@@ -68,7 +70,7 @@ enum SpellContactMesh {
         return switch (this) {
             case AWAKENING, HUNT, RIFT, OVERLOAD, RAGE, LAST_SEAL ->
                     drawPhase(pose, buffer, origin, lane.radius(), time, quality, reducedMotion, budget);
-            case INFERNO_FRONT -> 0;
+            case INFERNO_FRONT, INFERNO_VENT -> 0;
             case INFERNO_VORTEX -> drawVortex(pose, buffer, origin, lane.radius(), lane.length(),
                     time, quality, reducedMotion, budget);
             case WARDEN_ECHO, MINI_PULSE, VOID -> drawShell(pose, buffer, origin, lane.radius(), progress,
@@ -95,6 +97,7 @@ enum SpellContactMesh {
             int[] colors = new int[nodes];
             var radii = new ArrayList<Float>(nodes);
             double heading = index++ * 2.39996;
+            if (this == INFERNO_VENT) heading += (cast.seed() & 7) * TAU / 8;
             for (int i = 0; i < nodes; i++) {
                 double t = i / (double) (nodes - 1);
                 double oscillation = Math.sin(heading + 5 * t - (calm ? 0 : time * 12));

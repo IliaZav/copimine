@@ -311,10 +311,15 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # changed the merged client, and the previous pin (30732175) predated even
     # the pre-merge CI build (30767016); no jar of that old size existed on
     # disk. Two clean cold builds of the merged SHA agreed byte for byte.
-    assert artifact['size'] == 30_766_985
+    # 25-November (final): the Phase 5 translucent player-copy Echo producer and
+    # the restored Echo wire/render path changed the compiled client. The pin is
+    # taken from two clean `clean build` runs of HEAD 85519c40 that agreed byte
+    # for byte (30 769 867 B), and the same digits were written to
+    # docs/minecraft-26.3/README.md in the same commit.
+    assert artifact['size'] == 30_769_867
     assert artifact['sha512'] == (
-        'b139c4873c340c833eef6472e0553a5d336d62f45ac00c4e3a4358dfc6783777'
-        '88f035aaecf42c0b0ba2a19239c1e22b93d73b0372608b8af6f156c99e49c432'
+        '4be5f5e0bcea92bca7695e8a31fc9ca1d0fb7fa7dd77531b20de99c5b4d1d8ee'
+        'd74fedff4021738a2c2474bd65df1334756aed68e628625f4ec46b5ae01d4cf8'
     )
 
 

@@ -196,7 +196,36 @@ thin adapters; native capture stays `NATIVE_BLOCKED`.
   26.3 client `compileJava → BUILD SUCCESSFUL`, `CLIENT_COMPILE_EXIT=0`.
   Native visual verification stays `NATIVE_BLOCKED`.
 
-### 4.7 Build-and-verify pass: migration pack, gate, VFX reel (2026-11-25)
+### 4.11 Dungeon in the authoritative gate, Phase 5 Echo producer, reproducible re-pin (2026-11-25)
+
+- **Phase 5 translucent player-copy Echo producer (`85519c40`).** A RAGE copy
+  carrier is bound to an `EchoPresentationState` view so the existing Wave 7
+  Echo machinery renders the victim's armour/hands as a detached, semi-
+  transparent `RemotePlayer`. Deduped `END_ECHO_BIND/STATE/REMOVE` frames keep
+  the wire bounded; `retireEchoReplicaCopyView` always sends `REMOVE`, including
+  on death/clear. `test_end_rift_echo_wire_contract.py` covers the producer as a
+  third duration/epoch probe.
+- **`copimine-dungeon` was entirely outside the authoritative gate.** The plugin
+  has a real Bukkit-free core with 14 pytest contracts
+  (`test_dungeon_command/domain/controllers/store.py`, driven by
+  `tests/dungeon_probe.py`) and its own `build-plugin.ps1`, but
+  `tests/RunEndRiftEventChecks.ps1` neither built nor tested it. Added the
+  `Dungeon` first-party build and a `Dungeon builder, room, gate and store
+  contract` pytest step. Local run: 14 passed; the plugin builds and stages
+  `minecraft/server/plugins/CopiMineDungeon.jar`.
+- **Client artifact re-pin after the Echo/P5 client work.** Two clean
+  `clean build` runs of HEAD `85519c40` (pinned Temurin 25.0.4.1 / Gradle 9.8.1)
+  produced byte-identical archives: **30 769 867 B, SHA-512
+  `4be5f5e0…46b5ae01d4cf8`**. The previous pin (`30 766 985 B`, `b139c487…`)
+  predated the Phase 5 copy client path, which fully explains the size/digest
+  delta; no unrelated plugin checksum was touched. `profile.lock.json`, the
+  `test_minecraft_migration_profile.py` literals and
+  `docs/minecraft-26.3/README.md` are re-pinned together from that reproducible
+  digest.
+- Verification: `pytest test_minecraft_migration_profile.py + dungeon_*` →
+  65 passed, 1 skipped.
+
+
 
 - **26.3 migration resource-pack candidate rebuilt and digest-verified offline.**
   The pinned 26.3 vanilla client (`sha1 e877b6a0…`, 41 483 720 B) was fetched and

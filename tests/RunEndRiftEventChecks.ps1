@@ -203,6 +203,7 @@ $firstPartyBuilds = @(
   @{ Label = 'Artifacts'; Directory = 'copimine-artifacts' },
   @{ Label = 'Narcotics'; Directory = 'copimine-narcotics' },
   @{ Label = 'End Event'; Directory = 'copimine-end-event'; SyncServerConfig = $true },
+  @{ Label = 'Dungeon'; Directory = 'copimine-dungeon' },
   @{ Label = 'AuthEffects'; Directory = 'minecraft\server\plugins\AuthEffects' }
 )
 if (-not $SkipBuilds) {
@@ -291,7 +292,7 @@ Invoke-GateStep 'Wave navigation and physical passage regression' {
     if ($LASTEXITCODE -ne 0) { throw "Wave navigation and passage regressions failed with exit code $LASTEXITCODE" }
     & python -m pytest -q '.\tests\test_wave4_special_attack_fairness.py'
     if ($LASTEXITCODE -ne 0) { throw 'Wave 4 special attack fairness regression failed.' }
-    & python -m pytest -q '.\tests\test_wave1_carrier_retreat.py' '.\tests\test_wave1_carrier_slowness_lease.py' '.\tests\test_wave3_capture_clock.py' '.\tests\test_wave3_active_sequence.py' '.\tests\test_wave3_portal_spawn_runtime_contract.py' '.\tests\test_wave3_portal_elite_runtime_contract.py' '.\tests\test_end_rift_portal_layer_runtime.py' '.\tests\test_end_rift_wave4_pack_runtime.py' '.\tests\test_rift_giant_runtime_contract.py' '.\tests\test_end_rift_intermission_watchdog.py' '.\tests\test_wave4_warning_geometry.py' '.\tests\test_wave4_obelisk_collapse.py' '.\tests\test_wave5_ai_freeze_ownership.py' '.\tests\test_wave5_black_fog_adapter.py' '.\tests\test_minecraft_attribute_compat.py' '.\tests\test_minecraft_26_3_pack.py'
+    & python -m pytest -q '.\tests\test_wave1_carrier_retreat.py' '.\tests\test_wave1_carrier_slowness_lease.py' '.\tests\test_wave3_capture_clock.py' '.\tests\test_wave3_active_sequence.py' '.\tests\test_wave3_portal_spawn_runtime_contract.py' '.\tests\test_wave3_portal_elite_runtime_contract.py' '.\tests\test_end_rift_portal_layer_runtime.py' '.\tests\test_end_rift_wave4_pack_runtime.py' '.\tests\test_rift_giant_runtime_contract.py' '.\tests\test_end_rift_intermission_watchdog.py' '.\tests\test_wave4_warning_geometry.py' '.\tests\test_wave4_obelisk_collapse.py' '.\tests\test_wave5_ai_freeze_ownership.py' '.\tests\test_wave5_black_fog_adapter.py' '.\tests\test_minecraft_attribute_compat.py' '.\tests\test_minecraft_26_3_pack.py' '.\tests\test_minecraft_migration_profile.py'
     if ($LASTEXITCODE -ne 0) { throw 'Waves 1-5 timing, objective and AI ownership regressions failed.' }
   } finally {
     Pop-Location
@@ -335,6 +336,16 @@ Invoke-GateStep 'Official combat profiles and authoritative damage observations'
   try {
     & python -m pytest -q '.\tests\test_event_combat_profile.py' '.\tests\test_event_combat_profile_listener.py' '.\tests\test_event_combat_profile_main.py'
     if ($LASTEXITCODE -ne 0) { throw "Combat profile regressions failed with exit code $LASTEXITCODE" }
+  } finally {
+    Pop-Location
+  }
+}
+
+Invoke-GateStep 'Dungeon builder, room, gate and store contract' {
+  Push-Location $root
+  try {
+    & python -m pytest -q '.\tests\test_dungeon_command.py' '.\tests\test_dungeon_domain.py' '.\tests\test_dungeon_controllers.py' '.\tests\test_dungeon_store.py'
+    if ($LASTEXITCODE -ne 0) { throw "Dungeon contract tests failed with exit code $LASTEXITCODE" }
   } finally {
     Pop-Location
   }

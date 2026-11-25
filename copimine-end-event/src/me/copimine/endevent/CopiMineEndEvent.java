@@ -14080,6 +14080,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                                 || damageEvent != null && damageEvent.isCancelled(),
                         Objects.equals(eventId, impactEventId) && generation == impactGeneration
                                 && ownedBySession(shooter, impactEventId, impactGeneration));
+                if (impactGate.accepted()) {
+                    publishSpellContact("void_contact", shooter, projectileId, impact, new Vector(0, 1, 0),
+                            VOID_BURST_DAMAGE_RADIUS_BLOCKS, 0, 13);
+                    applyEliteSpellImpactBurst(impact, ability);
+                }
                 applyEliteVoidBurst(shooter, impact, impactGate);
                 return;
             }
@@ -14094,6 +14099,19 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             } else if (targetId == null && blockImpact
                     && ability == EliteAbilityPolicy.Ability.DRAGON_BREATH) {
                 spawnEliteDragonBreathCloud(shooter, impact, wave, projectileId);
+            }
+            if (blockImpact || targetId != null && eliteProjectileDamageAllowed.contains(projectileId)) {
+                String token = switch (ability) {
+                    case RIFT_BOLT -> "bolt_contact";
+                    case DRAGON_BREATH -> "breath_contact";
+                    case WEB_SHOT -> "web_contact";
+                    default -> "";
+                };
+                if (!token.isEmpty()) {
+                    double visualRadius = ability == EliteAbilityPolicy.Ability.WEB_SHOT ? 0.9D : 1.2D;
+                    publishSpellContact(token, shooter, projectileId, impact, new Vector(0, 1, 0),
+                            visualRadius, 0, 12);
+                }
             }
             applyEliteSpellImpactBurst(impact, ability);
         } finally {
@@ -14128,7 +14146,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     /** Apply Void Burst only after an accepted player or block collision. */
     private void applyEliteVoidBurst(LivingEntity shooter, Location impact,
                                      EliteProjectileImpactPolicy.Impact collision) {
-        if (shooter == null || impact == null || collision == null || impact.getWorld() == null) {
+        if (shooter == null || impact == null || collision == null || !collision.accepted() || impact.getWorld() == null) {
             return;
         }
         World world = impact.getWorld();
@@ -23179,6 +23197,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 SLOWNESS_DEBUFF_TICKS, abilityDebuffAmplifier("mini-void-snare"), false, true, true));
         target.addPotionEffect(new PotionEffect(PotionEffectType.WEAKNESS,
                 MINI_VOID_SNARE_DEBUFF_TICKS, weaknessDebuffAmplifier("mini-void-snare"), false, true, true));
+        publishSpellContact("snare_contact", miniBoss, miniBoss.getUniqueId(), mark,
+                new Vector(0, 1, 0), 2.1D, 0, 14);
         spawnEventParticle(mark, Particle.REVERSE_PORTAL, 28, 1.2D, 0.1D, 1.2D, 0.02D);
     }
 
@@ -23203,6 +23223,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             player.addPotionEffect(new PotionEffect(PotionEffectType.WEAKNESS,
                     MINI_ECHO_PULSE_DEBUFF_TICKS, weaknessDebuffAmplifier("mini-echo-pulse"), false, true, true));
         }
+        publishSpellContact("mini_pulse_contact", miniBoss, miniBoss.getUniqueId(), center,
+                new Vector(0, 1, 0), 5.0D, 0, 10);
         spawnEventParticle(center.add(0.0D, 1.0D, 0.0D), Particle.END_ROD,
                 32, 1.0D, 0.6D, 1.0D, 0.03D);
     }
@@ -40611,6 +40633,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             player.setVelocity(push.normalize().multiply(WardenV5CombatPolicy.ECHO_KNOCKBACK)
                     .setY(WardenV5CombatPolicy.ECHO_LIFT));
         }
+        publishSpellContact("warden_echo_contact", warden, warden.getUniqueId(), center,
+                new Vector(0, 1, 0), WARDEN_SLAM_RADIUS, 0, 12);
         renderWave7AbilityEffect(warden, null, "WAVE7_WARDEN_ECHO_SPACE");
         for (Player viewer : eventAudience()) {
             if (!isEventParticleViewer(viewer, center)) continue;
@@ -53117,6 +53141,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         playBossImpactPresentation(boss, BossImpactGeometryPolicy.Kind.SWIPE,
                 origin, facing, GuardianV5MeleePolicy.FAN_RANGE_MAX_BLOCKS, true, true);
+        publishSpellContact("guardian_cleave_contact", boss, boss.getUniqueId(), origin, facing,
+                Math.toRadians(GuardianV5MeleePolicy.FAN_HALF_ANGLE_DEGREES),
+                GuardianV5MeleePolicy.FAN_RANGE_MAX_BLOCKS, 10);
         renderGuardianArcBurst(origin, facing, 3);
         boss.getWorld().playSound(origin, Sound.ENTITY_IRON_GOLEM_ATTACK,
                 SoundCategory.HOSTILE, 1.0F, 0.6F);
@@ -53148,6 +53175,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         playBossImpactPresentation(boss, BossImpactGeometryPolicy.Kind.SLAM,
                 origin, facing, GuardianV5MeleePolicy.HEAVY_RANGE_BLOCKS, true, true);
+        publishSpellContact("guardian_heavy_contact", boss, boss.getUniqueId(), origin, facing,
+                Math.toRadians(GuardianV5MeleePolicy.HEAVY_HALF_ANGLE_DEGREES),
+                GuardianV5MeleePolicy.HEAVY_RANGE_BLOCKS, 13);
         renderGuardianHeavyBurst(origin, facing);
         // A committed heavy that found nobody leaves a real punish window.
         int punish = GuardianV5MeleePolicy.punishWindowTicks(hits > 0);
@@ -54262,7 +54292,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             // so the shipped silhouette hugs the real 1.7-block capsule without
             // streaming per-vertex geometry. The rails below still mark the exact
             // capsule boundary and the thin world beams keep a known fallback.
-            broadcastSpellVisualCue("beam", bossChestBeamCueSeed + lane, chest, tip, hue);
+            broadcastSpellVisualCue("beam", bossChestBeamCueSeed + lane, chest, tip, hue, firing ? 1 : 0);
             // The wire protocol caps one beam at 0.45 blocks, but the real
             // swept capsule is BEAM_RADIUS = 1.7 either side. Draw a bounded
             // cross-section instead of a hairline: a hot core, a vertical pair
@@ -54277,6 +54307,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             ChestBeamPolicy.Aim right = ChestBeamPolicy.rail(aim, -0.28D, 0.0D);
             World beamWorld = chest.getWorld();
             for (Player viewer : viewers) {
+                if (endEventBridgeV4 != null && endEventBridgeV4.supportsSpellCasts(viewer.getUniqueId())) continue;
                 sendWorldBeamPacket(viewer, key, chest, tip, core, 0.45F);
                 sendWorldBeamPacket(viewer, key + "-shell-u", railPoint(chest, up),
                         railTip(beamWorld, up), shell, 0.45F);
@@ -55241,6 +55272,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                             || !guardianContactHasCoverClear(body, player, landing)) continue;
                     applyBossActorAbilityDamage(boss, body, player, InfernoMobWindowPolicy.MAGMA_LANDING_DAMAGE);
                 }
+                publishSpellContact("magma_contact", body, elite.id, landing,
+                        new Vector(0, 1, 0), radius, 0, 14);
                 body.getWorld().playSound(landing, Sound.ENTITY_MAGMA_CUBE_SQUISH, 1.0f, 0.6f);
                 body.getWorld().spawnParticle(Particle.LAVA, landing, 18, 0.5D, 0.1D, 0.5D, 0.0D);
                 elite.landingDeadline = 0L;
@@ -55323,6 +55356,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                             || !guardianContactHasCoverClear(body, player, origin)) continue;
                     applyBossActorAbilityDamage(boss, body, player, 5.0D);
                 }
+                publishSpellContact("wither_contact", body, elite.id, origin,
+                        elite.lockedFacing, Math.acos(0.55D), 3.2D, 9);
                 body.getWorld().spawnParticle(Particle.SWEEP_ATTACK, origin.clone()
                         .add(elite.lockedFacing).add(0.0D, .9D, 0.0D), 3, .25D, .12D, .25D, 0.0D);
                 body.getWorld().playSound(origin, Sound.ENTITY_PLAYER_ATTACK_SWEEP, 1.0f, 0.65f);
@@ -66871,6 +66906,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void broadcastSpellVisualCue(String token, long seed, Location anchor,
                                          Location reach, int colorRgb) {
+        broadcastSpellVisualCue(token, seed, anchor, reach, colorRgb, 1);
+    }
+
+    private void broadcastSpellVisualCue(String token, long seed, Location anchor,
+                                         Location reach, int colorRgb, int stage) {
         if (token == null || token.isBlank() || anchor == null || reach == null
                 || anchor.getWorld() == null || !anchor.getWorld().equals(reach.getWorld())) {
             return;
@@ -66879,12 +66919,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         double length = direction.length();
         if (length < 1.0e-5D || !Double.isFinite(length) || length > 256.0D) return;
         direction.multiply(1.0D / length);
-        var lane = spellLane(anchor, direction, token.equals("beam") ? 1.7f : 0.12f, (float) length);
+        float radius = token.equals("beam") ? (float) ChestBeamPolicy.BEAM_RADIUS : 0.12f;
+        var lane = spellLane(anchor, direction, radius, (float) length);
         List<Player> viewers = eventAudience().stream()
                 .filter(viewer -> isEventParticleViewer(viewer, anchor)).toList();
         spellCasts.publish(new me.copimine.endevent.runtime.SpellCastRuntime.CastKey(token, seed, null),
                 eventId, generation, worldVfxDimension(anchor), anchor, List.of(lane), eventTickCounter,
-                (int) (SPELL_VISUAL_DURATION_MILLIS / 50L), 1, true, viewers, this::sendSpellCast);
+                (int) (SPELL_VISUAL_DURATION_MILLIS / 50L), stage, true, viewers, this::sendSpellCast);
         String legacyKey = "v51-" + token + "-" + Math.floorMod(seed, 1_000_000_000L);
         for (Player viewer : viewers) {
             if (endEventBridgeV4 == null || !endEventBridgeV4.supportsSpellCasts(viewer.getUniqueId())) {
@@ -66898,9 +66939,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         List<me.copimine.endevent.domain.SpellCastPacket.Lane> geometry = points.stream()
                 .map(at -> spellLane(at, new Vector(0, 1, 0), 0.5f, 0)).toList();
         List<Player> viewers = eventAudience().stream().filter(viewer -> isTrialViewer(actor, viewer, origin)).toList();
-        spellCasts.publish(trialFangKey(actor.getUniqueId(), token), eventId, generation,
+        spellCasts.publishScoped(trialFangKey(actor.getUniqueId(), token), eventId, generation,
                 worldVfxDimension(origin), origin, geometry, eventTickCounter, duration, stage,
-                false, viewers, this::sendSpellCast);
+                viewers, this::sendSpellCast);
     }
 
     private static me.copimine.endevent.runtime.SpellCastRuntime.CastKey trialFangKey(UUID actor, String token) {
@@ -66909,6 +66950,21 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void clearTrialFangCast(UUID actor, String token) {
         spellCasts.cancel(trialFangKey(actor, token), generation, eventAudience(), this::sendSpellCast);
+    }
+
+    private void publishSpellContact(String token, LivingEntity actor, UUID contact,
+                                     Location origin, Vector direction, double radius, double reach, int ticks) {
+        if (origin == null || origin.getWorld() == null) return;
+        var lane = spellLane(origin, direction, (float) radius, (float) reach);
+        var viewers = eventAudience().stream()
+                .filter(viewer -> isEventParticleViewer(viewer, origin)
+                        && (!"warden_echo_contact".equals(token) || isTrialViewer(actor, viewer, origin)))
+                .toList();
+        if (viewers.isEmpty()) return;
+        spellCasts.publishScoped(new me.copimine.endevent.runtime.SpellCastRuntime.CastKey(
+                        token, cueSeedFor(contact), actor.getUniqueId()),
+                eventId, generation, worldVfxDimension(origin), origin, List.of(lane), eventTickCounter,
+                ticks, 2, viewers, this::sendSpellCast);
     }
 
     private static me.copimine.endevent.domain.SpellCastPacket.Lane spellLane(

@@ -12,6 +12,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.UUID;
 
 /** Owns the signed presentation lifetime of server-authored hazards. */
@@ -29,7 +31,7 @@ public final class SpellCastRuntime {
 
     private record Cast(long id, String event, long generation, String dimension,
                         Location origin, SpellCastPacket packet, long expiresTick,
-                        long lastRefresh) { }
+                        long lastRefresh, Set<UUID> audience) { }
 
     private final Map<CastKey, Cast> active = new LinkedHashMap<>();
     private long nextId;
@@ -37,6 +39,22 @@ public final class SpellCastRuntime {
     public boolean publish(CastKey key, String event, long generation, String dimension, Location origin,
                            List<SpellCastPacket.Lane> geometry, long tick, int duration, int stage,
                            boolean refreshable, Collection<? extends Player> viewers, Sender sender) {
+        return publish(key, event, generation, dimension, origin, geometry, tick, duration, stage,
+                refreshable, null, viewers, sender);
+    }
+
+    public boolean publishScoped(CastKey key, String event, long generation, String dimension, Location origin,
+                                 List<SpellCastPacket.Lane> geometry, long tick, int duration, int stage,
+                                 Collection<? extends Player> viewers, Sender sender) {
+        Set<UUID> audience = viewers.stream().map(Player::getUniqueId).collect(Collectors.toUnmodifiableSet());
+        return publish(key, event, generation, dimension, origin, geometry, tick, duration, stage,
+                false, audience, viewers, sender);
+    }
+
+    private boolean publish(CastKey key, String event, long generation, String dimension, Location origin,
+                            List<SpellCastPacket.Lane> geometry, long tick, int duration, int stage,
+                            boolean refreshable, Set<UUID> audience,
+                            Collection<? extends Player> viewers, Sender sender) {
         if (generation < 1 || generation > Integer.MAX_VALUE || tick < 0 || tick > Integer.MAX_VALUE
                 || origin.getWorld() == null || geometry.isEmpty()) {
             return false;
@@ -63,7 +81,7 @@ public final class SpellCastRuntime {
         long id = previous == null ? Math.incrementExact(nextId) : previous.id();
         nextId = Math.max(nextId, id);
         Cast cast = new Cast(id, event, generation, dimension, origin.clone(), packet,
-                tick + duration, tick);
+                tick + duration, tick, audience);
         active.put(key, cast);
         for (Player viewer : viewers) {
             if (eligible(viewer, cast)) {
@@ -113,7 +131,9 @@ public final class SpellCastRuntime {
                 previous.style(), 0, previous.x(), previous.y(), previous.z(), previous.yaw(), List.of());
         String encoded = encode(cancel);
         for (Player viewer : viewers) {
-            if (viewer.isOnline()) sender.send(viewer, instance(cast), cast.dimension(), cancel, encoded, 0);
+            if (viewer.isOnline() && inAudience(viewer, cast)) {
+                sender.send(viewer, instance(cast), cast.dimension(), cancel, encoded, 0);
+            }
         }
     }
 
@@ -128,7 +148,12 @@ public final class SpellCastRuntime {
     }
 
     private static boolean eligible(Player viewer, Cast cast) {
-        return viewer.isOnline() && viewer.getWorld().equals(cast.origin().getWorld());
+        return viewer.isOnline() && viewer.getWorld().equals(cast.origin().getWorld())
+                && inAudience(viewer, cast);
+    }
+
+    private static boolean inAudience(Player viewer, Cast cast) {
+        return cast.audience() == null || cast.audience().contains(viewer.getUniqueId());
     }
 
     private static String instance(Cast cast) {

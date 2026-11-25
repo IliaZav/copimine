@@ -144,17 +144,17 @@ def test_melee_cadence_and_final_phase_eligibility(tmp_path):
     assert "BossMeleeCadenceProbe OK" in output
 
 
-def test_adapter_uses_the_phase_cadence_instead_of_eight_seconds():
-    """Contract 10.5: the live loop must ask the policy, not a frozen constant."""
+def test_adapter_commits_phase_cadence_only_after_admitting_a_basic_strike():
+    """The physical scheduler admits and commits melee separately from spell cooldowns."""
     source = EVENT.read_text(encoding="utf-8")
-    # SUPERSEDED: the adapter used to add BossCloseCombatPolicy.COOLDOWN_MILLIS
-    # (8000L). The cadence now comes from the policy per phase.
-    # The adapter wraps the qualified call over two lines, so remove all
-    # whitespace before matching a qualified name.
-    flat = "".join(source.split())
-    assert "BossCloseCombatPolicy.nextStrikeMillis(" in flat, (
-        "the live melee loop must commit the phase cadence from the policy")
-    assert "BossCloseCombatPolicy.retryMillis()" in flat, (
-        "a refused swing must schedule a bounded retry")
-    assert "BossCloseCombatPolicy.COOLDOWN_MILLIS" not in flat, (
-        "the frozen eight-second melee cooldown must be gone from the adapter")
+    start = source.index("private boolean castGuardianBasic(")
+    end = source.index("private boolean commitGuardianRotationIfReady(", start)
+    basic = "".join(source[start:end].split())
+    rejection = basic.index("returnfalse;")
+    commitment = basic.index("commitGuardianCommittedMove(")
+    cadence = basic.index("BossCloseCombatPolicy.nextStrikeMillis(")
+    assert rejection < commitment < cadence
+    assert "now<nextBossCloseStrikeMillis" in basic
+    assert "boss.hasLineOfSight(target)" in basic
+    assert "BossCloseCombatPolicy.COOLDOWN_MILLIS" not in basic
+    assert "nextBossCast" not in basic

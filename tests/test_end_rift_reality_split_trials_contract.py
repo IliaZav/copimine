@@ -135,22 +135,23 @@ def test_wave7_chamber_completion_log_reports_the_count_required_by_the_live_gat
     assert '" chambers=" + realitySplitChamberController.assignment().chamberCount()' in completion
 
 
-def test_warden_lunge_stops_before_leaving_its_assigned_room():
+def test_warden_specials_release_from_the_committed_room_origin():
     source = EVENT.read_text(encoding="utf-8")
-    warden = section(source, "private void tickRealitySplitWarden", "private void tickRealitySplitReflection")
+    warden = section(source, "private void tickRealitySplitWarden", "private void freezeWardenCast")
 
-    assert "Bukkit.getPlayer(state.target)" in warden
-    assert "isCurrentRealitySplitTrialTarget(warden, target)" in warden
-    assert "isRealitySplitDestinationAllowed(state.target, next, assignment)" in warden
-    assert "isSafeCombatEntityLocation(next, warden)" in warden
+    assert "isCurrentRealitySplitTrialTarget(warden, player)" in warden
+    assert "distanceSquared(state.castOrigin) > 0.9D" in warden
+    assert "finishWardenSpecial(nativeWarden, state)" in warden
+    assert "resolveWardenFrontalSweep(warden, state)" in warden
 
 
-def test_warden_lunge_has_a_distinguishable_windup_cue():
+def test_warden_specials_have_distinguishable_windup_cues():
     source = EVENT.read_text(encoding="utf-8")
-    warden = section(source, "private void tickRealitySplitWarden", "private void tickRealitySplitReflection")
+    echo = section(source, "private boolean beginWardenSlamIfWarranted", "private void finishWardenSlam")
+    sweep = section(source, "private void tickRealitySplitWarden", "private void freezeWardenCast")
 
-    assert "Particle.SONIC_BOOM" in warden
-    assert "Sound.ENTITY_WARDEN_SONIC_CHARGE" in warden
+    assert "Sound.ENTITY_WARDEN_ROAR" in echo
+    assert "Sound.BLOCK_SCULK_SENSOR_CLICKING" in sweep
 
 
 def test_warden_spawn_uses_the_approved_health_profile():

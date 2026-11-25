@@ -153,6 +153,7 @@ public class WardenV5RuntimeProbe {
         return targets.stream().noneMatch(p->p.covered && p.x==to.x && p.z==to.z);
     }
     void registerEncounterTask(BukkitTask t,Runnable cleanup){}
+    void publishSpellContact(String token,LivingEntity actor,UUID id,Location at,Vector axis,double radius,double reach,int ticks){}
     void renderWave7AbilityEffect(LivingEntity warden,Player p,String id){}
     List<Player> eventAudience(){return new ArrayList<>();}
     boolean isEventParticleViewer(Player viewer,Location at){return true;}

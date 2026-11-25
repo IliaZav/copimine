@@ -68,8 +68,8 @@ public class TrampleRuntimeProbe {
   static class Ram {
     World world;Location at;Player target;
     Ram(World w){world=w;at=new Location(w,0,65,0);}
-    World getWorld(){return world;}Location getLocation(){return at;}
-    boolean isValid(){return true;}void setAI(boolean b){}void setTarget(Player p){target=p;}
+    World getWorld(){return world;}Location getLocation(){return at.clone();}
+    boolean isValid(){return true;}boolean isOnGround(){return true;}void setAI(boolean b){}void setTarget(Player p){target=p;}
   }
   static class Host {
     List<Player> roster=new ArrayList<>();
@@ -88,7 +88,8 @@ public class TrampleRuntimeProbe {
     List<Player> players(){return roster;}
   }
   final Host host=new Host(); int tick,actionTick;
-  Ram ram; Location trampleOrigin; double trampleRadius;
+  Ram ram; Location trampleOrigin,priorTrampleFootfall; double trampleRadius;
+  int trampleFootfallTick=-1;
   int trampleBeats,trampleBeat=-1,trampleWarnedBeat=-1;
   Set<UUID> trampleHits=new HashSet<>(),trampleRoster=new HashSet<>(),trampleBeatResolved=new HashSet<>();
   boolean recovered; void begin(Action a){recovered=true;}
@@ -112,6 +113,7 @@ public class TrampleRuntimeProbe {
       int total=RamMovingEarthquakePolicy.totalTicks(beats);
       for(int tick=0;tick<=total+2;tick++){
         cast.tick=tick;
+        cast.ram.at.x=0.8*(RamMovingEarthquakePolicy.beatIndex(beats,tick)%2);
         if(tick==total/2)players.add(late);
         cast.trample(players);
         if(tick<=1)check(ground.applications==0,"not an instant radius debuff");

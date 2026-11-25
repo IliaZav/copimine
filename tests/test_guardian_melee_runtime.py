@@ -52,6 +52,8 @@ public class GuardianMeleeProbe {
         void playSound(Location at,Sound sound,SoundCategory category,float volume,float pitch){sounds++;}
     }
     static class LivingEntity {
+        final UUID id = UUID.randomUUID();
+        UUID getUniqueId(){return id;}
         final World world;double x,y,z;Vector velocity=new Vector(0,0,0);
         LivingEntity(World world){this.world=world;}
         World getWorld(){return world;}double getX(){return x;}double getY(){return y;}double getZ(){return z;}
@@ -81,6 +83,7 @@ public class GuardianMeleeProbe {
     java.util.logging.Logger getLogger(){return java.util.logging.Logger.getLogger("GuardianMeleeProbe");}
     boolean applyBossAbilityDamage(LivingEntity boss,Player player,double damage){return damageLanded;}
     void renderBossContactImpact(LivingEntity boss,Player player,EndRiftAiPolicy.BossSpell spell){}
+    void publishSpellContact(String token,LivingEntity actor,UUID id,Location at,Vector axis,double radius,double reach,int ticks){}
     void playBossImpactPresentation(LivingEntity boss,BossImpactGeometryPolicy.Kind kind,
             Location origin,Vector facing,double range,boolean a,boolean b){}
     void renderGuardianArcBurst(Location origin,Vector facing,int bands){}

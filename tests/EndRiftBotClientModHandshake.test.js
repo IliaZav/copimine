@@ -10,7 +10,7 @@ const {
   attachLocalClientModHandshake,
 } = require('./EndRiftBotClientModHandshake')
 
-const CLIENT_VERSION = '0.1.4+26.3'
+const CLIENT_VERSION = require('../tools/minecraft-26.3/profile.lock.json').clientArtifact.version
 const CHALLENGE_ID = '123e4567-e89b-12d3-a456-426614174000'
 
 function dataUtf(value) {
@@ -205,7 +205,7 @@ test('local bot refuses to emulate the client on any non-test endpoint', () => {
   }), /restricted to loopback/)
   assert.throws(() => attachLocalClientModHandshake(bot, {
     host: '127.0.0.1', port: 25566, version: '0.1.2',
-  }), /0\.1\.4\+26\.3/)
+  }), { message: `test client handshake only emulates ${CLIENT_VERSION}` })
   client.write = () => {}
   assert.doesNotThrow(() => attachLocalClientModHandshake(bot, {
     host: '127.0.0.1', port: 25567, version: CLIENT_VERSION,

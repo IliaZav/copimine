@@ -83,10 +83,19 @@ public final class SpellVisualRenderer {
 
     static int drawCast(PoseStack matrices, VertexConsumer buffer, SpellCastPacket cast,
                         long start, long expires, long now, int budget) {
-        SpellVisualGeometry.Spell spell = SpellVisualGeometry.Spell.fromToken(cast.spellId());
-        if (spell == null || now < start || now >= expires || budget <= 0) return 0;
+        if (now < start || now >= expires || budget <= 0) return 0;
         SpellVisualGeometry.Quality tier = SpellVisualGeometry.Quality.values()[
                 Math.max(quality.ordinal(), cast.vfxLod())];
+        SpellContactMesh impact = SpellContactMesh.find(cast.spellId());
+        if (impact != null) {
+            return impact.draw(matrices.last(), buffer, cast, (now - start) / (double) (expires - start),
+                    tier, reducedMotion, budget);
+        }
+        SpellVisualGeometry.Spell spell = SpellVisualGeometry.Spell.fromToken(cast.spellId());
+        if (spell == null) return 0;
+        if (spell == SpellVisualGeometry.Spell.BEAM && cast.lanes().size() == 1) {
+            return drawChestBeam(matrices.last(), buffer, cast, now - start, expires - now, tier, budget);
+        }
         if (SpellCastPacketCodec.isFangGeometry(cast.spellId())) {
             return drawFangs(matrices.last(), buffer, cast, (now - start) / (double) (expires - start), tier, budget);
         }
@@ -101,6 +110,50 @@ public final class SpellVisualRenderer {
                     start, expires, now, tier, budget - drawn);
         }
         return drawn;
+    }
+
+    private static int drawChestBeam(PoseStack.Pose pose, VertexConsumer buffer, SpellCastPacket cast,
+                                     long elapsed, long remaining, SpellVisualGeometry.Quality tier, int budget) {
+        SpellCastPacket.Lane lane = cast.lanes().getFirst();
+        Vec3 origin = new Vec3(lane.x(), lane.y(), lane.z());
+        Vec3 forward = new Vec3(lane.dx(), lane.dy(), lane.dz()).normalize();
+        if (lane.length() <= 0 || lane.radius() <= 0 || forward.lengthSqr() == 0) return 0;
+        Vec3 normal = initialNormal(forward);
+        Vec3 binormal = forward.cross(normal);
+        double[][] section = profile(tier, true);
+        int nodes = 2 * tier.samples();
+        int vertices = (nodes + 1) * section.length * 4;
+        double visibility = Math.min(1, remaining / 100.0);
+        boolean charging = cast.stage() == 0;
+        double clock = reducedMotion ? 0 : elapsed * 0.009;
+        int passes = charging ? 2 : 4;
+        int count = 0;
+        for (int pass = 0; pass < passes && count + vertices <= budget; pass++) {
+            var path = new Vec3[nodes];
+            var radii = new java.util.ArrayList<Float>(nodes);
+            var colors = new int[nodes];
+            for (int i = 0; i < nodes; i++) {
+                double t = i / (double) (nodes - 1);
+                double edge = 0.2 + 0.8 * Math.sin(Math.PI * Math.pow(t, 0.55));
+                double angle = t * 14 - clock + pass * Math.PI;
+                double offset = pass < 2 ? 0 : lane.radius() * (0.45 + 0.21 * edge);
+                path[i] = origin.add(forward.scale(lane.length() * t))
+                        .add(normal.scale(offset * Math.cos(angle))).add(binormal.scale(offset * Math.sin(angle)));
+                double flow = 0.82 + 0.18 * Math.cos(angle);
+                double radius = switch (pass) {
+                    case 0 -> charging ? 0.12 : 0.46;
+                    case 1 -> charging ? 0.32 : 1.0;
+                    default -> 0.10;
+                };
+                radii.add((float) (lane.radius() * radius * (pass == 1 && !charging ? 1 : edge)));
+                int alpha = (int) ((pass == 0 ? 243 : pass == 1 ? 82 : 182) * visibility * flow);
+                if (charging) alpha /= 2;
+                int color = pass == 0 ? 0xffefed : pass == 1 ? 0x9e32f4 : 0xff7ad9;
+                colors[i] = alpha << 24 | color;
+            }
+            count += tube(buffer, pose, path, radii, colors, section);
+        }
+        return count;
     }
 
     private static int drawAuthored(PoseStack matrices, VertexConsumer buffer, SpellVisualGeometry.Spell spell,
@@ -272,7 +325,7 @@ public final class SpellVisualRenderer {
         };
     }
 
-    private static double[][] profile(SpellVisualGeometry.Quality tier, boolean hero) {
+    static double[][] profile(SpellVisualGeometry.Quality tier, boolean hero) {
         return switch (tier) {
             case FULL -> hero ? SECTIONS_12 : SECTIONS_8;
             case BALANCED -> SECTIONS_8;
@@ -306,7 +359,7 @@ public final class SpellVisualRenderer {
         return projected.lengthSqr() > 1.0e-8 ? projected.normalize() : initialNormal(to);
     }
 
-    private static int tube(VertexConsumer buffer, PoseStack.Pose pose, Vec3[] centers,
+    static int tube(VertexConsumer buffer, PoseStack.Pose pose, Vec3[] centers,
                             List<Float> radii, int[] colors, double[][] section) {
         int sides = section.length;
         Vec3[] previousRing = new Vec3[sides];
@@ -388,7 +441,7 @@ public final class SpellVisualRenderer {
      * {@code v} spans the ribbon width. The authored texture is a bright core
      * band with feathered edges, so this mapping draws a clean glowing ribbon.
      */
-    private static void quad(VertexConsumer buffer, PoseStack.Pose pose, Vec3 a, Vec3 b,
+    static void quad(VertexConsumer buffer, PoseStack.Pose pose, Vec3 a, Vec3 b,
                              Vec3 c, Vec3 d, Vec3 normal, int argbStart, int argbEnd) {
         vertex(buffer, pose, a, 0.02F, 0.02F, normal, argbStart);
         vertex(buffer, pose, b, 0.02F, 0.98F, normal, argbStart);

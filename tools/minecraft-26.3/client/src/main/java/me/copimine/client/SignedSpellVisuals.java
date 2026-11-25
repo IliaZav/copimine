@@ -72,7 +72,8 @@ final class SignedSpellVisuals {
             if (retired.size() > MAX_RETIREMENTS) retired.remove(retired.keySet().iterator().next());
             return;
         }
-        if (SpellVisualGeometry.Spell.fromToken(cast.spellId()) == null || cast.lanes().isEmpty()) return;
+        if (cast.lanes().isEmpty() || SpellVisualGeometry.Spell.fromToken(cast.spellId()) == null
+                && SpellContactMesh.find(cast.spellId()) == null) return;
         if (previous != null && previous.cast().startTick() > cast.startTick()) return;
 
         int elapsed = Integer.parseInt(body.status());

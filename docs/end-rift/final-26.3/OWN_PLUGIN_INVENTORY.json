@@ -120,7 +120,7 @@
         "tests/dungeon_probe.py"
       ],
       "installedJar": "local-runtime/end-rift-server-26.3/plugins/CopiMineDungeon.jar",
-      "candidateSha256": "416e40917e08e956230e2e602dbb51233986174f7988ac4d62bf857185d73e61",
+      "candidateSha256": "a4884fba6d96d8be1692d3fe396e2eb093bc186b506a8730066fe51bffad9fdd",
       "sha256": "416e40917e08e956230e2e602dbb51233986174f7988ac4d62bf857185d73e61",
       "sourceBuild": "PASS",
       "unitContract": "PASS",
@@ -236,7 +236,7 @@
         "tests/PrisonerAbilityControllerTest.java"
       ],
       "installedJar": "local-runtime/end-rift-server-26.3/plugins/CopiMineEndEvent.jar",
-      "candidateSha256": "22f511f347bfb3e55b71fd2713be5db71b080a19c8ab6f7f169b2dd0cad30cc5",
+      "candidateSha256": "0acb8bce65ed926fab1e003d16a13ded7fda332bef04e61e1eeb4e501f9a7c0e",
       "sha256": "22f511f347bfb3e55b71fd2713be5db71b080a19c8ab6f7f169b2dd0cad30cc5",
       "sourceBuild": "PASS",
       "unitContract": "PASS",
@@ -271,7 +271,7 @@
         "tests/test_client_legacy_bridge_auth_contract.py"
       ],
       "installedJar": "local-runtime/end-rift-server-26.3/plugins/CopiMineNarcotics.jar",
-      "candidateSha256": "ec2ef8d50c780d2faf52469bd52d20724d8be9c5f8c23a76c5c9d459782e35a6",
+      "candidateSha256": "27bbc9505635f35ed301bfd82037be18e5b98110f84affddd5cb1d0f0071298f",
       "sha256": "ec2ef8d50c780d2faf52469bd52d20724d8be9c5f8c23a76c5c9d459782e35a6",
       "sourceBuild": "PASS",
       "unitContract": "PASS",

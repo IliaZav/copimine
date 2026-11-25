@@ -64,6 +64,39 @@
 
 ## 4. Completed work (newest first)
 
+### 4.12 Production deployment + local client install (2026-11-26)
+
+- **Deployed to `copimine-game.service`** (Paper 26.3-205, Java 25.0.5). Staged
+  `CopiMineEndEvent.jar` (2 598 592 B, sha256 `2571a230…`) and the previously
+  absent `CopiMineDungeon.jar` (254 956 B, sha256 `d400cf63…`), stopped the
+  service (never `/reload`), backed up the two jars + the `CopiMineEndEvent` data
+  dir + narcotics config + `server.properties` to
+  `/opt/copimine-game/deploy-backups/20261125T213124Z`, installed atomically,
+  restarted and compared bytes. Cold start reached `Done (46.3s)`, the 33rd
+  plugin `CopiMineDungeon v1.0.0` enabled, `cmend status` rehydrated the same
+  mid-`COLLECTING` event (generation 422), `cmend debug invariants failures=0`,
+  `cmdungeon status` clean, and the log contains **0 ERROR/SEVERE** lines.
+- **Client pin.** `plugins/CopiMineNarcotics/config.yml`
+  `required_client_mod_version: 0.1.5+26.3` (was `0.1.4+26.3`), matching
+  `profile.lock.json` `clientArtifact.version`; no jar in the running set is
+  touched outside EndEvent + the additive Dungeon.
+- **Resource pack unchanged.** A fresh `build-migration-pack.py` run reproduced
+  the deployed `CopiMineResourcePack-26.3.zip` byte for byte
+  (sha256 `98d79505…`, 34 373 458 B), so no pack redeploy was needed; the vanilla
+  migration candidate zip is a separate, larger hand-off artifact.
+- **Client published + installed.** The reproducible
+  `CopiMineClient-0.1.5+26.3.jar` (30 769 867 B, sha256 `f9f87f78…`, which now
+  bundles fabric-api `0.164.0+26.3` as a nested `META-INF/jars/*` jar) was
+  published to `https://copimine.ru/assets/` (HTTP 200, exact byte count
+  verified) and installed into the owner's Prism `Copimine` instance; the prior
+  `CopiMineClient-0.1.4+26.3.jar` was moved to `copimine-mod-backups/`.
+- **Dungeon permission repair.** The first cold start raised
+  `AccessDeniedException` on `plugins/CopiMineDungeon/*` because the data dir was
+  root-owned; re-chowned to `copimine-game:copimine` and restarted clean.
+- Verification: authoritative gate `GATE_EXIT=0` on the tree that became
+  `dc0549f8` (EndEvent + Dungeon + client all built and tested); prod RCON probes
+  as above.
+
 ### 4.8 Phase 4 fire-arena expansion: decay + two signature spells (2026-11-25)
 
 Owner request (latest): make the Phase 4 fire arena genuinely detailed, add the
@@ -382,23 +415,31 @@ Status legend: `SRC` implemented in source, `TEST` covered by automated test,
 | §7 3D meshes/materials/UV/animation/audio | v6 client stack | `SpellVisualGeometryTest`, `GuardianSpellMeshTest` | SRC |
 | §7 fog depth-aware volume + safe shelters | v6 | `test_wave_coordinator_fog_lifecycle.py`, `test_wave5_uniform_volume.py` | SRC+TEST |
 | CI: artifact digest / reproducible build | `tools/minecraft-26.3/*.lock.json`; 26.3 migration pack rebuilt + digest-verified offline; server-plugin candidate staging still environment-bound | `test_minecraft_migration_profile.py`, `test_minecraft_26_3_pack.py` | SRC+TEST |
-| NATIVE visual acceptance on matched Paper 26.3 + Fabric 26.3 | — | F2 capture | NATIVE_BLOCKED |
-| PROD deploy `copimine-game.service` | — | — | NOT PERFORMED |
+| NATIVE visual acceptance on matched Paper 26.3 + Fabric 26.3 | — | owner playtest (F2/video from the deployed server) | NATIVE_BLOCKED (agent); owner capture pending |
+| PROD deploy `copimine-game.service` | EndEvent + Dungeon jars; client pin `0.1.5+26.3` | prod RCON probes (`cmend status`, `inspect`, `cmdungeon status`) | DONE (2026-11-26) |
 
 ## 6. Blockers
 
 - `NATIVE_BLOCKED`: no matched Minecraft 26.3 client/server graphics session has
-  been performed by this agent. Native F2/video evidence must come from a real run.
-- `PROD` not performed; requires backup + rollback candidate + health checks.
+  been performed by this agent. The production Paper 26.3 server and the owner's
+  Prism client now run the matching artifacts, so the owner playtest is the native
+  acceptance path; native F2/video evidence must come from that real run.
+- `PROD` **performed 2026-11-26** (see 4.12): backup
+  `20261125T213124Z`, atomic install, cold start, byte + health verification.
 - §1 production-world block mutation stays BLOCKED (no approved site plan).
 
 ## 7. Next steps (ordered)
 
-1. Re-run the broad End Rift pytest sweep **alone** (no other Java-compiling
-   suite concurrently) and record the final pass count.
-2. Re-run `tests/RunEndRiftEventChecks.ps1` alone to completion, so the Java
-   pure-policy and persistence suites actually execute, and record every step.
-3. Native F2/video capture on a matched Paper 26.3 + Fabric 26.3 session remains
-   `NATIVE_BLOCKED`; publish exact manual capture steps for the owner.
-4. Production-world mutation and deployment stay `PROD`/`BLOCKED` without a
-   location-bound approved site plan.
+1. ~~Re-run the broad End Rift pytest sweep alone~~ **done**: each step executed
+   serially and the authoritative gate finished `GATE_EXIT=0`.
+2. ~~Re-run `tests/RunEndRiftEventChecks.ps1` alone to completion~~ **done**:
+   Java pure-policy and persistence suites executed; EndEvent + Dungeon + client
+   all green.
+3. Native F2/video capture: the deployed Paper 26.3 server + the owner's Prism
+   client now match; the owner playtest records the native visual acceptance
+   (agent-side native capture remains `NATIVE_BLOCKED`).
+4. Production-world block mutation stays `BLOCKED` without a location-bound
+   approved site plan.
+5. Owner playtest entry points: `cmend boss damage <n>`,
+   `cmend boss spell <name>`, `cmend arena reveal-preview|reveal-test|reveal-stop`,
+   `/cmdungeon` (editor wand + room definitions).

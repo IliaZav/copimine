@@ -54,19 +54,24 @@ public final class EchoDuelCombatRuntimeAdapterTest {
         EchoLoadoutState replica = restore(fixture.duel());
         Scope scope = scope(fixture.duel(), true, true, true, true);
 
-        Decision shot = EchoDuelCombatRuntimeAdapter.tick(fixture.duel(), replica, scope,
+        // E-05: the first tick only STARTS the bow draw. The arrow is not spent
+        // and no cadence opens until the draw completes at its persisted deadline.
+        Decision draw = EchoDuelCombatRuntimeAdapter.tick(fixture.duel(), replica, scope,
                 new Observation(100, 100.0D, true)).orElseThrow();
-        check(shot.action() == Action.RANGED, "the official adapter selects a ranged action");
-        check(replica.remaining(4) == 1, "ranged decision stages exactly one duel-local arrow");
-        check(replica.item(3).damage() == 1, "ranged decision stages wear on the duel-local bow");
-        check(shot.nextDuel().actor().rangedCooldownUntilTick() == 120,
-                "ranged decision stages its cooldown in the actor checkpoint");
-        check(shot.nextDuel().replicaRevision() == replica.revision()
-                        && shot.nextDuel().replicaState().equals(replica.encode()),
-                "the staged duel carries finite supplies and their revision for atomic persistence");
+        check(draw.action() == Action.RANGED_DRAW,
+                "the official adapter starts a bow draw, got " + draw.action());
+        check(replica.remaining(4) == 2, "starting a draw stages no arrow cost");
+        check(replica.item(3).damage() == 0, "starting a draw stages no bow wear");
+        check(draw.nextDuel().actor().rangedChargeUntilTick() == 120,
+                "the draw stages its completion deadline in the actor checkpoint");
+        check(draw.nextDuel().actor().rangedCooldownUntilTick() == 0,
+                "the draw opens no ranged cadence yet");
+        check(draw.nextDuel().replicaRevision() == replica.revision()
+                        && draw.nextDuel().replicaState().equals(replica.encode()),
+                "the staged draw carries finite supplies and their revision for atomic persistence");
 
-        check(fixture.controller().registerPersonalEchoDuel(shot.nextDuel()),
-                "official controller accepts the exact resource and cooldown checkpoint");
+        check(fixture.controller().registerPersonalEchoDuel(draw.nextDuel()),
+                "official controller accepts the exact draw checkpoint");
         check(!fixture.controller().registerPersonalEchoDuel(fixture.duel()),
                 "official controller rejects a stale pre-action snapshot");
         NamedData savedData = fixture.controller().namedSnapshot();
@@ -74,15 +79,39 @@ public final class EchoDuelCombatRuntimeAdapterTest {
                 RealitySplitTrialSnapshot.encodeNamed(savedData), EVENT, ATTEMPT, RUNTIME);
         DuelRecord restoredDuel = restoredData.personalEchoDuels().get(fixture.room()).get(fixture.owner());
         EchoLoadoutState restoredReplica = restore(restoredDuel);
-        check(restoredReplica.remaining(4) == 1 && restoredReplica.item(3).damage() == 1
-                        && restoredDuel.actor().rangedCooldownUntilTick() == 120,
-                "snapshot restore keeps the accepted shot, finite arrow, bow wear and cooldown together");
+        check(restoredReplica.remaining(4) == 2 && restoredDuel.actor().rangedChargeUntilTick() == 120,
+                "snapshot restore keeps the in-flight draw and its deadline together");
 
-        Decision cooldown = EchoDuelCombatRuntimeAdapter.tick(restoredDuel, restoredReplica,
-                scope(restoredDuel, true, true, true, true), new Observation(105, 100.0D, true))
+        // A tick inside the draw holds the aim and spends nothing.
+        Decision holding = EchoDuelCombatRuntimeAdapter.tick(restoredDuel, restoredReplica,
+                scope(restoredDuel, true, true, true, true), new Observation(119, 100.0D, true))
                 .orElseThrow();
-        check(cooldown.action() == Action.NONE && restoredReplica.remaining(4) == 1,
-                "the five-tick official loop cannot replay a shot during its cooldown");
+        check(holding.action() == Action.NONE, "a tick inside the draw holds the aim");
+        check(holding.nextDuel().actor().rangedChargeUntilTick() == 120,
+                "holding a draw leaves the charge deadline untouched");
+
+        // The release fires exactly at the charge deadline, and only then.
+        Decision release = EchoDuelCombatRuntimeAdapter.tick(restoredDuel, restore(restoredDuel),
+                scope(restoredDuel, true, true, true, true), new Observation(120, 100.0D, true))
+                .orElseThrow();
+        check(release.action() == Action.RANGED,
+                "the release fires at the charge deadline, got " + release.action());
+        check(release.replica().remaining(4) == 1, "the release stages exactly one duel-local arrow");
+        check(release.replica().item(3).damage() == 1, "the release stages wear on the duel-local bow");
+        check(release.nextDuel().actor().rangedCooldownUntilTick() == 120,
+                "the release records the shared gate, not a duplicated ranged lockout");
+        check(release.nextDuel().actor().rangedChargeUntilTick() == 0,
+                "the release clears the persisted charge");
+        check(release.nextDuel().replicaRevision() == release.replica().revision()
+                        && release.nextDuel().replicaState().equals(release.replica().encode()),
+                "the released duel carries finite supplies and their revision for atomic persistence");
+
+        // A shot during the ranged cooldown is refused, so the loop cannot replay it.
+        Decision cooldown = EchoDuelCombatRuntimeAdapter.tick(release.nextDuel(), release.replica(),
+                scope(release.nextDuel(), true, true, true, true), new Observation(125, 100.0D, true))
+                .orElseThrow();
+        check(cooldown.action() == Action.NONE && release.replica().remaining(4) == 1,
+                "the official loop cannot replay a shot during its cooldown");
     }
 
     private static void meleeWearAndConsumableHealingAreCheckpoints() {
@@ -512,8 +541,8 @@ public final class EchoDuelCombatRuntimeAdapterTest {
                 new Observation(100, 100.0D, true)).orElseThrow();
         check(closing.intent() == MovementIntent.APPROACH,
                 "a ranged copy with no arrows closes to melee reach, got " + closing.intent());
-        check(closing.action() != Action.RANGED,
-                "a copy with an empty quiver cannot fire, got " + closing.action());
+        check(closing.action() != Action.RANGED && closing.action() != Action.RANGED_DRAW,
+                "a copy with an empty quiver cannot draw or fire, got " + closing.action());
     }
 
     /**
@@ -579,11 +608,11 @@ public final class EchoDuelCombatRuntimeAdapterTest {
         Decision shot = EchoDuelCombatRuntimeAdapter.tick(fixture.duel(), replica,
                 scope(fixture.duel(), true, true, true, true),
                 new Observation(200, 9.0D, true)).orElseThrow();
-        check(shot.action() == Action.RANGED,
-                "a frequent swapper shoots from inside melee reach instead of only swinging, got "
+        check(shot.action() == Action.RANGED_DRAW,
+                "a frequent swapper starts a draw from inside melee reach instead of only swinging, got "
                         + shot.action());
-        check(replica.remaining(4) == 1 && shot.itemSlot() == 3,
-                "the swap spends the owner's real arrow from the bow it reached for");
+        check(replica.remaining(4) == 2 && shot.itemSlot() == 3,
+                "the swap reaches for the owner's real bow without spending the arrow before the release");
 
         var anchored = new me.copimine.endevent.domain.wave7.EchoBehaviorStrategy(
                 900, 100, 0, 0, 0, 1_000, 0, true,
@@ -716,8 +745,8 @@ public final class EchoDuelCombatRuntimeAdapterTest {
         Decision acts = EchoDuelCombatRuntimeAdapter.tick(recovered, restore(recovered),
                 scope(recovered, true, true, true, true), new Observation(100, 100.0D, true))
                 .orElseThrow();
-        check(acts.action() == Action.RANGED,
-                "a re-based copy shoots again within one cooldown window, got " + acts.action());
+        check(acts.action() == Action.RANGED_DRAW,
+                "a re-based copy begins a draw again within one cooldown window, got " + acts.action());
 
         // A deadline saved earlier on the SAME boot already fits its own window,
         // so a rebase must hand it back unchanged: a running cooldown is never

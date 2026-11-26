@@ -58,6 +58,18 @@ public class EchoProbeChecks {
             var charging=state.nextFrame(120);check(charging.useElapsed()==15,"authoritative progress");
             var end=state.nextFrame(137);check(end.hand().equals("NONE")&&end.useDuration()==0,"eat ends once");
             check(end.sequence()>charging.sequence(),"monotonic packets");break;
+        case "draw-window":
+            check(state.begin(EchoPresentationProbeState.Action.BOW,105,"MAIN",55),"start draw with recorded charge");
+            var drawStart=state.nextFrame(105);
+            check(drawStart.hand().equals("MAIN")&&drawStart.useElapsed()==0&&drawStart.useDuration()==55,
+                "a draw publishes its own charge window, not the fixed default");
+            var drawMid=state.nextFrame(140);
+            check(drawMid.useElapsed()==35&&drawMid.useDuration()==55,"the aiming window survives past the old 32-tick default");
+            var drawEnd=state.nextFrame(160);
+            check(drawEnd.hand().equals("NONE")&&drawEnd.useDuration()==0,"the draw window ends exactly at its charge");
+            check(!new EchoPresentationProbeState(EVENT,7,10,new UUID(0,4),ACTOR,OWNER,"minecraft:overworld",100)
+                    .begin(EchoPresentationProbeState.Action.BOW,100,"MAIN",72_001),"oversized draw window rejected");
+            break;
         case "death":
             state.begin(EchoPresentationProbeState.Action.SHIELD,105);state.died(110);
             check(!state.begin(EchoPresentationProbeState.Action.IDLE,111),"corpse cannot restart");
@@ -140,7 +152,7 @@ public class EchoProbeChecks {
     return directory
 
 
-@pytest.mark.parametrize("scenario", ["use", "death", "lifecycle", "serials", "identity", "persisted-lease", "counter-overflow", "epoch-overflow", "drops"])
+@pytest.mark.parametrize("scenario", ["use", "death", "lifecycle", "serials", "identity", "persisted-lease", "counter-overflow", "epoch-overflow", "draw-window", "drops"])
 def test_presentation_probe_authority(echo_probe, scenario):
     result = subprocess.run(["java", "-cp", str(echo_probe), "EchoProbeChecks", scenario],
                             capture_output=True, text=True)

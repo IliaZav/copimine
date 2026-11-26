@@ -34,6 +34,13 @@ public final class EchoDuelCombatRuntimeAdapter {
     private static final int SUSTAIN_FLOOR_PERMILLE = 1;
     private static final EchoDuelCombatPolicy.Cooldowns COOLDOWNS =
             new EchoDuelCombatPolicy.Cooldowns(10, 20, 40, 32, 20, 100, 60);
+    /**
+     * E-05: the longest bow draw / crossbow charge a personalisation may record.
+     * The persisted charge deadline is rebased with this ceiling so a cold
+     * restart can neither invent an extra-long draw nor fire before the operator's
+     * own recorded cadence.
+     */
+    private static final long MAX_RANGED_DRAW_TICKS = 60L;
 
     /** E-04: the owner's recorded swing cadence personalises the melee cooldown, clamped to a fair native band. */
     private static EchoDuelCombatPolicy.Cooldowns cooldownsFor(EchoBehaviorStrategy strategy) {
@@ -69,7 +76,7 @@ public final class EchoDuelCombatRuntimeAdapter {
     private EchoDuelCombatRuntimeAdapter() {
     }
 
-    public enum Action { NONE, MELEE, CRITICAL, RANGED, CONSUMABLE, SHIELD, JUMP, WIND_CHARGE, SPLASH }
+    public enum Action { NONE, MELEE, CRITICAL, RANGED, RANGED_DRAW, CONSUMABLE, SHIELD, JUMP, WIND_CHARGE, SPLASH }
 
     /** The live context must exactly match the persisted event, room, actor and duel identity. */
     public record Scope(UUID eventId, long attemptGeneration, long runtimeGeneration, int room,
@@ -154,6 +161,7 @@ public final class EchoDuelCombatRuntimeAdapter {
                     || action == Action.MELEE && (itemSlot < 0 || ammoSlot != -1 || actionItem == null)
                     || action == Action.CRITICAL && (itemSlot < 0 || ammoSlot != -1 || actionItem == null)
                     || action == Action.RANGED && (itemSlot < 0 || ammoSlot < 0 || actionItem == null)
+                    || action == Action.RANGED_DRAW && (itemSlot < 0 || ammoSlot < 0 || actionItem == null)
                     || action == Action.CONSUMABLE && (itemSlot < 0 || ammoSlot != -1 || actionItem == null)
                     || action == Action.SHIELD && (itemSlot < 0 || ammoSlot != -1 || actionItem == null)
                     || (action == Action.WIND_CHARGE || action == Action.SPLASH)
@@ -460,6 +468,43 @@ public final class EchoDuelCombatRuntimeAdapter {
             long actorPhase = actorPhase(duel.duelId(), duel.actor().actorUuid());
             MovementIntent intent = movementIntent(duel.behaviorStrategy(), observation, wounded,
                     canHeal, rangedAvailable, actorPhase);
+            // E-05: a bow draw / crossbow load started on an earlier tick resolves
+            // HERE, at its own persisted deadline. The arrow leaves only now, so
+            // the copy can never fire a max-power shot on the tick it decided to
+            // shoot. An interrupted draw (line of sight lost, target out of band,
+            // weapon or ammunition gone) is cancelled without spending the arrow
+            // or opening the ranged cadence.
+            if (duel.actor().rangedChargeUntilTick() > 0L) {
+                boolean shotStillLegal = rangedSlot >= 0 && ammoSlot >= 0
+                        && observation.lineOfSight()
+                        && observation.distanceSquared()
+                        <= RANGED_RANGE_BLOCKS * (double) RANGED_RANGE_BLOCKS;
+                if (!shotStillLegal) {
+                    Optional<ActorState> cancelled =
+                            EchoDuelCombatPolicy.cancelRangedDraw(duel.actor());
+                    if (cancelled.isPresent()) {
+                        return decision(duel, baselineReplica, replica, scope, Action.NONE,
+                                cancelled.get(), -1, -1, null, intent);
+                    }
+                } else if (EchoDuelCombatPolicy.rangedReadyToRelease(
+                        duel.actor(), observation.tick())) {
+                    Optional<ActorState> released = EchoDuelCombatPolicy.tryReleaseRanged(
+                            duel.actor(), replica, rangedSlot, ammoSlot, replica.revision(),
+                            observation.tick(), rangedCooldowns);
+                    if (released.isPresent()) {
+                        EchoLoadoutState.Item item = replica.item(rangedSlot);
+                        if (!EchoDuelCombatPolicy.tryApplyGearWear(
+                                replica, rangedSlot, 1, replica.revision())) return Optional.empty();
+                        return decision(duel, baselineReplica, replica, scope, Action.RANGED,
+                                released.get(), rangedSlot, ammoSlot, item, intent);
+                    }
+                } else {
+                    // Still drawing: the RANGED_DRAW pose persists, and a tick that
+                    // changes nothing needs no durable checkpoint churn.
+                    return Optional.of(new Decision(scope, Action.NONE, duel, duel,
+                            baselineReplica, replica, -1, -1, null, intent));
+                }
+            }
             if (duel.actor().shieldActiveUntilTick() > observation.tick()) {
                 return Optional.of(new Decision(scope, Action.NONE, duel, duel, baselineReplica,
                         replica, -1, -1, null, intent));
@@ -587,13 +632,14 @@ public final class EchoDuelCombatRuntimeAdapter {
             if (rangedSlot >= 0 && ammoSlot >= 0 && observation.lineOfSight()
                     && observation.distanceSquared() <= RANGED_RANGE_BLOCKS * (double) RANGED_RANGE_BLOCKS) {
                 EchoLoadoutState.Item item = replica.item(rangedSlot);
-                Optional<ActorState> actor = EchoDuelCombatPolicy.tryStartRanged(
+                // E-05: begin the draw/load. Nothing is spent yet: the shot is
+                // released at the persisted charge deadline handled above, so a
+                // cancelled draw costs no arrow and no cadence.
+                Optional<ActorState> actor = EchoDuelCombatPolicy.tryStartRangedDraw(
                         duel.actor(), replica, rangedSlot, ammoSlot, replica.revision(),
-                        observation.tick(), rangedCooldowns);
+                        observation.tick(), rangedCooldowns.rangedTicks(), rangedCooldowns);
                 if (actor.isPresent()) {
-                    if (!EchoDuelCombatPolicy.tryApplyGearWear(
-                            replica, rangedSlot, 1, replica.revision())) return Optional.empty();
-                    return decision(duel, baselineReplica, replica, scope, Action.RANGED, actor.get(),
+                    return decision(duel, baselineReplica, replica, scope, Action.RANGED_DRAW, actor.get(),
                             rangedSlot, ammoSlot, item, intent);
                 }
             }
@@ -765,7 +811,8 @@ public final class EchoDuelCombatRuntimeAdapter {
                 horizon(counter, COOLDOWNS.rangedTicks(), actor.rangedCooldownUntilTick()),
                 horizon(counter, COOLDOWNS.consumableUseTicks(), actor.pendingUseUntilTick()),
                 actor.deathSerial(), shieldActiveUntil, shieldCooldownUntil,
-                horizon(counter, COOLDOWNS.jumpCooldownTicks(), actor.jumpCooldownUntilTick()));
+                horizon(counter, COOLDOWNS.jumpCooldownTicks(), actor.jumpCooldownUntilTick()),
+                horizon(counter, MAX_RANGED_DRAW_TICKS, actor.rangedChargeUntilTick()));
     }
 
     /** A saved deadline kept only while it still fits the live counter plus its own duration. */
@@ -825,7 +872,7 @@ public final class EchoDuelCombatRuntimeAdapter {
                     before.nextActionTick(), before.meleeCooldownUntilTick(),
                     before.rangedCooldownUntilTick(), before.pendingUseUntilTick(), before.deathSerial(),
                     before.shieldActiveUntilTick(), before.shieldCooldownUntilTick(),
-                    before.jumpCooldownUntilTick());
+                    before.jumpCooldownUntilTick(), before.rangedChargeUntilTick());
             DuelRecord refunded = charged.withActor(charged.runtimeGeneration(),
                     prior.ownerStartingHealth(), prior.ownerMaximumHealth(), prior.returnDeadlineMillis(),
                     refundedActor, charged.revision() + 1L, refundedReplica.revision(),
@@ -872,6 +919,7 @@ public final class EchoDuelCombatRuntimeAdapter {
         return new ActorState(actor.actorUuid(), health, actor.maximumHealth(), actor.lifecycle(),
                 actor.revision(), actor.nextActionTick(), actor.meleeCooldownUntilTick(),
                 actor.rangedCooldownUntilTick(), actor.pendingUseUntilTick(), actor.deathSerial(),
-                actor.shieldActiveUntilTick(), actor.shieldCooldownUntilTick(), actor.jumpCooldownUntilTick());
+                actor.shieldActiveUntilTick(), actor.shieldCooldownUntilTick(),
+                actor.jumpCooldownUntilTick(), actor.rangedChargeUntilTick());
     }
 }

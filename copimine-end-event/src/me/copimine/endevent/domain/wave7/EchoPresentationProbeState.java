@@ -23,6 +23,16 @@ public final class EchoPresentationProbeState {
     private Action action = Action.IDLE;
     private long actionTick, sequence, swingSerial, hurtSerial, deathTick = -1;
     private int equipmentVersion;
+    /**
+     * E-05: how long the current item use is actually meant to last.
+     *
+     * <p>A bow draw is a real item use: the client keeps the bow pulled exactly
+     * while {@code useDuration > 0}, so the fixed 32/25-tick presentation
+     * windows would make a heavy draw (up to 60 ticks) visibly finish and lower
+     * the bow before the shot. The action still begins once; only its window is
+     * the operator's own recorded charge.</p>
+     */
+    private int useDurationOverride;
     private String shieldHand = "OFF";
     private boolean closed;
 
@@ -47,9 +57,19 @@ public final class EchoPresentationProbeState {
     }
 
     public boolean begin(Action requested, long tick) {
-        return begin(requested, tick, "OFF");
+        return begin(requested, tick, "OFF", 0);
     }
     public boolean begin(Action requested, long tick, String requestedShieldHand) {
+        return begin(requested, tick, requestedShieldHand, 0);
+    }
+    /**
+     * Starts a pose and, for a real item use, records how long that use lasts.
+     *
+     * @param requestedUseDurationTicks the charge window the pose must cover, or
+     *                                  {@code 0} for the action's own default
+     */
+    public boolean begin(Action requested, long tick, String requestedShieldHand,
+                         int requestedUseDurationTicks) {
         if (closed) return false;
         if (!canProduceFrame() || equipmentVersion == Integer.MAX_VALUE
                 || requested == Action.SWING && swingSerial == Long.MAX_VALUE) {
@@ -57,9 +77,11 @@ public final class EchoPresentationProbeState {
             return false;
         }
         if (deathTick >= 0 || requested == null || tick < actionTick
-                || !"MAIN".equals(requestedShieldHand) && !"OFF".equals(requestedShieldHand)) return false;
+                || !"MAIN".equals(requestedShieldHand) && !"OFF".equals(requestedShieldHand)
+                || requestedUseDurationTicks < 0 || requestedUseDurationTicks > 72_000) return false;
         action = requested; actionTick = tick; equipmentVersion++;
         shieldHand = requestedShieldHand;
+        useDurationOverride = requestedUseDurationTicks;
         if (requested == Action.SWING) swingSerial++;
         return true;
     }
@@ -100,6 +122,9 @@ public final class EchoPresentationProbeState {
             case SHIELD -> 72_000;
             default -> 0;
         };
+        // E-05: a bow/crossbow draw keeps the item-use window for its real
+        // charge instead of the fixed presentation default.
+        if (deathTick < 0 && useDurationOverride > 0) duration = useDurationOverride;
         long elapsed = Math.max(0, tick - actionTick);
         if (duration != 0 && elapsed >= duration) duration = 0;
         String hand = duration == 0 ? "NONE" : action == Action.SHIELD ? shieldHand : "MAIN";

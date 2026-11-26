@@ -38609,6 +38609,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (decision.action() == EchoDuelCombatRuntimeAdapter.Action.MELEE
                 || decision.action() == EchoDuelCombatRuntimeAdapter.Action.CRITICAL
                 || decision.action() == EchoDuelCombatRuntimeAdapter.Action.RANGED
+                || decision.action() == EchoDuelCombatRuntimeAdapter.Action.RANGED_DRAW
                 || decision.action() == EchoDuelCombatRuntimeAdapter.Action.CONSUMABLE
                 || decision.action() == EchoDuelCombatRuntimeAdapter.Action.SHIELD
                 || decision.action() == EchoDuelCombatRuntimeAdapter.Action.JUMP) return;
@@ -38764,6 +38765,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || !next.actor().actorUuid().equals(carrier.getUniqueId())) return false;
         if (!realitySplitTrialController.registerPersonalEchoDuel(next)) return false;
         if (!saveStateSync()) return false;
+        // E-05: a cancelled draw (lost line of sight, target out of band, weapon
+        // or ammunition gone) lowers the bow immediately instead of leaving it
+        // raised for the rest of the abandoned charge window.
+        if (prior.actor().rangedChargeUntilTick() > 0L
+                && next.actor().rangedChargeUntilTick() == 0L) {
+            EchoPresentationProbeState view =
+                    namedEchoPresentationStates.get(carrier.getUniqueId());
+            if (view != null) view.begin(EchoPresentationProbeState.Action.IDLE, eventTickCounter);
+        }
         double restored = next.actor().currentHealth();
         if (!Double.isFinite(restored) || restored <= carrier.getHealth()
                 || restored > carrier.getMaxHealth()) return true;
@@ -38934,6 +38944,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             carrier.getEquipment().setItemInMainHand(actionItem);
         }
         switch (decision.action()) {
+            // E-05: a bow draw / crossbow load equips the weapon and holds the aim
+            // pose. Nothing is fired here; the shot is released on a later tick
+            // once the persisted charge deadline elapses, which is what removes
+            // the old "instant max-power arrow on the decision tick" behaviour.
+            case RANGED_DRAW -> { }
             case MELEE, CRITICAL -> {
                 boolean critical = decision.action() == EchoDuelCombatRuntimeAdapter.Action.CRITICAL;
                 if (decision.actionItem().kind() != me.copimine.endevent.domain.wave7.EchoLoadoutState.Kind.MELEE
@@ -39162,7 +39177,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (view != null) {
             EchoPresentationProbeState.Action pose = switch (decision.action()) {
                 case MELEE, CRITICAL -> EchoPresentationProbeState.Action.SWING;
-                case RANGED -> decision.actionItem().kind()
+                case RANGED, RANGED_DRAW -> decision.actionItem().kind()
                         == me.copimine.endevent.domain.wave7.EchoLoadoutState.Kind.CROSSBOW
                         ? EchoPresentationProbeState.Action.CROSSBOW : EchoPresentationProbeState.Action.BOW;
                 case CONSUMABLE -> EchoPresentationProbeState.Action.EAT;
@@ -39174,8 +39189,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 case JUMP -> EchoPresentationProbeState.Action.JUMP;
                 case NONE -> EchoPresentationProbeState.Action.IDLE;
             };
-            if (pose == EchoPresentationProbeState.Action.SHIELD) view.begin(pose, eventTickCounter, "OFF");
-            else view.begin(pose, eventTickCounter);
+            // E-05: a draw is a real item use, so its pose must cover the whole
+            // recorded charge. The release re-poses with the shot window.
+            int drawWindow = 0;
+            if (decision.action() == EchoDuelCombatRuntimeAdapter.Action.RANGED_DRAW) {
+                long remaining = decision.nextDuel().actor().rangedChargeUntilTick() - eventTickCounter;
+                if (remaining > 0L && remaining <= 72_000L) drawWindow = (int) remaining;
+            }
+            if (pose == EchoPresentationProbeState.Action.SHIELD) view.begin(pose, eventTickCounter, "OFF", drawWindow);
+            else view.begin(pose, eventTickCounter, "MAIN", drawWindow);
         }
         return true;
     }

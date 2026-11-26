@@ -27,6 +27,7 @@ public final class EchoDuelCombatPolicyTest {
     public static void main(String[] args) {
         finiteResourcesWearAndRebindPersistence();
         actionCooldownsGateAndRestore();
+        rangedDrawLifecycleCancelsAndCharges();
         rejectInvalidInputsWithoutSpending();
         System.out.println("EchoDuelCombatPolicyTest OK assertions=" + assertions);
     }
@@ -35,33 +36,50 @@ public final class EchoDuelCombatPolicyTest {
         Fixture fixture = activeFixture();
         EchoLoadoutState supplies = restoreLoadout(fixture.duel());
 
-        ActorState firstRanged = EchoDuelCombatPolicy.tryStartRanged(fixture.duel().actor(), supplies, 3, 4,
-                supplies.revision(), 100, cooldowns()).orElseThrow();
-        check(firstRanged.rangedCooldownUntilTick() == 110,
-                "ranged action atomically spends one finite arrow and records its deadline");
-        check(supplies.remaining(4) == 1, "one of two arrows remains after a successful shot");
-        check(EchoDuelCombatPolicy.tryStartRanged(firstRanged, supplies, 3, 4,
-                        supplies.revision(), 100, cooldowns()).isEmpty(),
-                "same-tick second shot is rejected by the action cooldown");
-        check(supplies.remaining(4) == 1, "rejected shot does not consume another arrow");
-
-        ActorState afterRanged = EchoDuelCombatPolicy.tryStartRanged(firstRanged, supplies, 3, 4,
+        // E-05: a bow draw starts without spending the arrow, and only the release
+        // at the recorded draw deadline spends it and opens the ranged cadence.
+        ActorState drawing = EchoDuelCombatPolicy.tryStartRangedDraw(fixture.duel().actor(), supplies,
+                3, 4, supplies.revision(), 100, cooldowns().rangedTicks(), cooldowns()).orElseThrow();
+        check(drawing.rangedChargeUntilTick() == 110,
+                "a bow draw records its own release deadline without spending the arrow");
+        check(drawing.rangedCooldownUntilTick() == 0,
+                "starting a draw does not open the ranged cadence yet");
+        check(supplies.remaining(4) == 2, "starting a draw spends no arrows");
+        check(EchoDuelCombatPolicy.tryReleaseRanged(drawing, supplies, 3, 4,
+                        supplies.revision(), 105, cooldowns()).isEmpty(),
+                "a shot before the charge deadline is refused");
+        check(supplies.remaining(4) == 2, "an early release attempt spends no arrow");
+        ActorState firstRanged = EchoDuelCombatPolicy.tryReleaseRanged(drawing, supplies, 3, 4,
                 supplies.revision(), 110, cooldowns()).orElseThrow();
+        check(firstRanged.rangedChargeUntilTick() == 0,
+                "release clears the persisted charge");
+        check(firstRanged.rangedCooldownUntilTick() == 110 && firstRanged.nextActionTick() == 112,
+                "release spends one arrow and leaves the shared gate as the only recovery");
+        check(supplies.remaining(4) == 1, "one of two arrows remains after a successful shot");
+        check(EchoDuelCombatPolicy.tryStartRangedDraw(firstRanged, supplies, 3, 4,
+                        supplies.revision(), 110, cooldowns().rangedTicks(), cooldowns()).isEmpty(),
+                "same-tick redraw is rejected by the ranged action cooldown");
+        check(supplies.remaining(4) == 1, "rejected draw does not consume another arrow");
+
+        ActorState redraw = EchoDuelCombatPolicy.tryStartRangedDraw(firstRanged, supplies, 3, 4,
+                supplies.revision(), 120, cooldowns().rangedTicks(), cooldowns()).orElseThrow();
+        ActorState afterRanged = EchoDuelCombatPolicy.tryReleaseRanged(redraw, supplies, 3, 4,
+                supplies.revision(), 130, cooldowns()).orElseThrow();
         check(supplies.remaining(4) == 0, "second accepted shot exhausts the arrow stack");
-        check(EchoDuelCombatPolicy.tryStartRanged(afterRanged, supplies, 3, 4,
-                        supplies.revision(), 120, cooldowns()).isEmpty(),
-                "empty ammunition prevents another ranged action");
+        check(EchoDuelCombatPolicy.tryStartRangedDraw(afterRanged, supplies, 3, 4,
+                        supplies.revision(), 140, cooldowns().rangedTicks(), cooldowns()).isEmpty(),
+                "empty ammunition prevents another draw");
 
         long staleRevision = supplies.revision() - 1;
         check(EchoDuelCombatPolicy.tryStartConsumable(afterRanged, supplies, 5,
-                        staleRevision, 120, cooldowns()).isEmpty(),
+                        staleRevision, 140, cooldowns()).isEmpty(),
                 "stale replica revision cannot spend a consumable");
         check(supplies.remaining(5) == 1, "stale consumable attempt leaves food unchanged");
         ActorState afterFood = EchoDuelCombatPolicy.tryStartConsumable(afterRanged, supplies, 5,
-                supplies.revision(), 120, cooldowns()).orElseThrow();
+                supplies.revision(), 140, cooldowns()).orElseThrow();
         check(supplies.remaining(5) == 0, "accepted food use spends exactly one food item");
         check(EchoDuelCombatPolicy.tryStartConsumable(afterFood, supplies, 5,
-                        supplies.revision(), 130, cooldowns()).isEmpty(),
+                        supplies.revision(), 150, cooldowns()).isEmpty(),
                 "empty food stack cannot be duplicated");
 
         // The replica carries only what its owner held: the reserved slot is
@@ -69,13 +87,13 @@ public final class EchoDuelCombatPolicyTest {
         // consumable request there is rejected instead of granting free healing.
         ActorState afterAppleAttempt = afterFood;
         check(EchoDuelCombatPolicy.tryStartConsumable(afterAppleAttempt, supplies, 41,
-                        supplies.revision(), 140, cooldowns()).isEmpty(),
+                        supplies.revision(), 150, cooldowns()).isEmpty(),
                 "the empty reserved slot grants no healing the owner never carried");
         check(supplies.remaining(41) == 0, "the reserved slot holds no invented golden apples");
 
         long beforeWrongKind = supplies.revision();
-        check(EchoDuelCombatPolicy.tryStartRanged(afterAppleAttempt, supplies, 0, 4,
-                        beforeWrongKind, 170, cooldowns()).isEmpty(),
+        check(EchoDuelCombatPolicy.tryStartRangedDraw(afterAppleAttempt, supplies, 0, 4,
+                        beforeWrongKind, 170, cooldowns().rangedTicks(), cooldowns()).isEmpty(),
                 "melee gear cannot act as the ranged weapon");
         check(supplies.revision() == beforeWrongKind, "wrong resource kind does not advance revision");
 
@@ -126,32 +144,46 @@ public final class EchoDuelCombatPolicyTest {
     private static void actionCooldownsGateAndRestore() {
         Fixture fixture = activeFixture();
         ActorState initial = fixture.duel().actor();
-        ActorState ranged = EchoDuelCombatPolicy.tryStartRanged(initial, restoreLoadout(fixture.duel()), 3, 4,
-                0, 100, cooldowns()).orElseThrow();
-        check(ranged.nextActionTick() == 102 && ranged.rangedCooldownUntilTick() == 110,
-                "ranged start records shared and ranged deadlines");
-        check(ranged.meleeCooldownUntilTick() == 0 && ranged.pendingUseUntilTick() == 0,
-                "ranged start preserves unrelated action and use state");
-        check(EchoDuelCombatPolicy.tryStartMelee(ranged, 101, cooldowns()).isEmpty(),
+        // E-05: the draw opens the shared gate and records the charge deadline
+        // only; the ranged cadence opens at the actual release.
+        ActorState drawing = EchoDuelCombatPolicy.tryStartRangedDraw(initial,
+                restoreLoadout(fixture.duel()), 3, 4, 0, 100, cooldowns().rangedTicks(),
+                cooldowns()).orElseThrow();
+        check(drawing.nextActionTick() == 102 && drawing.rangedChargeUntilTick() == 110,
+                "a draw records the shared gate and the charge deadline");
+        check(drawing.rangedCooldownUntilTick() == 0,
+                "a draw does not open the ranged cadence");
+        check(drawing.meleeCooldownUntilTick() == 0 && drawing.pendingUseUntilTick() == 0,
+                "a draw preserves unrelated action and use state");
+        check(EchoDuelCombatPolicy.tryStartMelee(drawing, 101, cooldowns()).isEmpty(),
                 "shared action gate blocks an early melee action");
-        check(EchoDuelCombatPolicy.tryStartRanged(ranged, restoreLoadout(fixture.duel()), 3, 4,
-                        0, 102, cooldowns()).isEmpty(),
-                "ranged-specific deadline blocks an early follow-up shot");
+        ActorState ranged = EchoDuelCombatPolicy.tryReleaseRanged(drawing,
+                restoreLoadout(fixture.duel()), 3, 4, 0, 110, cooldowns()).orElseThrow();
+        check(ranged.nextActionTick() == 112 && ranged.rangedCooldownUntilTick() == 110,
+                "release records the shared gate without a second ranged lockout");
+        // The recorded charge, not a duplicated recovery, paces the next shot:
+        // the shared action gate is the only interval the release opens.
+        check(EchoDuelCombatPolicy.tryStartRangedDraw(ranged, restoreLoadout(fixture.duel()),
+                        3, 4, 0, 111, cooldowns().rangedTicks(), cooldowns()).isEmpty(),
+                "the shared action gate blocks a redraw one tick after release");
+        check(EchoDuelCombatPolicy.tryStartRangedDraw(ranged, restoreLoadout(fixture.duel()),
+                        3, 4, 0, 112, cooldowns().rangedTicks(), cooldowns()).isPresent(),
+                "a redraw is legal the tick the shared gate reopens");
 
-        ActorState melee = EchoDuelCombatPolicy.tryStartMelee(ranged, 102, cooldowns()).orElseThrow();
-        check(melee.meleeCooldownUntilTick() == 108 && melee.rangedCooldownUntilTick() == 110,
-                "melee action sets only the melee deadline and preserves ranged deadline");
-        check(EchoDuelCombatPolicy.tryStartMelee(melee, 104, cooldowns()).isEmpty(),
+        ActorState melee = EchoDuelCombatPolicy.tryStartMelee(ranged, 112, cooldowns()).orElseThrow();
+        check(melee.meleeCooldownUntilTick() == 118 && melee.rangedCooldownUntilTick() == 110,
+                "melee action sets only the melee deadline and preserves the release tick");
+        check(EchoDuelCombatPolicy.tryStartMelee(melee, 114, cooldowns()).isEmpty(),
                 "melee-specific deadline blocks an early follow-up swing");
 
         EchoLoadoutState supplies = restoreLoadout(fixture.duel());
         ActorState using = EchoDuelCombatPolicy.tryStartConsumable(melee, supplies, 5,
-                supplies.revision(), 104, cooldowns()).orElseThrow();
-        check(using.pendingUseUntilTick() == 109,
+                supplies.revision(), 118, cooldowns()).orElseThrow();
+        check(using.pendingUseUntilTick() == 123,
                 "consumable start persists its pending-use completion tick");
-        check(EchoDuelCombatPolicy.tryStartMelee(using, 108, cooldowns()).isEmpty(),
+        check(EchoDuelCombatPolicy.tryStartMelee(using, 122, cooldowns()).isEmpty(),
                 "pending consumable use blocks attacks before completion");
-        ActorState afterPending = EchoDuelCombatPolicy.tryStartMelee(using, 109, cooldowns()).orElseThrow();
+        ActorState afterPending = EchoDuelCombatPolicy.tryStartMelee(using, 123, cooldowns()).orElseThrow();
         check(afterPending.pendingUseUntilTick() == using.pendingUseUntilTick(),
                 "completed pending use remains recorded while the next action begins");
         check(afterPending.revision() == using.revision() + 1,
@@ -166,19 +198,55 @@ public final class EchoDuelCombatPolicyTest {
         check(restoredActor.nextActionTick() == using.nextActionTick()
                         && restoredActor.meleeCooldownUntilTick() == using.meleeCooldownUntilTick()
                         && restoredActor.rangedCooldownUntilTick() == using.rangedCooldownUntilTick()
-                        && restoredActor.pendingUseUntilTick() == using.pendingUseUntilTick(),
+                        && restoredActor.pendingUseUntilTick() == using.pendingUseUntilTick()
+                        && restoredActor.rangedChargeUntilTick() == using.rangedChargeUntilTick(),
                 "named snapshot restores all action and pending-use deadlines exactly");
-        check(EchoDuelCombatPolicy.tryStartMelee(restoredActor, 108, cooldowns()).isEmpty(),
+        check(EchoDuelCombatPolicy.tryStartMelee(restoredActor, 122, cooldowns()).isEmpty(),
                 "restored cooldown continues to block the action before its deadline");
-        check(EchoDuelCombatPolicy.tryStartMelee(restoredActor, 110, cooldowns()).isPresent(),
+        check(EchoDuelCombatPolicy.tryStartMelee(restoredActor, 123, cooldowns()).isPresent(),
                 "restored melee action becomes available at the persisted deadline");
+    }
+
+    private static void rangedDrawLifecycleCancelsAndCharges() {
+        Fixture fixture = activeFixture();
+        EchoLoadoutState supplies = restoreLoadout(fixture.duel());
+        // A draw in flight cancels without spending the arrow or opening the cadence.
+        ActorState drawing = EchoDuelCombatPolicy.tryStartRangedDraw(fixture.duel().actor(), supplies,
+                3, 4, supplies.revision(), 200, 25, cooldowns()).orElseThrow();
+        check(drawing.rangedChargeUntilTick() == 225,
+                "a draw records its crossbow-length charge deadline");
+        check(drawing.rangedCooldownUntilTick() == 0, "a draw opens no ranged cadence");
+        long arrowsBefore = supplies.remaining(4);
+        ActorState cancelled = EchoDuelCombatPolicy.cancelRangedDraw(drawing).orElseThrow();
+        check(cancelled.rangedChargeUntilTick() == 0, "cancelling a draw clears the charge");
+        check(supplies.remaining(4) == arrowsBefore, "cancelling a draw spends no arrow");
+        check(cancelled.rangedCooldownUntilTick() == 0, "cancelling a draw opens no ranged cadence");
+        check(!EchoDuelCombatPolicy.rangedReadyToRelease(cancelled, 999),
+                "a cancelled draw is never release-ready");
+        check(EchoDuelCombatPolicy.cancelRangedDraw(cancelled).isEmpty(),
+                "cancelling a draw twice fails closed");
+        // A draw in flight cannot be restarted, and is only release-ready at its own deadline.
+        check(EchoDuelCombatPolicy.tryStartRangedDraw(drawing, supplies, 3, 4, supplies.revision(),
+                        210, 10, cooldowns()).isEmpty(), "a draw in flight blocks a second draw");
+        check(!EchoDuelCombatPolicy.rangedReadyToRelease(drawing, 224),
+                "a draw is not release-ready before its deadline");
+        check(EchoDuelCombatPolicy.rangedReadyToRelease(drawing, 225),
+                "a draw is release-ready at its exact deadline");
+
+        DuelRecord charged = persist(fixture.duel(), drawing, supplies);
+        NamedData data = withDuel(fixture.data(), fixture.room(), fixture.owner(), charged);
+        NamedData decoded = RealitySplitTrialSnapshot.decodeNamed(
+                RealitySplitTrialSnapshot.encodeNamed(data), EVENT, ATTEMPT, RUNTIME);
+        ActorState restored = decoded.personalEchoDuels().get(fixture.room()).get(fixture.owner()).actor();
+        check(restored.rangedChargeUntilTick() == 225,
+                "a nonzero charge deadline survives the durable named snapshot");
     }
 
     private static void rejectInvalidInputsWithoutSpending() {
         Fixture fixture = activeFixture();
         EchoLoadoutState supplies = restoreLoadout(fixture.duel());
-        check(EchoDuelCombatPolicy.tryStartRanged(fixture.duel().actor(), supplies, 3, 4,
-                        supplies.revision() + 1, 100, cooldowns()).isEmpty(),
+        check(EchoDuelCombatPolicy.tryStartRangedDraw(fixture.duel().actor(), supplies, 3, 4,
+                        supplies.revision() + 1, 100, cooldowns().rangedTicks(), cooldowns()).isEmpty(),
                 "future replica revision fails closed");
         check(supplies.remaining(4) == 2, "revision mismatch leaves all arrows intact");
         check(EchoDuelCombatPolicy.tryStartMelee(null, 100, cooldowns()).isEmpty(),

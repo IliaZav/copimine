@@ -35,7 +35,7 @@ never a pass without real Minecraft 26.3 evidence.
 | V7-13 | Warden: real base, 5×4, 20t/60t, R6 through-wall, resonance counterplay | W5.1 Warden runtime | `test_warden_v5_runtime.py` | SRC+TEST (native BLOCKED) |
 | V7-14 | Archmage: frequent bounded Vexes, 3-block fang line, crown gap, staff | Archmage runtime | `test_wave7_archmage_*` | SRC+TEST (native BLOCKED; low-HP cadence pending owner approval) |
 | V7-15 | Distinct skeleton models/arrows, textured bars, no Echo bar | active 26.3 client | `SpellVisualGeometryTest`, `GuardianSpellMeshTest` | IMPLEMENTED_UNVERIFIED (Wave7 V4 ZIP content not extractable; native BLOCKED) |
-| V7-16 | Echo AI: 4 distinct + hybrid profiles, independent tactics, finite resources | `runtime/wave7/EchoDuelCombatRuntimeAdapter`, `domain/wave7/EchoBehaviorStrategy`, `EchoDuelCombatPolicy`, `EventCombatProfileService` | `EchoDuelCombatRuntimeAdapterTest` (91 assertions), `EchoWoundedRetreatTest` (actor-phase lockstep divergence), `EchoBehaviorPersonalisationTest` (115 assertions: personalised heal threshold, axe-vs-sword preference, melee + ranged cadence), `EchoBehaviorStrategyTest` (schema-2→3 migration), `EchoDuelCapabilityPolicyTest` | IMPLEMENTED_UNVERIFIED (E-02 navigation dead zones + E-03 actor-local phase + E-04 confidence-blended weapon/cadence/sustain evidence + E-05 ranged draw/charge cadence fixed 2026-11-26; full E-05 action-lifecycle executor open; native BLOCKED) |
+| V7-16 | Echo AI: 4 distinct + hybrid profiles, independent tactics, finite resources | `runtime/wave7/EchoDuelCombatRuntimeAdapter`, `domain/wave7/EchoBehaviorStrategy`, `EchoDuelCombatPolicy`, `EventCombatProfileService` | `EchoDuelCombatRuntimeAdapterTest` (100 assertions), `EchoWoundedRetreatTest` (actor-phase lockstep divergence), `EchoBehaviorPersonalisationTest` (115 assertions: personalised heal threshold, axe-vs-sword preference, melee + ranged draw cadence), `EchoBehaviorStrategyTest` (schema-2→3 migration), `EchoDuelCapabilityPolicyTest` | IMPLEMENTED_UNVERIFIED (E-02 navigation dead zones + E-03 actor-local phase + E-04 confidence-blended weapon/cadence/sustain evidence + E-05 ranged draw/charge cadence + E-05 draw→release/cancel lifecycle 2026-11-26; throttled diagnostics open; native BLOCKED) |
 | V7-17 | Two Echo modes: Wave 7 duel + rare Phase 5 summon, no teleport-to-room | Wave 7 `EchoDuelCombatRuntimeAdapter`; Phase 5 `spawnEchoClone` | — | NOT_IMPLEMENTED (Phase 5 still uses simplified `spawnEchoClone`; E-01 call-graph replacement open) |
 | V7-18 | Guardian phases 1–5: real HP/damage/hurt, grounded, 4 physical attacks | EndEvent boss runtime | boss phase probes | SRC+TEST (native BLOCKED) |
 | V7-19 | Phases 3–4: geysers + temporary blocks, rare ring/forge, no spam | EndEvent hazard runtime | wave timing probes | IMPLEMENTED_UNVERIFIED (overlapping hazard batches remain open per V6 ledger) |
@@ -84,8 +84,8 @@ never a pass without real Minecraft 26.3 evidence.
   carries the vanilla 20-tick full draw, so its ranged cooldown is 20 — matching
   the melee neutral (20↔20) rather than the former fixed 40.
 - Regression: `EchoBehaviorPersonalisationTest.rangedCadencePersonalisesRangedCooldown`
-  (12-tick snap-shooter fires on tick 112, 55-tick heavy drawer on tick 155 under
-  one identical observation) plus the updated exact checkpoints in
+  (12-tick snap-shooter's draw completes on tick 112, 55-tick heavy drawer's on
+  tick 155 under one identical observation) plus the updated exact checkpoints in
   `EchoDuelCombatRuntimeAdapterTest.acceptedRangedActionsAreScopedAndDurablySpendSupplies`.
   Result: `EchoBehaviorPersonalisationTest OK assertions=115`.
 
@@ -105,9 +105,55 @@ never a pass without real Minecraft 26.3 evidence.
   legacy upgrade; `EchoDuelCombatPolicyTest` round-trips all 14 fields.
   Result: `EchoDuelCombatPolicyTest OK assertions=45`,
   `EchoDuelCombatRuntimeAdapterTest OK assertions=91`, focused suite green.
-- Open: the decision/executor layer still fires a single-tick RANGED release;
-  wiring the draw→release state machine through `EchoDuelCombatPolicy` and the
-  server executor is the remaining E-05 increment (tracked under V7-16).
+- Open (now closed by the E-05 lifecycle entry below): the decision/executor
+  layer used to fire a single-tick RANGED release; the draw→release state
+  machine is now wired through `EchoDuelCombatPolicy` and the server executor.
+
+### E-05 (lifecycle) — Instant max-power shot on the decision tick (`domain/wave7/EchoDuelCombatPolicy`, `runtime/wave7/EchoDuelCombatRuntimeAdapter`, `domain/wave7/EchoPresentationProbeState`)
+- Root cause: `tryStartRanged` spent the arrow, opened the ranged cadence and
+  fired the projectile on the very tick the copy decided to shoot. A bow can
+  never release before it has been drawn, so every Echo archer had a
+  frame-perfect, zero-charge max-power shot the owner could not match — and an
+  interrupted draw (target left the band, line of sight broke, bow broke, quiver
+  emptied) had already eaten the arrow.
+- Fix: the ranged path is now a real lifecycle.
+  - `tryStartRangedDraw` opens the draw: it records `rangedChargeUntilTick`
+    (tick + the owner's recorded draw/charge) and spends **nothing**.
+  - While the draw is in flight the adapter holds the aim (`Action.NONE`, no
+    durable churn) unless the shot stopped being legal.
+  - `rangedReadyToRelease` gates the release on the persisted deadline;
+    `tryReleaseRanged` then spends exactly one arrow, applies the bow wear and
+    clears the charge. The draw already consumed the recorded charge, so the
+    release opens no second lockout — the shared action gate is the only
+    recovery, which keeps the archer's interval exactly the recorded charge
+    instead of silently doubling it.
+  - `cancelRangedDraw` abandons an illegal draw without spending the arrow or
+    opening the cadence; the monolith lowers the bow immediately.
+  - A new `Action.RANGED_DRAW` carries the aim pose through the executor and
+    `driveNamedEchoGait`. `EchoPresentationProbeState.begin` gained a bounded
+    item-use window so a heavy draw (up to 60 ticks) keeps the bow visibly
+    pulled for its whole charge instead of lowering it at the fixed 32/25-tick
+    default.
+  - The persisted charge deadline is rebased on restart with the 60-tick
+    personalisation ceiling, so a cold restart can neither invent an extra-long
+    draw nor fire before the operator's own cadence.
+- Regression: `EchoDuelCombatPolicyTest.finiteResourcesWearAndRebindPersistence`
+  (draw spends no arrow, early release is refused, release at the exact
+  deadline spends one), `EchoDuelCombatPolicyTest.rangedDrawLifecycleCancelsAndCharges`
+  (cancel spends nothing, double-cancel fails closed, draw-in-flight blocks a
+  second draw, nonzero charge survives the named snapshot),
+  `EchoDuelCombatPolicyTest.actionCooldownsGateAndRestore` (the shared gate paces
+  the redraw), `EchoDuelCombatRuntimeAdapterTest.acceptedRangedActionsAreScopedAndDurablySpendSupplies`
+  (draw → hold → release → cooldown across a durable snapshot),
+  `EchoBehaviorPersonalisationTest.rangedCadencePersonalisesRangedCooldown`
+  (draw completion 112/155 for the snap-shooter/heavy drawer),
+  `test_wave7_echo_presentation_probe.py[draw-window]` (55-tick draw window and
+  the 72 000-tick wire ceiling).
+- Result: `EchoDuelCombatPolicyTest OK assertions=65`,
+  `EchoDuelCombatRuntimeAdapterTest OK assertions=100`,
+  `EchoBehaviorPersonalisationTest OK assertions=115`, presentation probe 11/11
+  scenarios, focused suite green. Native draw/shoot capture remains BLOCKED (no
+  graphical Fabric client in this environment).
 
 ### E-06 (part) — Duplicate private-loadout serialisation on the decision hot path (`runtime/wave7/EchoDuelCombatRuntimeAdapter`)
 - Root cause: `tick` serialised the 42-slot private replica twice per decision —

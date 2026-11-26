@@ -53,8 +53,8 @@ public final class EchoBehaviorPersonalisationTest {
 
         check(near.action() == Action.MELEE || near.action() == Action.CRITICAL,
                 "a melee original must swing in melee range, got " + near.action());
-        check(far.action() == Action.RANGED,
-                "a ranged original must shoot from its own band, got " + far.action());
+        check(far.action() == Action.RANGED_DRAW,
+                "a ranged original must start a draw from its own band, got " + far.action());
 
         Decision cornered = decide(kiter, 90L, 1.0D);
         check(cornered.intent() == MovementIntent.KITE,
@@ -86,7 +86,7 @@ public final class EchoBehaviorPersonalisationTest {
         Decision moving = decide(kiter, 90L, 16.0D);
         check(moving.intent() == MovementIntent.KITE,
                 "the copy must intend to open the gap, got " + moving.intent());
-        check(moving.action() == Action.RANGED,
+        check(moving.action() == Action.RANGED_DRAW,
                 "BRAIN-005: repositioning must not disable the committed action, got "
                         + moving.action());
     }
@@ -175,12 +175,14 @@ public final class EchoBehaviorPersonalisationTest {
         EchoBehaviorStrategy heavyDraw = tunedRanged(55, 25);
         Decision quick = decide(snapShooter, 100L, 400.0D);
         Decision heavy = decide(heavyDraw, 100L, 400.0D);
-        check(quick.action() == Action.RANGED,
-                "a ranged original must shoot from its band, got " + quick.action());
-        check(quick.rangedCooldownUntilTick() == 112L,
-                "a snap-shooter's bow cooldown is 12 ticks, got " + quick.rangedCooldownUntilTick());
-        check(heavy.rangedCooldownUntilTick() == 155L,
-                "a heavy-draw shooter's bow cooldown is 55 ticks, got " + heavy.rangedCooldownUntilTick());
+        check(quick.action() == Action.RANGED_DRAW,
+                "a ranged original must start a draw from its band, got " + quick.action());
+        check(quick.rangedChargeUntilTick() == 112L,
+                "a snap-shooter's bow draw completes in 12 ticks, got " + quick.rangedChargeUntilTick());
+        check(heavy.action() == Action.RANGED_DRAW,
+                "a heavy-draw original must start a draw from its band, got " + heavy.action());
+        check(heavy.rangedChargeUntilTick() == 155L,
+                "a heavy-draw shooter's bow draw completes in 55 ticks, got " + heavy.rangedChargeUntilTick());
     }
 
     /** E-05: a ranged-heavy profile with a specific bow draw / crossbow charge time. */
@@ -201,7 +203,8 @@ public final class EchoBehaviorPersonalisationTest {
     }
 
     private record Decision(Action action, MovementIntent intent, int itemSlot,
-                            long meleeCooldownUntilTick, long rangedCooldownUntilTick) { }
+                            long meleeCooldownUntilTick, long rangedCooldownUntilTick,
+                            long rangedChargeUntilTick) { }
 
     private static Decision decide(EchoBehaviorStrategy strategy, long tick, double distanceSquared) {
         return decide(strategy, tick, distanceSquared, 18.0D, Map.of());
@@ -257,7 +260,8 @@ public final class EchoBehaviorPersonalisationTest {
         return new Decision(decision.get().action(), decision.get().intent(),
                 decision.get().itemSlot(),
                 decision.get().nextDuel().actor().meleeCooldownUntilTick(),
-                decision.get().nextDuel().actor().rangedCooldownUntilTick());
+                decision.get().nextDuel().actor().rangedCooldownUntilTick(),
+                decision.get().nextDuel().actor().rangedChargeUntilTick());
     }
 
     private static UUID id(long value) {

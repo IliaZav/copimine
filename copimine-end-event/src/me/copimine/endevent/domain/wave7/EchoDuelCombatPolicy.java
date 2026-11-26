@@ -51,7 +51,8 @@ public final class EchoDuelCombatPolicy {
         return advance(actor, tick, cooldowns.sharedActionTicks(),
                 deadline(tick, cooldowns.meleeTicks()), actor.rangedCooldownUntilTick(),
                 actor.pendingUseUntilTick(), actor.shieldActiveUntilTick(),
-                actor.shieldCooldownUntilTick(), actor.jumpCooldownUntilTick());
+                actor.shieldCooldownUntilTick(), actor.jumpCooldownUntilTick(),
+                actor.rangedChargeUntilTick());
     }
 
     /**
@@ -98,7 +99,8 @@ public final class EchoDuelCombatPolicy {
         Optional<ActorState> updated = advance(actor, tick, cooldowns.sharedActionTicks(),
                 actor.meleeCooldownUntilTick(), actor.rangedCooldownUntilTick(),
                 deadline(tick, cooldowns.consumableUseTicks()), actor.shieldActiveUntilTick(),
-                actor.shieldCooldownUntilTick(), actor.jumpCooldownUntilTick());
+                actor.shieldCooldownUntilTick(), actor.jumpCooldownUntilTick(),
+                actor.rangedChargeUntilTick());
         if (updated.isEmpty() || !replica.consume(potionSlot, 1, expectedReplicaRevision)) {
             return Optional.empty();
         }
@@ -123,7 +125,8 @@ public final class EchoDuelCombatPolicy {
         Optional<ActorState> updated = advance(actor, tick, cooldowns.sharedActionTicks(),
                 actor.meleeCooldownUntilTick(), deadline(tick, cooldowns.rangedTicks()),
                 actor.pendingUseUntilTick(), actor.shieldActiveUntilTick(),
-                actor.shieldCooldownUntilTick(), actor.jumpCooldownUntilTick());
+                actor.shieldCooldownUntilTick(), actor.jumpCooldownUntilTick(),
+                actor.rangedChargeUntilTick());
         if (updated.isEmpty() || !replica.consume(bottleSlot, 1, expectedReplicaRevision)) {
             return Optional.empty();
         }
@@ -147,7 +150,8 @@ public final class EchoDuelCombatPolicy {
         Optional<ActorState> updated = advance(actor, tick, cooldowns.sharedActionTicks(),
                 actor.meleeCooldownUntilTick(), deadline(tick, cooldowns.rangedTicks()),
                 actor.pendingUseUntilTick(), actor.shieldActiveUntilTick(),
-                actor.shieldCooldownUntilTick(), actor.jumpCooldownUntilTick());
+                actor.shieldCooldownUntilTick(), actor.jumpCooldownUntilTick(),
+                actor.rangedChargeUntilTick());
         if (updated.isEmpty() || !replica.consume(chargeSlot, 1, expectedReplicaRevision)) {
             return Optional.empty();
         }
@@ -175,26 +179,98 @@ public final class EchoDuelCombatPolicy {
     }
 
     /**
-     * Starts a ranged action and spends exactly one arrow from duel-local supplies.
-     * Failed gates, a wrong slot, or a stale replica revision leave both states unchanged.
+     * Starts drawing a bow or loading a crossbow.
+     *
+     * <p>Nothing leaves the hand yet: the arrow stays in the quiver and no
+     * ranged cadence is spent, because an interrupted draw must not silently eat
+     * ammunition or lock the copy out of a fight it never actually joined. The
+     * persisted {@code rangedChargeUntilTick} records when the draw completes, so
+     * a cold restart in the middle of a draw is neither a free instant shot nor a
+     * lost draw.</p>
+     *
+     * @param drawTicks the owner's recorded bow draw / crossbow charge time
      */
-    public static Optional<ActorState> tryStartRanged(ActorState actor, EchoLoadoutState replica,
-                                                       int weaponSlot, int ammoSlot,
-                                                       long expectedReplicaRevision, long tick,
-                                                       Cooldowns cooldowns) {
+    public static Optional<ActorState> tryStartRangedDraw(ActorState actor, EchoLoadoutState replica,
+                                                          int weaponSlot, int ammoSlot,
+                                                          long expectedReplicaRevision, long tick,
+                                                          long drawTicks, Cooldowns cooldowns) {
         if (!ready(actor, tick, cooldowns) || tick < actor.rangedCooldownUntilTick()
+                || actor.rangedChargeUntilTick() > 0L
+                || !hasRangedWeapon(replica, weaponSlot, expectedReplicaRevision)
+                || !hasKind(replica, ammoSlot, expectedReplicaRevision, EchoLoadoutState.Kind.AMMO)) {
+            return Optional.empty();
+        }
+        long chargeUntil = deadline(tick, drawTicks);
+        if (chargeUntil < 0L) return Optional.empty();
+        return advance(actor, tick, cooldowns.sharedActionTicks(),
+                actor.meleeCooldownUntilTick(), actor.rangedCooldownUntilTick(),
+                actor.pendingUseUntilTick(), actor.shieldActiveUntilTick(),
+                actor.shieldCooldownUntilTick(), actor.jumpCooldownUntilTick(), chargeUntil);
+    }
+
+    /** True when a bow draw / crossbow load is in flight and its window has fully elapsed. */
+    public static boolean rangedReadyToRelease(ActorState actor, long tick) {
+        return actor != null && actor.lifecycle() == ActorLifecycle.ALIVE
+                && actor.rangedChargeUntilTick() > 0L && tick >= actor.rangedChargeUntilTick();
+    }
+
+    /**
+     * Releases a fully drawn shot: spends exactly one arrow at the bound native
+     * release and only then opens the ranged recovery the profile earned.
+     *
+     * <p>Reached only at or after the persisted charge deadline (and after the
+     * shared action gate the draw opened), so a copy can never fire an
+     * instantaneous max-power arrow on the very tick it decided to shoot — the
+     * E-05 "free instant shot" defect. A stale replica revision, an empty quiver
+     * or a broken weapon leaves both the actor and the private supplies
+     * untouched.</p>
+     *
+     * <p>The draw already consumed the owner's recorded charge, so the release
+     * opens no second lockout: the shot cadence is exactly the recorded charge,
+     * the same interval the old immediate shot enforced, and the shared action
+     * gate remains the only post-release recovery. Charging the recovery twice
+     * would silently double every archer's interval.</p>
+     */
+    public static Optional<ActorState> tryReleaseRanged(ActorState actor, EchoLoadoutState replica,
+                                                        int weaponSlot, int ammoSlot,
+                                                        long expectedReplicaRevision, long tick,
+                                                        Cooldowns cooldowns) {
+        if (!ready(actor, tick, cooldowns)
+                || actor.rangedChargeUntilTick() <= 0L || tick < actor.rangedChargeUntilTick()
                 || !hasRangedWeapon(replica, weaponSlot, expectedReplicaRevision)
                 || !hasKind(replica, ammoSlot, expectedReplicaRevision, EchoLoadoutState.Kind.AMMO)) {
             return Optional.empty();
         }
         Optional<ActorState> updated = advance(actor, tick, cooldowns.sharedActionTicks(),
-                actor.meleeCooldownUntilTick(), deadline(tick, cooldowns.rangedTicks()),
+                actor.meleeCooldownUntilTick(), tick,
                 actor.pendingUseUntilTick(), actor.shieldActiveUntilTick(),
-                actor.shieldCooldownUntilTick(), actor.jumpCooldownUntilTick());
+                actor.shieldCooldownUntilTick(), actor.jumpCooldownUntilTick(), 0L);
         if (updated.isEmpty() || !replica.consume(ammoSlot, 1, expectedReplicaRevision)) {
             return Optional.empty();
         }
         return updated;
+    }
+
+    /**
+     * Abandons an in-flight draw when the shot stops being legal (line of sight
+     * lost, target out of band, weapon or ammunition gone, owner dismissed).
+     *
+     * <p>Clears the charge without spending the arrow or opening the ranged
+     * cadence, and leaves the shared action gate untouched so a cancel is never a
+     * free extra action. A snapshot without a draw in flight is returned
+     * unchanged (empty) so an ordinary idle tick stays a no-op.</p>
+     */
+    public static Optional<ActorState> cancelRangedDraw(ActorState actor) {
+        if (actor == null || actor.rangedChargeUntilTick() <= 0L
+                || actor.revision() >= RealitySplitEchoDuelState.MAX_COUNTER) {
+            return Optional.empty();
+        }
+        return Optional.of(new ActorState(actor.actorUuid(), actor.currentHealth(),
+                actor.maximumHealth(), actor.lifecycle(), actor.revision() + 1L,
+                actor.nextActionTick(), actor.meleeCooldownUntilTick(),
+                actor.rangedCooldownUntilTick(), actor.pendingUseUntilTick(), actor.deathSerial(),
+                actor.shieldActiveUntilTick(), actor.shieldCooldownUntilTick(),
+                actor.jumpCooldownUntilTick(), 0L));
     }
 
     /**
@@ -211,7 +287,8 @@ public final class EchoDuelCombatPolicy {
         Optional<ActorState> updated = advance(actor, tick, cooldowns.sharedActionTicks(),
                 actor.meleeCooldownUntilTick(), actor.rangedCooldownUntilTick(),
                 deadline(tick, cooldowns.consumableUseTicks()), actor.shieldActiveUntilTick(),
-                actor.shieldCooldownUntilTick(), actor.jumpCooldownUntilTick());
+                actor.shieldCooldownUntilTick(), actor.jumpCooldownUntilTick(),
+                actor.rangedChargeUntilTick());
         if (updated.isEmpty() || !replica.consume(consumableSlot, 1, expectedReplicaRevision)) {
             return Optional.empty();
         }
@@ -245,7 +322,8 @@ public final class EchoDuelCombatPolicy {
                 actor.lifecycle(), actor.revision() + 1L, actor.nextActionTick(),
                 actor.meleeCooldownUntilTick(), actor.rangedCooldownUntilTick(),
                 0L, actor.deathSerial(), actor.shieldActiveUntilTick(),
-                actor.shieldCooldownUntilTick(), actor.jumpCooldownUntilTick()));
+                actor.shieldCooldownUntilTick(), actor.jumpCooldownUntilTick(),
+                actor.rangedChargeUntilTick()));
     }
 
     /**
@@ -264,7 +342,8 @@ public final class EchoDuelCombatPolicy {
                 actor.lifecycle(), actor.revision() + 1L, actor.nextActionTick(),
                 actor.meleeCooldownUntilTick(), actor.rangedCooldownUntilTick(),
                 0L, actor.deathSerial(), actor.shieldActiveUntilTick(),
-                actor.shieldCooldownUntilTick(), actor.jumpCooldownUntilTick());
+                actor.shieldCooldownUntilTick(), actor.jumpCooldownUntilTick(),
+                actor.rangedChargeUntilTick());
     }
 
     /** A healed copy restores a bounded share of its maximum health, never an unlimited amount. */
@@ -287,7 +366,7 @@ public final class EchoDuelCombatPolicy {
         if (activeUntil < 0L || cooldownUntil < activeUntil) return Optional.empty();
         return advance(actor, tick, cooldowns.sharedActionTicks(), actor.meleeCooldownUntilTick(),
                 actor.rangedCooldownUntilTick(), actor.pendingUseUntilTick(), activeUntil,
-                cooldownUntil, actor.jumpCooldownUntilTick());
+                cooldownUntil, actor.jumpCooldownUntilTick(), actor.rangedChargeUntilTick());
     }
 
     /** Starts a bounded vertical hop; horizontal motion remains under the room-scoped pathfinder. */
@@ -300,7 +379,8 @@ public final class EchoDuelCombatPolicy {
         if (jumpCooldownUntil < 0L) return Optional.empty();
         return advance(actor, tick, cooldowns.sharedActionTicks(), actor.meleeCooldownUntilTick(),
                 actor.rangedCooldownUntilTick(), actor.pendingUseUntilTick(),
-                actor.shieldActiveUntilTick(), actor.shieldCooldownUntilTick(), jumpCooldownUntil);
+                actor.shieldActiveUntilTick(), actor.shieldCooldownUntilTick(), jumpCooldownUntil,
+                actor.rangedChargeUntilTick());
     }
 
     /** Block only an admitted, owner-originated, front-facing hit during a persisted shield window. */
@@ -388,7 +468,7 @@ public final class EchoDuelCombatPolicy {
         if (activeUntil < 0L || cooldownUntil < activeUntil) return Optional.empty();
         return advance(actor, tick, cooldowns.sharedActionTicks(), actor.meleeCooldownUntilTick(),
                 actor.rangedCooldownUntilTick(), actor.pendingUseUntilTick(), activeUntil,
-                cooldownUntil, actor.jumpCooldownUntilTick());
+                cooldownUntil, actor.jumpCooldownUntilTick(), actor.rangedChargeUntilTick());
     }
 
     /** Records native-computed wear only on a usable, durable piece of copied duel gear. */
@@ -476,17 +556,17 @@ public final class EchoDuelCombatPolicy {
     private static Optional<ActorState> advance(ActorState actor, long tick, long sharedTicks,
                                                 long meleeUntil, long rangedUntil, long pendingUseUntil,
                                                 long shieldActiveUntil, long shieldCooldownUntil,
-                                                long jumpCooldownUntil) {
+                                                long jumpCooldownUntil, long rangedChargeUntil) {
         long nextAction = deadline(tick, sharedTicks);
         if (nextAction < 0L || meleeUntil < 0L || rangedUntil < 0L || pendingUseUntil < 0L
                 || shieldActiveUntil < 0L || shieldCooldownUntil < shieldActiveUntil
-                || jumpCooldownUntil < 0L) {
+                || jumpCooldownUntil < 0L || rangedChargeUntil < 0L) {
             return Optional.empty();
         }
         return Optional.of(new ActorState(actor.actorUuid(), actor.currentHealth(), actor.maximumHealth(),
                 actor.lifecycle(), actor.revision() + 1L, nextAction, meleeUntil,
                 rangedUntil, pendingUseUntil, actor.deathSerial(), shieldActiveUntil,
-                shieldCooldownUntil, jumpCooldownUntil));
+                shieldCooldownUntil, jumpCooldownUntil, rangedChargeUntil));
     }
 
     /** Returns -1 if a deadline would exceed the persisted counter bounds. */

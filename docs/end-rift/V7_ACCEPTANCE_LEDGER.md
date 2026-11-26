@@ -89,6 +89,26 @@ never a pass without real Minecraft 26.3 evidence.
   `EchoDuelCombatRuntimeAdapterTest.acceptedRangedActionsAreScopedAndDurablySpendSupplies`.
   Result: `EchoBehaviorPersonalisationTest OK assertions=115`.
 
+### E-05 (foundation) — Persisted ranged-charge deadline + schema-6 migration (`runtime/RealitySplitEchoDuelState`, `runtime/RealitySplitTrialSnapshot`)
+- Root cause: the full E-05 bow-draw / crossbow-load lifecycle needs a durable
+  "charge completes at" deadline on `ActorState`; without it a restart mid-draw
+  cannot be distinguished from a ready shot and the copy would either fire a
+  free instant arrow or lose the draw.
+- Fix: `ActorState` now carries `rangedChargeUntilTick` (0 = no draw/load in
+  flight). `RealitySplitTrialSnapshot` is schema 6; `upgradeKnownNamedSchema`
+  upgrades BOTH previously supported named layouts (schema 4 with 10-field
+  actors and schema 5 with 13-field actors) to the 14-field actor tuple by
+  appending neutral zero deadlines, so a live Wave 7 snapshot from either older
+  build still loads with no invented cooldown. Unknown layouts still fail closed.
+- Regression: `EchoDuelCombatRuntimeAdapterTest.schemaFourEchoStateUpgradesWithoutInventingActionCooldowns`
+  now asserts 14-field encoding and a zeroed `rangedChargeUntilTick` after the
+  legacy upgrade; `EchoDuelCombatPolicyTest` round-trips all 14 fields.
+  Result: `EchoDuelCombatPolicyTest OK assertions=45`,
+  `EchoDuelCombatRuntimeAdapterTest OK assertions=91`, focused suite green.
+- Open: the decision/executor layer still fires a single-tick RANGED release;
+  wiring the draw→release state machine through `EchoDuelCombatPolicy` and the
+  server executor is the remaining E-05 increment (tracked under V7-16).
+
 ### E-03 — Shared global clock made every same-profile copy strafe in lockstep (`runtime/wave7/EchoDuelCombatRuntimeAdapter`)
 - Root cause: `lateralIntent` derived the strafe phase from `observation.tick() / 12`
   and the profile windows (`inProfileWindow`) from `tick % 100` with no per-actor

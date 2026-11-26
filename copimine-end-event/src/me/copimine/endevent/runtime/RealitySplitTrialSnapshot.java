@@ -26,8 +26,8 @@ public final class RealitySplitTrialSnapshot {
     private static final String LEGACY_LAYOUT = "legacy-four-trials";
     private static final String GENERATION = PREFIX + "generation";
     private static final String TRIAL_PREFIX = PREFIX + "room.";
-    private static final int NAMED_SCHEMA = 5;
-    private static final int PREVIOUS_NAMED_SCHEMA = 4;
+    private static final int NAMED_SCHEMA = 6;
+    private static final int PREVIOUS_NAMED_SCHEMA = 5;
     public static final String NAMED_LAYOUT = "named-parallel-trials";
     private static final String EVENT = PREFIX + "event";
     private static final String SELECTED = PREFIX + "selected";
@@ -273,7 +273,8 @@ public final class RealitySplitTrialSnapshot {
                 Long.toString(duel.actor().pendingUseUntilTick()), Long.toString(duel.actor().deathSerial()),
                 Long.toString(duel.actor().shieldActiveUntilTick()),
                 Long.toString(duel.actor().shieldCooldownUntilTick()),
-                Long.toString(duel.actor().jumpCooldownUntilTick()));
+                Long.toString(duel.actor().jumpCooldownUntilTick()),
+                Long.toString(duel.actor().rangedChargeUntilTick()));
         String replica = duel.replicaState().entrySet().stream().sorted(Map.Entry.comparingByKey())
                 .map(entry -> base64(entry.getKey()) + "=" + base64(entry.getValue()))
                 .collect(Collectors.joining(","));
@@ -322,20 +323,33 @@ public final class RealitySplitTrialSnapshot {
     private static ActorState decodeActor(String raw) {
         if (raw.equals("-")) return null;
         String[] parts = raw.split(":", -1);
-        if (parts.length != 13) throw new IllegalArgumentException("malformed personal Echo actor record");
+        if (parts.length != 14) throw new IllegalArgumentException("malformed personal Echo actor record");
         return new ActorState(parseUuid(parts[0], "echo actor"), parseDouble(parts[1], "actor health"),
                 parseDouble(parts[2], "actor maximum health"), parseEnum(ActorLifecycle.class, parts[3], "actor lifecycle"),
                 parseLong(parts[4], "actor revision"), parseLong(parts[5], "actor next action"),
                 parseLong(parts[6], "actor melee cooldown"), parseLong(parts[7], "actor ranged cooldown"),
                 parseLong(parts[8], "actor pending use"), parseLong(parts[9], "actor death serial"),
                 parseLong(parts[10], "actor shield active deadline"),
-                parseLong(parts[11], "actor shield cooldown"), parseLong(parts[12], "actor jump cooldown"));
+                parseLong(parts[11], "actor shield cooldown"), parseLong(parts[12], "actor jump cooldown"),
+                parseLong(parts[13], "actor ranged charge"));
     }
 
-    /** Upgrade only the previously supported named layout; unknown/legacy layouts still fail closed. */
+    /**
+     * Upgrade only the previously supported named layouts; unknown/legacy layouts
+     * still fail closed.
+     *
+     * <p>Schema 6 appends the persisted ranged-charge deadline to every actor
+     * record. Older named snapshots carry a shorter actor tuple: schema 5 has 13
+     * fields (no ranged charge) and schema 4 has 10 (no shield/jump deadlines
+     * either). Each upgrade appends neutral zero deadlines, which is exactly the
+     * "no draw/load in flight, no shield, no jump cooldown" state those snapshots
+     * were written from.</p>
+     */
     private static Map<String, String> upgradeKnownNamedSchema(Map<String, String> encoded) {
-        if (!Integer.toString(PREVIOUS_NAMED_SCHEMA).equals(encoded.get(SCHEMA))
-                || !NAMED_LAYOUT.equals(encoded.get(LAYOUT))) return encoded;
+        String schema = encoded.get(SCHEMA);
+        boolean schemaFour = Integer.toString(PREVIOUS_NAMED_SCHEMA - 1).equals(schema);
+        boolean schemaFive = Integer.toString(PREVIOUS_NAMED_SCHEMA).equals(schema);
+        if (!(schemaFour || schemaFive) || !NAMED_LAYOUT.equals(encoded.get(LAYOUT))) return encoded;
         Map<String, String> upgraded = new LinkedHashMap<>(encoded);
         upgraded.put(SCHEMA, Integer.toString(NAMED_SCHEMA));
         for (Map.Entry<String, String> entry : encoded.entrySet()) {
@@ -343,8 +357,12 @@ public final class RealitySplitTrialSnapshot {
             String[] duel = entry.getValue().split("\\|", -1);
             if (duel.length != 15 || "-".equals(duel[11])) continue;
             String[] actor = duel[11].split(":", -1);
-            if (actor.length == 10) {
-                duel[11] = String.join(":", actor) + ":0:0:0";
+            // Schema 4 -> 6: add shield-active, shield-cooldown, jump and ranged-charge.
+            // Schema 5 -> 6: add only the ranged-charge deadline.
+            String appended = actor.length == 10 ? ":0:0:0:0"
+                    : actor.length == 13 ? ":0" : null;
+            if (appended != null) {
+                duel[11] = String.join(":", actor) + appended;
                 upgraded.put(entry.getKey(), String.join("|", duel));
             }
         }

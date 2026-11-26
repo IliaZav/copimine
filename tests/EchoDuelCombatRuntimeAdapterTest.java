@@ -251,7 +251,7 @@ public final class EchoDuelCombatRuntimeAdapterTest {
         String duelKey = "reality-split-trial.echo.duel." + fixture.room() + "." + fixture.owner();
         String[] duel = schemaFour.get(duelKey).split("\\|", -1);
         String[] actor = duel[11].split(":", -1);
-        check(actor.length == 13, "current Echo checkpoints encode all bounded action deadlines");
+        check(actor.length == 14, "current Echo checkpoints encode all bounded action deadlines and ranged charge");
         duel[11] = String.join(":", java.util.Arrays.copyOf(actor, 10));
         schemaFour.put(duelKey, String.join("|", duel));
 
@@ -259,7 +259,8 @@ public final class EchoDuelCombatRuntimeAdapterTest {
                 .personalEchoDuels().get(fixture.room()).get(fixture.owner());
         check(upgraded.actor().shieldActiveUntilTick() == 0L
                         && upgraded.actor().shieldCooldownUntilTick() == 0L
-                        && upgraded.actor().jumpCooldownUntilTick() == 0L,
+                        && upgraded.actor().jumpCooldownUntilTick() == 0L
+                        && upgraded.actor().rangedChargeUntilTick() == 0L,
                 "known schema-four duels gain zeroed, canonical action deadlines without rerolling state");
         check(upgraded.duelId().equals(fixture.duel().duelId())
                         && upgraded.replicaState().equals(fixture.duel().replicaState()),

@@ -32,6 +32,9 @@ dungeons:
   # якорей спавна и ворот в конкретном мире.
   runtime:
     enabled: false
+    # Exact published room IDs reserved for administrator combat playtests.
+    # These rooms only start by command and never grant loot or milestones.
+    playtest_rooms: []
 
 # Безопасность: серверная метка жезла. Пустое значение => сгенерировать один раз
 # и сохранить сюда. Никогда не публикуйте реальное значение.

@@ -39,14 +39,10 @@ def test_permanent_guardian_strike_is_a_real_dodgeable_damage_event(
                          "private void strikeTentacleGuardianTarget(ItemDisplay display")
     # Reach is the imported rig's real length, not the retired eight-block grab,
     # and the strike is refused out of range.
-    assert "guardianStrikeRangeSquared()" in strike
-    assert strike.index("distanceSquared(target.getLocation()) > guardianStrikeRangeSquared()") < (
-        strike.index("applyBossActorAbilityDamage("))
-    # A dodge means breaking facing or cover, so both gates must precede damage.
-    assert "smallKaguneFaces(display,target)" in strike
-    assert "hasProjectileBlockLineOfSight(" in strike
-    assert strike.index("smallKaguneFaces(") < strike.index("applyBossActorAbilityDamage(")
+    assert strike.index("guardianContact(origin, target, false)") < strike.index("applyBossActorAbilityDamage(")
     assert strike.index("hasProjectileBlockLineOfSight(") < strike.index("applyBossActorAbilityDamage(")
+    contact = method_body(event_source, "private boolean guardianContact(")
+    assert "box.rayTrace(origin, direction, KaguneGuardianFightPolicy.guardianReachBlocks())" in contact
     # Damage is party-scaled and bounded by the fight policy; nothing writes HP.
     assert "KaguneGuardianFightPolicy.strikeDamage(eventScalePlayers())" in strike
     assert "setHealth" not in strike
@@ -60,8 +56,7 @@ def test_permanent_guardian_also_captures_behind_real_guards(event_source: str) 
     capture = method_body(event_source,
                           "private boolean acceptGuardianCapture(ItemDisplay display")
     # The same real body reach, facing and cover gate the capture as the strike.
-    assert "guardianStrikeRangeSquared()" in capture
-    assert "smallKaguneFaces(display, target)" in capture
+    assert "guardianContact(origin, target, false)" in capture
     assert "hasProjectileBlockLineOfSight(" in capture
     # At most one live hold/throw at a time: a second capture is refused.
     assert "State.HOLD" in capture and "State.THROW" in capture

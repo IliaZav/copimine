@@ -229,3 +229,15 @@ never a pass without real Minecraft 26.3 evidence.
   location-bound plan.
 - V7-27 load profiling and V7-15 Wave7 V4 asset integration: BLOCKED (no native
   client; ZIP content not extractable in this environment).
+
+## Supplementary V7 integration candidate
+
+| Area | Implemented and verified | Open acceptance |
+|---|---|---|
+| Phase 4 music | Forty-five second, level-matched excerpt of Heavy Boss Battle 1 by MintoDog (CC0). Existing `boss_overload` event and loop clock drive it. Fabric and both resource-pack archives were rebuilt. | Listen to entry, transition, reconnect and loop in Minecraft. |
+| Permanent Kagune | Real scaled rig reach drives a directional test against the player's actual bounding box. Strike and capture share the test. Capture also checks the route to the socket. | Native full-extension hit, wall/other-floor rejection, miss, hold and throw. |
+| Last Seal | Restored single 320-tick cinematic clock and fail-closed official entry on missing, rejected or interrupted reveal. Preserved the V2 vertical isolation journal. Test Paper verified fissure, corridor, bed and restoration. | Approved translated production layout, distinct portal visuals, restart under actual combat and full load profiling. |
+| Echo | Reviewed the committed actor-local movement, replica snapshot and ranged-charge flow. Added LOS-aware movement and refused melee decisions through solid cover. The executable adapter suite passed 102 assertions. | Common Rage/duel executor, native navigation and quantitative personalization acceptance. |
+| Dungeon | The test command now queues the normal lifecycle for explicitly allowlisted published rooms, for an authorized player physically in the trigger. Solo and party are forwarded. No new loot or milestone for the test. Paper verified room validation and refusal without an eligible player. | Native combat, inventory/full-mailbox, gate/crash matrix, full builder workflow, and 32+ load. |
+
+The integration branch starts from the newer committed Echo work at `d7e64c11`. The other active worktree remained independent. The matching server artifacts and resource pack were installed on the isolated stage. The production service was already running a separate release and was not restarted for this candidate.

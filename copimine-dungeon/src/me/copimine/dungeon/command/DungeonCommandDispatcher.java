@@ -58,6 +58,17 @@ public final class DungeonCommandDispatcher {
         publicationGateway = gateway;
     }
 
+    @FunctionalInterface
+    public interface PlaytestGateway {
+        CommandResponse start(CommandActor actor, String roomId, boolean solo);
+    }
+
+    private PlaytestGateway playtestGateway;
+
+    public void setPlaytestGateway(PlaytestGateway gateway) {
+        playtestGateway = gateway;
+    }
+
     public DungeonCommandDispatcher(DungeonDefinitionStore store, EditorSessionManager sessions,
                                     AuditLog audit) {
         this.store = store;
@@ -288,10 +299,11 @@ public final class DungeonCommandDispatcher {
                 return CommandResponse.ok(lines);
             }
             case "room test", "room test solo", "room test party" -> {
-                String mode = route.literals().get(route.literals().size() - 1);
-                lines.add("Тестовый запуск '" + route.argument("roomId") + "' ("
-                        + mode + ") разрешён только в тестовом мире.");
-                return CommandResponse.ok(lines);
+                if (playtestGateway == null) return CommandResponse.fail("Игровой тест требует запущенного Paper.");
+                if (!EditorPermissions.allows(actor.permissions(), actor.op(), EditorPermissions.Capability.ADMIN_PUBLISH)) {
+                    return CommandResponse.fail("Для запуска боевого теста нужны права администратора данжа.");
+                }
+                return playtestGateway.start(actor, route.argument("roomId"), !path.endsWith("party"));
             }
             case "room export" -> {
                 String serialized = store.serialize();

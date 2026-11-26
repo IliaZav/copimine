@@ -12,7 +12,8 @@ def test_all_six_arrangements_are_distinct_finite_45_second_ogg_streams():
     manifest = json.loads((AUDIO / "guardian_music_v2_manifest.json").read_text())
     tracks = manifest["tracks"]
     assert [t["phase"] for t in tracks] == ["awakening", "hunt", "rift", "overload", "rage", "last_seal"]
-    assert [t["pulseBpm"] for t in tracks] == [76, 88, 100, 112, 124, 136]
+    assert [t["pulseBpm"] for t in tracks] == [76, 88, 100, 200, 124, 136]
+    assert tracks[3]["license"] == "CC0-1.0"
     assert len({t["sha256"] for t in tracks}) == 6
     for track in tracks:
         data = (AUDIO / track["filename"]).read_bytes()

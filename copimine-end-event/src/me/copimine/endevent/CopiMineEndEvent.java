@@ -8626,7 +8626,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return false;
         } catch (java.io.IOException | RuntimeException error) {
             getLogger().warning("LAST_SEAL_REVEAL_ABORTED " + error.getMessage());
-            if (restoreLastSealArena()) startCurrentLastSealVisuals(boss);
+            boolean restored = restoreLastSealArena();
+            if (isOfficialBoss(boss)) blockOfficialLastSeal(boss, "reveal-aborted");
+            else if (restored) startCurrentLastSealVisuals(boss);
             return true;
         }
     }
@@ -22302,7 +22304,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (anchor == null) {
             getLogger().warning("BOSS_ARENA_MERGE_SKIPPED event=" + eventId
                     + " reason=no-safe-floor");
-            startCurrentLastSealVisuals(boss);
+            if (isOfficialBoss(boss)) blockOfficialLastSeal(boss, "missing-safe-floor");
+            else startCurrentLastSealVisuals(boss);
+            return;
+        }
+        arenaMergeRevealOwnsAscension = isOfficialBoss(boss) && startLastSealArenaReveal(boss);
+        if (isOfficialBoss(boss) && !arenaMergeRevealOwnsAscension) {
+            blockOfficialLastSeal(boss, "missing-or-invalid-approved-plan");
             return;
         }
         double radius = Math.max(4.0D, boundedCombatRadius(config.arenaRadius()));
@@ -22310,11 +22318,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         String ownerEvent = eventId;
         long ownerGeneration = generation;
         BossPhase ownerPhase = bossPhase;
-        java.util.concurrent.atomic.AtomicBoolean revealCommitted =
-                new java.util.concurrent.atomic.AtomicBoolean(false);
         BossPresentationEffects.playArenaMerge(this, boss, anchor, radius,
-                beat -> onArenaMergeBeat(boss, beat, revealCommitted),
-                () -> taskRegistry != null && taskRegistry.owns(ownerGeneration)
+                beat -> onArenaMergeBeat(boss, beat), () -> eventTickCounter,
+                () -> phase != EventPhase.RECOVERY_REQUIRED && taskRegistry != null && taskRegistry.owns(ownerGeneration)
                         && generation == ownerGeneration && Objects.equals(eventId, ownerEvent)
                         && Objects.equals(bossUuid, owner)
                         && ownedBySession(boss, ownerEvent, ownerGeneration)
@@ -22331,21 +22337,19 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * two directed boundaries — the physical reveal commit and the ascension
      * burst. Everything is fenced to the entering attempt.
      */
-    private void onArenaMergeBeat(LivingEntity boss, ArenaMergeCinematicPolicy.Beat beat,
-            java.util.concurrent.atomic.AtomicBoolean revealCommitted) {
+    private void blockOfficialLastSeal(LivingEntity boss, String reason) {
+        freezeLastSealActor(boss);
+        recoveryReason = "LAST_SEAL_REVEAL_REQUIRED:" + reason;
+        forcePhase(EventPhase.RECOVERY_REQUIRED, recoveryReason);
+    }
+
+    private void onArenaMergeBeat(LivingEntity boss, ArenaMergeCinematicPolicy.Beat beat) {
         if (boss == null || beat == null) return;
         announceEventTitle("§5" + beat.title(), "§f" + beat.subtitle(), true);
         playArenaMergeCue(boss, beat);
         sendBossAnimationVisualUpdate(boss, beat.pose());
-        if (beat.shot() == ArenaMergeCinematicPolicy.Shot.WALL_COLLAPSE
-                && revealCommitted.compareAndSet(false, true)) {
-            boolean started = startLastSealArenaReveal(boss);
-            arenaMergeRevealOwnsAscension = started;
-            getLogger().info("BOSS_ARENA_MERGE_REVEAL event=" + eventId
-                    + " committed=" + started + " reason="
-                    + (started ? "approved-plan" : "no-approved-plan"));
-            if (!started) startCurrentLastSealVisuals(boss);
-        }
+        if (beat.shot() == ArenaMergeCinematicPolicy.Shot.WALL_COLLAPSE && !arenaMergeRevealOwnsAscension)
+            startCurrentLastSealVisuals(boss);
         if (beat.shot() == ArenaMergeCinematicPolicy.Shot.LAST_SEAL_IGNITES
                 && !arenaMergeRevealOwnsAscension) {
             spawnLastSealAscensionBurst(boss);
@@ -60349,17 +60353,25 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 .filter(p -> !isPlayerUnderTentacleControl(p))
                 .filter(p -> eventTickCounter >= guardianHeavyContactUntil.getOrDefault(p.getUniqueId(),0L))
                 .filter(p -> display.getWorld().equals(p.getWorld())
-                        && display.getLocation().distanceSquared(p.getLocation()) <= guardianStrikeRangeSquared())
+                        && guardianContact(display.getLocation(), p, true))
                 .filter(p -> hasProjectileBlockLineOfSight(display.getLocation().clone().add(0D,1D,0D),p.getEyeLocation()))
                 .filter(p -> KaguneGuardianFightPolicy.mayAttackTarget(attackers.getOrDefault(p.getUniqueId(),0)))
                 .sorted(Comparator.comparing(p -> p.getUniqueId().toString())).toList();
         return candidates.isEmpty() ? null : candidates.get(Math.floorMod(tentacleTargetCursor++,candidates.size()));
     }
 
-    private double guardianStrikeRangeSquared() {
-        // V6 §6.3: hit geometry is the real ~4.9-block authored rig, not the
-        // three-block under-player ambush grab range that used to clamp it.
-        return KaguneGuardianFightPolicy.guardianReachSquared();
+    private boolean guardianContact(Location root, Player target, boolean aiming) {
+        Location start = root.clone().add(0.0D, 1.0D, 0.0D);
+        Vector direction = aiming ? target.getLocation().toVector().subtract(root.toVector()) : root.getDirection();
+        direction.setY(0.0D);
+        if (direction.lengthSquared() < 1.0E-6D) direction = root.getDirection().setY(0.0D);
+        if (direction.lengthSquared() < 1.0E-6D) return false;
+        direction.normalize();
+        var box = target.getBoundingBox().expand(.48D, .24D, .48D);
+        Vector origin = start.toVector();
+        var hit = box.rayTrace(origin, direction, KaguneGuardianFightPolicy.guardianReachBlocks());
+        return box.contains(origin) || hit != null && hasProjectileBlockLineOfSight(start,
+                hit.getHitPosition().toLocation(root.getWorld()));
     }
 
     private void strikeTentacleGuardianTarget(ItemDisplay display, Player target) {
@@ -60375,8 +60387,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || eventTickCounter < guardianHeavyContactUntil.getOrDefault(target.getUniqueId(),0L)
                 || !ownedBySession(display, eventId, generation)) return;
         Location origin = display.getLocation();
-        if (origin.distanceSquared(target.getLocation()) > guardianStrikeRangeSquared()
-                || !smallKaguneFaces(display,target)
+        if (!guardianContact(origin, target, false)
                 || !hasProjectileBlockLineOfSight(origin.clone().add(0.0D, 1.0D, 0.0D), target.getEyeLocation())) {
             getLogger().info("RIFT_TENTACLE_STRIKE_MISS event=" + eventId
                     + " entity=" + display.getUniqueId()
@@ -60431,15 +60442,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private boolean acceptGuardianCapture(ItemDisplay display, Player target) {
         Location origin = display.getLocation();
         if (!isActiveBossParticipant(target) || !origin.getWorld().equals(target.getWorld())
-                || origin.distanceSquared(target.getLocation()) > guardianStrikeRangeSquared()
-                || !smallKaguneFaces(display, target)
+                || !guardianContact(origin, target, false)
                 || !hasProjectileBlockLineOfSight(origin.clone().add(0, 1, 0), target.getEyeLocation())
                 || eventTickCounter < guardianHeavyContactUntil.getOrDefault(target.getUniqueId(), 0L)
                 || tentacleController.states().values().stream().anyMatch(other -> !other.entityId().equals(display.getUniqueId())
                         && (other.state() == TentacleAnimationPolicy.State.HOLD
                         || other.state() == TentacleAnimationPolicy.State.THROW))) return false;
         Location socket = origin.clone().add(0, TENTACLE_GRAB_SOCKET_HEIGHT, 0);
-        if (!isArenaLocation(socket) || !isSafeTentacleHoldLocation(socket, target)) return false;
+        if (!isArenaLocation(socket) || !isSafeTentacleHoldLocation(socket, target)
+                || !hasProjectileBlockLineOfSight(target.getEyeLocation(), socket)) return false;
         if (!applyTentacleReleaseHit(display, target) || target.isDead() || !isActiveBossParticipant(target)) return false;
         guardianHeavyContactUntil.put(target.getUniqueId(), eventTickCounter + 180L);
         return true;

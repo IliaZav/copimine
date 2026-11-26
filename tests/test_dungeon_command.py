@@ -71,6 +71,12 @@ public class DungeonCommandProbe {
 
         Rig() {
             dispatcher.setPublicationGateway((id, enable) -> check(id.equals("rose"), "wrong publication owner"));
+            check(!dispatcher.execute(builder, List.of("room", "test", "rose", "solo")).success(),
+                    "without the live gateway no combat test was queued");
+            dispatcher.setPlaytestGateway((actor, id, solo) -> {
+                check(actor.id().equals(BUILDER) && id.equals("rose"), "wrong playtest room or owner");
+                return CommandResponse.ok(solo ? "queued solo" : "queued party");
+            });
             EditorSession session = sessions.open(BUILDER, "Builder");
             session.setWorld("world");
             session.setCorner1(1, 2, 3);
@@ -227,6 +233,10 @@ public class DungeonCommandProbe {
     static void complete() {
         Rig rig = new Rig();
         CommandRegistry registry = rig.dispatcher.registry();
+        check(rig.run("room test rose solo").lines().equals(List.of("queued solo")),
+                "solo playtest routes to the live gateway");
+        check(rig.run("room test rose party").lines().equals(List.of("queued party")),
+                "party playtest routes to the live gateway");
         List<String> root = registry.complete(List.of());
         check(root.contains("create") && root.contains("gate") && root.contains("room"),
                 "root completion must offer the documented subcommands: " + root);

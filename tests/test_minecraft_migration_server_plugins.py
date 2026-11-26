@@ -1072,9 +1072,9 @@ def test_migration_lock_loader_includes_each_built_first_party_plugin():
     assert '983fd1954eb85d8be8a5e18e0095200278933e930422854b4b19c19995fad116' in narcotics['replaceSha256']
     narcotics_candidate=next(item['candidate'] for item in lock['unchangedBaseline']
                              if item['pluginName']=='CopiMineNarcotics')
-    assert narcotics_candidate['size'] == 379340
-    assert narcotics_candidate['sha256'] == '27bbc9505635f35ed301bfd82037be18e5b98110f84affddd5cb1d0f0071298f'
-    assert narcotics_candidate['sha512'] == '8feba28d8688c6f063c0e09f70c133d78c22f3a315e1d9a182583b549f3cda48ec3e259931d26f27ab070fa57f211b372ac10454eca1b2f139577ef028215228'
+    assert narcotics_candidate['size'] == 379551
+    assert narcotics_candidate['sha256'] == 'f85402bd47ec8f0ebeadfd5b50aaa4cf9d7d9b6d925c602bb29da6048999faba'
+    assert narcotics_candidate['sha512'] == '2b6e0240935ddeabace71deda9b4ed4ebcdcc88e74a5898f58ca99525cdd0e9b8931cb583d3f589a8cf68e2185714a15a3b9353a21c406e3bf397b3da4a82431'
     assert '835b8043781cc2bf580900c09653da7aa3436c8485266f7838b478ac5a047e70' in narcotics_candidate['replaceSha256']
 
 def test_production_or_symlink_target_is_refused(tmp_path):
@@ -1392,11 +1392,11 @@ def test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar():
     # over this pin. The replaced candidates stay at the front of replaceSha256,
     # newest first, which is the documented prepend convention, so an
     # already-staged older candidate is still accepted.
-    assert candidate['size']==2824188
-    assert candidate['sha256']=='b5db1781f2af47af9b8eb2cd160b0e2c4e7dfaf639476d393995ceebd8e4a2a6'
-    assert candidate['sha512']=='e08a22c8639505aee0642547bffa72fa74d755a871ce01ed576d611276e4e3a978baaf1d3c9d61449b9a4a57ed2484915c6f3ae0a524b289c5bc04bdac2804e0'
-    assert candidate['replaceSha256'][:4]==['aac8b88dec2adb39529ab6da611e0701d54eaff844e77a9078c2e5118aa886a0', '0acb8bce65ed926fab1e003d16a13ded7fda332bef04e61e1eeb4e501f9a7c0e', '243f92b619d8224b95cf54a8fe132211e0b9f11faa9e249900d2377a6be77a9c', '22f511f347bfb3e55b71fd2713be5db71b080a19c8ab6f7f169b2dd0cad30cc5']
-    candidate = {**candidate, 'replaceSha256': candidate['replaceSha256'][4:]}
+    assert candidate['size']==2927755
+    assert candidate['sha256']=='2c1d51421f433d140e492c2694dafe7560cb0ea2cf5948458f5b4ba13dea61d3'
+    assert candidate['sha512']=='bfad9fcedbcfd6bb8ebef2f60804a4f4fe798536f23bc5646352d2b804e4ad1d97030ffa110a543b1a7d1657e05e827b1f14e27575fe8e00ddeaab278b75026c'
+    assert candidate['replaceSha256'][:7]==['2571a230c165735582575d8d36efd955b2da8342d6dfa31623435ad120bf60ac', '7367cf108d6938430ddc3ba14ace72aef26b2078618c676a3da3c1f592624873', 'b5db1781f2af47af9b8eb2cd160b0e2c4e7dfaf639476d393995ceebd8e4a2a6', 'aac8b88dec2adb39529ab6da611e0701d54eaff844e77a9078c2e5118aa886a0', '0acb8bce65ed926fab1e003d16a13ded7fda332bef04e61e1eeb4e501f9a7c0e', '243f92b619d8224b95cf54a8fe132211e0b9f11faa9e249900d2377a6be77a9c', '22f511f347bfb3e55b71fd2713be5db71b080a19c8ab6f7f169b2dd0cad30cc5']
+    candidate = {**candidate, 'replaceSha256': candidate['replaceSha256'][7:]}
     assert candidate['replaceSha256'][0]=='7a6a7d570d396f3b664684ffd8eaed8d86a135caacdebe9e229e393411ea9cc5'
     assert candidate['replaceSha256'][1]=='b577d1f6dcb867e54254e90d213bdc521b1d7a5fcbc6a623f65deb88255e160e'
     assert candidate['replaceSha256'][2]=='9806720acb38743760b60a6ab98419fa4f1f582d2aec015327ab236743a774c8'
@@ -3504,10 +3504,10 @@ def test_26_3_plugin_lock_pins_current_luckperms_and_reproducible_first_party_ca
     expected_candidates={
         'CopiMineArtifacts':('a5e0420d503850cb604445c52705f5af71fdc65770a78b943c5d2bc252fabcc5',
                              'a054cfeef3dc37dc364ef33d550063b6aa105f2394501bd982295af2fc791bba82cce15623c3ff7b09c4c3250683fb1caf7cdb72312e3c91bf50dd0c2fc39600',366356),
-        'CopiMineEndEvent':('b5db1781f2af47af9b8eb2cd160b0e2c4e7dfaf639476d393995ceebd8e4a2a6',
-                            'e08a22c8639505aee0642547bffa72fa74d755a871ce01ed576d611276e4e3a978baaf1d3c9d61449b9a4a57ed2484915c6f3ae0a524b289c5bc04bdac2804e0',2824188),
-        'CopiMineNarcotics':('27bbc9505635f35ed301bfd82037be18e5b98110f84affddd5cb1d0f0071298f',
-                             '8feba28d8688c6f063c0e09f70c133d78c22f3a315e1d9a182583b549f3cda48ec3e259931d26f27ab070fa57f211b372ac10454eca1b2f139577ef028215228',379340),
+        'CopiMineEndEvent':('2c1d51421f433d140e492c2694dafe7560cb0ea2cf5948458f5b4ba13dea61d3',
+                            'bfad9fcedbcfd6bb8ebef2f60804a4f4fe798536f23bc5646352d2b804e4ad1d97030ffa110a543b1a7d1657e05e827b1f14e27575fe8e00ddeaab278b75026c',2927755),
+        'CopiMineNarcotics':('f85402bd47ec8f0ebeadfd5b50aaa4cf9d7d9b6d925c602bb29da6048999faba',
+                             '2b6e0240935ddeabace71deda9b4ed4ebcdcc88e74a5898f58ca99525cdd0e9b8931cb583d3f589a8cf68e2185714a15a3b9353a21c406e3bf397b3da4a82431',379551),
     }
     for plugin_name,(sha256,sha512,size) in expected_candidates.items():
         candidate=baseline[plugin_name]['candidate']

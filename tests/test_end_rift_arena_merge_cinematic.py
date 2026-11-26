@@ -1,6 +1,6 @@
-"""Execute the real directed RAGE → LAST SEAL arena-merge scene contract.
+"""Execute the real directed RAGE to LAST SEAL arena-merge scene contract.
 
-V6 master §13.2 is explicit: the 5→6 hand-off is *one* directed 12–16 second
+V6 master section 13.2 requires one directed 12–16 second
 five-shot scene with a single physical-reveal commit point, not a generic short
 phase timer and not several independent ``runTaskLater`` calls. The retired
 runtime fell back to a ~5 s last-stand intro and then claimed the arena had
@@ -132,11 +132,9 @@ def test_runtime_owns_one_merge_scene_and_commits_the_reveal_once():
     assert "bossPhase == ownerPhase" in body, "scene must be phase-fenced"
 
     beat = runtime[start:runtime.index("private void playArenaMergeCue(", start)]
-    wall = beat.index("ArenaMergeCinematicPolicy.Shot.WALL_COLLAPSE")
-    assert "startLastSealArenaReveal(boss)" in beat[wall:beat.index("ArenaMergeCinematicPolicy.Shot.LAST_SEAL_IGNITES")], (
-        "the approved physical reveal must commit at the wall-collapse shot")
-    assert "revealCommitted.compareAndSet(false, true)" in beat, (
-        "the physical reveal must be exactly-once")
+    assert beat.count("startLastSealArenaReveal(boss)") == 1
+    assert beat.index("startLastSealArenaReveal(boss)") < beat.index("BossPresentationEffects.playArenaMerge(")
+    assert "blockOfficialLastSeal(boss" in beat
     ignite = beat.index("ArenaMergeCinematicPolicy.Shot.LAST_SEAL_IGNITES")
     assert "spawnLastSealAscensionBurst(boss)" in beat[ignite:], (
         "the seal-ignite shot must own the ascension read when no plan fired one")
@@ -144,6 +142,7 @@ def test_runtime_owns_one_merge_scene_and_commits_the_reveal_once():
     play = presentation[presentation.index("static void playArenaMerge("):]
     play = play[:play.index("private static Sound mergeSound(")]
     assert "beatHook.accept(beat)" in play, "the runtime hook must fire once per shot"
+    assert "serverTick.getAsLong() - startTick" in play
     assert "beatAt(elapsed)" in play, "the rig must read the authored beat timeline"
     assert "arenaMerge(beat.signature()" in play, "each shot must draw its own signature"
     for forbidden in ("setType(", "setBlockData(", "setBlock(", "damage("):

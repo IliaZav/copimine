@@ -302,6 +302,10 @@ public final class EchoDuelCombatRuntimeAdapter {
         // kites, so this only changes melee copies.
         if (wounded && canHeal && !wantsRange) return MovementIntent.KITE;
         if (wantsRange) {
+            if (!observation.lineOfSight() && distance <= preferred + HOLD_TOLERANCE_BLOCKS) {
+                return ((observation.tick() + phaseOffset) / 20L) % 2L == 0L
+                        ? MovementIntent.STRAFE_LEFT : MovementIntent.STRAFE_RIGHT;
+            }
             if (distance < preferred - HOLD_TOLERANCE_BLOCKS) return MovementIntent.KITE;
             // E-02: close to the owner's hold band. The previous guard also
             // required distance > RANGED_RANGE_BLOCKS, so a ranged copy at, for
@@ -312,7 +316,7 @@ public final class EchoDuelCombatRuntimeAdapter {
             if (distance > preferred + HOLD_TOLERANCE_BLOCKS) return MovementIntent.APPROACH;
             return lateralIntent(strategy, observation, phaseOffset);
         }
-        if (distance > preferred + HOLD_TOLERANCE_BLOCKS) return MovementIntent.APPROACH;
+        if (distance > preferred + HOLD_TOLERANCE_BLOCKS || !observation.lineOfSight()) return MovementIntent.APPROACH;
         return lateralIntent(strategy, observation, phaseOffset);
     }
 
@@ -540,7 +544,7 @@ public final class EchoDuelCombatRuntimeAdapter {
             // repositioning instead of freezing on the spot. Only a legal current
             // action is selected here, so movement never grants range and never
             // bypasses a cooldown.
-            boolean inMeleeRange = observation.distanceSquared()
+            boolean inMeleeRange = observation.lineOfSight() && observation.distanceSquared()
                     <= MELEE_RANGE_BLOCKS * (double) MELEE_RANGE_BLOCKS;
             // BRAIN-013: a copy of a player who swapped weapons constantly does
             // not lock itself to one tool. Inside its recorded switch window it
@@ -678,7 +682,7 @@ public final class EchoDuelCombatRuntimeAdapter {
             // has declined this tick and only while the copy is still outside
             // melee reach, so it never trades a swing for a jump and never
             // substitutes for a legal shot.
-            if (observation.onGround() && !inMeleeRange && meleeSlot >= 0
+            if (observation.onGround() && observation.lineOfSight() && !inMeleeRange && meleeSlot >= 0
                     && intent == MovementIntent.APPROACH
                     && duel.behaviorStrategy().jumpAttackPermille() > JUMP_ATTACK_BASELINE_PERMILLE
                     && inProfileWindow(observation.tick(), duel.behaviorStrategy().jumpAttackPermille(),

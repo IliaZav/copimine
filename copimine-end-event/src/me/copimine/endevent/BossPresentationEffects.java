@@ -155,16 +155,16 @@ final class BossPresentationEffects {
      */
     static void playArenaMerge(JavaPlugin plugin, LivingEntity boss, Location anchor,
             double radius, Consumer<ArenaMergeCinematicPolicy.Beat> beatHook,
-            BooleanSupplier stillOwned, Supplier<List<Player>> audience,
+            java.util.function.LongSupplier serverTick, BooleanSupplier stillOwned, Supplier<List<Player>> audience,
             BiPredicate<Player, Location> viewerAllowed, Consumer<BukkitTask> register) {
         if (boss == null || anchor == null || anchor.getWorld() == null) return;
         Location origin = anchor.clone();
-        long startMillis = System.currentTimeMillis();
+        long startTick = serverTick.getAsLong();
         long total = ArenaMergeCinematicPolicy.totalMillis();
         BukkitTask task = new BukkitRunnable() {
             ArenaMergeCinematicPolicy.Beat lastBeat;
             @Override public void run() {
-                long elapsed = System.currentTimeMillis() - startMillis;
+                long elapsed = Math.max(0L, serverTick.getAsLong() - startTick) * 50L;
                 if (!plugin.isEnabled() || !stillOwned.getAsBoolean() || !boss.isValid() || boss.isDead()
                         || !boss.getWorld().equals(origin.getWorld())
                         || elapsed >= total) { cancel(); return; }

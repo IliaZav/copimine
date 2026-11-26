@@ -39,6 +39,7 @@ public final class EchoDuelCombatRuntimeAdapterTest {
         carriedCapabilitiesAreActuallyUsed();
         shieldParriesTheMeasuredStrike();
         meleeCopiesCloseIntoMeleeReach();
+        meleeCopyDoesNotAttackThroughCover();
         rangedCopiesCloseIntoTheirOwnHoldBand();
         exhaustedQuiverSwitchesRangedCopyToMelee();
         jumpAttackOwnersHopWhileClosingIntoTheFallingCrit();
@@ -47,6 +48,15 @@ public final class EchoDuelCombatRuntimeAdapterTest {
         woundedCopyWithoutFoodKeepsFighting();
         restoredDuelDeadlinesRebaseOntoFreshCounter();
         System.out.println("EchoDuelCombatRuntimeAdapterTest OK assertions=" + assertions);
+    }
+
+    private static void meleeCopyDoesNotAttackThroughCover() {
+        Fixture fixture = activeFixture(18.0D, meleeStrategy(), Map.of());
+        Decision decision = EchoDuelCombatRuntimeAdapter.tick(fixture.duel(), restore(fixture.duel()),
+                scope(fixture.duel(), true, true, true, true), new Observation(100, 4.0D, false)).orElseThrow();
+        check(decision.intent() == EchoDuelCombatRuntimeAdapter.MovementIntent.APPROACH, "blocked melee seeks a route into contact");
+        check(decision.action() != Action.MELEE && decision.action() != Action.CRITICAL,
+                "blocked melee never commits a strike");
     }
 
     private static void acceptedRangedActionsAreScopedAndDurablySpendSupplies() {

@@ -36,10 +36,10 @@ never a pass without real Minecraft 26.3 evidence.
 | V7-14 | Archmage: frequent bounded Vexes, 3-block fang line, crown gap, staff | Archmage runtime | `test_wave7_archmage_*` | SRC+TEST (native BLOCKED; low-HP cadence pending owner approval) |
 | V7-15 | Distinct skeleton models/arrows, textured bars, no Echo bar | active 26.3 client | `SpellVisualGeometryTest`, `GuardianSpellMeshTest` | IMPLEMENTED_UNVERIFIED (Wave7 V4 ZIP content not extractable; native BLOCKED) |
 | V7-16 | Echo AI: 4 distinct + hybrid profiles, independent tactics, finite resources | `runtime/wave7/EchoDuelCombatRuntimeAdapter`, `domain/wave7/EchoBehaviorStrategy`, `EchoDuelCombatPolicy`, `EventCombatProfileService` | `EchoDuelCombatRuntimeAdapterTest` (110 assertions), `EchoCombatDiagnosticThrottleTest` (15 assertions), `EchoWoundedRetreatTest` (actor-phase lockstep divergence), `EchoBehaviorPersonalisationTest` (115 assertions: personalised heal threshold, axe-vs-sword preference, melee + ranged draw cadence), `EchoBehaviorStrategyTest` (schema-2→3 migration), `EchoDuelCapabilityPolicyTest` | IMPLEMENTED_UNVERIFIED (E-02 navigation dead zones + E-03 actor-local phase + E-04 confidence-blended weapon/cadence/sustain evidence + E-05 ranged draw/charge cadence + E-05 draw→release/cancel lifecycle + E-06 throttled structured diagnostics/bounded recovery 2026-11-26; native BLOCKED) |
-| V7-17 | Two Echo modes: Wave 7 duel + rare Phase 5 summon, no teleport-to-room | Wave 7 `EchoDuelCombatRuntimeAdapter`; Phase 5 `spawnEchoClone` | — | NOT_IMPLEMENTED (Phase 5 still uses simplified `spawnEchoClone`; E-01 call-graph replacement open) |
+| V7-17 | Two Echo modes: Wave 7 duel + rare Phase 5 summon, no teleport-to-room | Wave 7 `EchoDuelCombatRuntimeAdapter`; Phase 5 `RAGE_ECHO` mode on the same engine (`spawnRageEcho`, `tickRageEchoes`, `RageEchoSummonPolicy`, `RageEchoSession`) | `test_end_rift_echo_runtime_wiring.py` (rare Echo tick ownership, phase/generation fences, own kind, common engine, accepted damage, policy budget, cleanup, range gate, no teleport), `RageEchoSummonPolicyTest` | IMPLEMENTED_UNVERIFIED (E-01 monolith wiring 2026-11-27; `spawnEchoClone` remains a diagnostic only; native BLOCKED) |
 | V7-18 | Guardian phases 1–5: real HP/damage/hurt, grounded, 4 physical attacks | EndEvent boss runtime | boss phase probes | SRC+TEST (native BLOCKED) |
 | V7-19 | Phases 3–4: geysers + temporary blocks, rare ring/forge, no spam | EndEvent hazard runtime | wave timing probes | IMPLEMENTED_UNVERIFIED (overlapping hazard batches remain open per V6 ledger) |
-| V7-20 | Phase 5: transparent coordinated decoys, up to 5, independent death, rare Echo | Phase 5 Rage runtime | `test_event_combat_profile.py` | IMPLEMENTED_UNVERIFIED (coordinated roles / rare Echo pending) |
+| V7-20 | Phase 5: transparent coordinated decoys, up to 5, independent death, rare Echo | Phase 5 Rage runtime | `test_event_combat_profile.py`, `test_end_rift_echo_runtime_wiring.py` | IMPLEMENTED_UNVERIFIED (rare Echo wired 2026-11-27; coordinated-skill repertoire still pending owner approval) |
 | V7-21 | Cooperative actions: enough members, prepare, loss, miss, cancel | cooperative admission | `test_end_rift_sky_hail_and_guardian_permanence.py` | IMPLEMENTED_UNVERIFIED (candidate skills not ratified) |
 | V7-22 | Transition 5→6: corridor + exact panels, safe zone/roof/portal intact | `LastSealArenaReveal`, `ArenaMergeCinematicPolicy` | `test_end_rift_arena_merge_cinematic.py` | SRC+TEST (native BLOCKED) |
 | V7-23 | Last Seal: 6–8 defenders, shield per living, ring gap, real grab/throw | Kagune runtime | `test_tentacle_guardian_role_separation.py`, `test_end_rift_last_seal_ring_runtime.py` | SRC+TEST (native BLOCKED) |
@@ -194,6 +194,39 @@ never a pass without real Minecraft 26.3 evidence.
   null actor, invalid interval).
 - Result: `EchoDuelCombatRuntimeAdapterTest OK assertions=110`,
   `EchoCombatDiagnosticThrottleTest OK assertions=15`, focused suite green.
+
+### E-01 — The rare Phase 5 Personal Echo never existed in the live call graph (`domain/RageEchoSummonPolicy`, `runtime/wave7/RageEchoSession`, `CopiMineEndEvent`)
+- Root cause: §10.4.3 requires a rare fully real hostile copy of one
+  participant, driven by the common combat engine but with no room lock, no
+  teleport of the owner, no boss bar, no loot and no Wave 7 progression. The only
+  Phase 5 copy in the runtime was `spawnEchoClone`, an 18-second diagnostic that
+  neither ran the common AI nor presented the owner's skin/equipment, so the mode
+  was absent from the live call graph.
+- Fix:
+  - Added `RageEchoSummonPolicy` (one alive, 105 s cooldown, ×1.75 owner
+    max-health, ×0.9 damage, 52.5 s lifetime, `OWNER_ONLY` incoming-damage default,
+    no bar/loot/boss model) and `RageEchoSession`, a synthetic `DuelRecord`
+    wrapper that owns the committed duel + private replica state.
+  - Added `EVENT_KIND_RAGE_ECHO` and the monolith runtime (`tickRageEchoes`,
+    `trySummonRageEcho`, `spawnRageEcho`, `tickOneRageEcho`,
+    `executeRageEchoCombatAction`, `applyRageEchoDamage`,
+    `driveRageEchoMovement`, `driveRageEchoGait`, `sendRageEchoView`,
+    `retireRageEcho`, `clearRageEchoes`). The copy is a real Pillager hitbox
+    whose client view is the owner's vanilla player model, so the critical strike,
+    arrow, drink and shield are all real server actions rather than a scripted
+    replay.
+  - Wired the tick into the general boss loop before `pinBossToFinalSealCore`,
+    and cleaned it on phase transition, last-seal entry and stage release.
+  - Damage goes through the accepted-damage entry point, so a cancelled hit
+    reports zero and the committed supply never persists after a rejected action.
+- Regression: `tests/test_end_rift_echo_runtime_wiring.py` (tick ownership,
+  phase/generation cleanup, own kind, common engine, accepted damage, policy
+  budget, cleanup, range/capability gate, no teleport of the owner),
+  `RageEchoSummonPolicyTest` (admission, health/damage multipliers, lifetime,
+  incoming-damage modes).
+- Result: `test_end_rift_echo_runtime_wiring.py` 24/24 green,
+  `RageEchoSummonPolicyTest OK`. Native visual (skin, equipment, eyes, formation)
+  remains BLOCKED; owner playtest is the native acceptance path.
 
 ### E-03 — Shared global clock made every same-profile copy strafe in lockstep (`runtime/wave7/EchoDuelCombatRuntimeAdapter`)
 - Root cause: `lateralIntent` derived the strafe phase from `observation.tick() / 12`

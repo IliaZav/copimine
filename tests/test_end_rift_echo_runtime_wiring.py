@@ -358,3 +358,169 @@ def test_no_raw_player_damage_remains_in_the_copy_path():
         "a direct Player.damage call bypasses the accepted-damage accounting"
     )
     assert not re.search(r"\blocked\.damage\(", tick)
+
+
+# ---------------------------------------------------------------------------
+# 5. E-01 / V7-17 + V7-20: the rare Phase 5 Personal Echo ("Reflection Theft")
+#
+# §10.4.3 describes a second, independent Echo mode: a rare fully real hostile
+# copy of one living participant. It shares the Wave 7 combat engine but none of
+# its room lock, teleport, boss bar or rewards. These tests pin the wiring that
+# makes the mode reachable, and the fences that keep it from leaking.
+# ---------------------------------------------------------------------------
+
+def test_the_rare_echo_is_ticked_by_the_general_boss_loop():
+    loop = method("void tickCurrentBoss(")
+    assert "tickRageEchoes(boss);" in loop, (
+        "the rare Phase 5 Echo must advance from the general boss loop or it "
+        "never acts during RAGE"
+    )
+    assert loop.count("tickRageEchoes(boss);") == 1, (
+        "one owner only: a second call would advance the copy twice in a tick"
+    )
+    assert loop.index("tickRageEchoes(boss);") < loop.index(
+        "pinBossToFinalSealCore(boss)"), (
+        "the rare Echo tick must precede the last-seal pin so an early pin "
+        "return cannot starve it"
+    )
+
+
+def test_the_rare_echo_phase_and_generation_fences_clean_instead_of_skip():
+    tick = code_only(method("void tickRageEchoes("))
+    assert "bossPhase != BossPhase.RAGE" in tick, (
+        "a rare Echo may only exist in RAGE; this is the explicit phase fence"
+    )
+    assert 'clearRageEchoes("phase-ended")' in tick, (
+        "leaving RAGE must retire the copy, never leave a hostile orphan"
+    )
+    assert "rageEchoGeneration != generation" in tick, (
+        "the encounter generation fence is the second half of contract 15.2"
+    )
+    assert 'clearRageEchoes("generation-changed")' in tick, (
+        "a new encounter generation must never inherit the previous copy"
+    )
+
+
+def test_the_rare_echo_has_its_own_kind_and_never_the_wave_or_boss_kind():
+    spawn = code_only(method("boolean spawnRageEcho("))
+    assert "EVENT_KIND_RAGE_ECHO" in spawn, (
+        "the rare Echo needs its own actor kind, with its own cleanup"
+    )
+    for foreign in ("EVENT_KIND_ECHO_REPLICA", "EVENT_KIND_ECHO_DECOY",
+                    "EVENT_KIND_BOSS", "EVENT_KIND_ELITE"):
+        assert foreign not in spawn, (
+            "the rare Personal Echo must not borrow " + foreign + ": that "
+            "would feed the Wave 7 / boss / elite lifecycle"
+        )
+    assert "bossBar" not in spawn and "BossBar" not in spawn, (
+        "§10.4.3: no boss bar for a Personal Echo"
+    )
+
+
+def test_the_rare_echo_uses_the_common_combat_engine():
+    tick = method("void tickOneRageEcho(")
+    assert "EchoDuelCombatRuntimeAdapter.tick(" in tick, (
+        "the rare Echo must be driven by the shared combat engine, not a "
+        "second AI"
+    )
+    assert "this::emitNamedEchoCombatDiagnostic" in tick, (
+        "engine failures must reach the bounded diagnostic channel"
+    )
+    assert "session.updateDuel(accepted.nextDuel());" in tick, (
+        "the committed duel state must persist after each decision"
+    )
+    assert "session.updateReplica(accepted.replica());" in tick, (
+        "the committed private replica must persist after each decision"
+    )
+
+
+def test_the_rare_echo_damage_goes_through_accepted_damage():
+    execute = code_only(method("boolean executeRageEchoCombatAction("))
+    assert "applyRageEchoDamage(" in execute, (
+        "the rare Echo must report only the damage the server accepted"
+    )
+    assert not re.search(r"\bowner\.damage\(", execute), (
+        "a direct Player.damage bypasses the accepted-damage accounting"
+    )
+    damage = code_only(method("double applyRageEchoDamage("))
+    assert "target.damage(amount, attacker)" in damage, (
+        "the accepted-damage entry point must own the native damage call"
+    )
+    assert "PendingPlayerDamageOutcome" in damage, (
+        "the outcome must be captured so a cancelled hit reports zero"
+    )
+    assert "outcome.isCancelled()" in damage, (
+        "cancelled damage must never be reported as landed"
+    )
+    assert "bossPhase != BossPhase.RAGE" in damage, (
+        "a Personal Echo hit is only legal in RAGE"
+    )
+
+
+def test_the_rare_echo_budget_and_lifetime_come_from_the_policy():
+    tick = method("void tickRageEchoes(")
+    assert "RageEchoSummonPolicy.maySummon(" in tick, (
+        "summon frequency must come from the shared rare-Echo policy"
+    )
+    spawn = method("boolean spawnRageEcho(")
+    assert "RageEchoSummonPolicy.MAX_SIMULTANEOUS" in spawn, (
+        "the one-alive cap is policy, never a literal"
+    )
+    assert "RageEchoSummonPolicy.summonHealth(" in spawn, (
+        "copy health must be the reviewed multiplier of the owner's maximum"
+    )
+    assert "RageEchoSummonPolicy.lifetimeTicks()" in spawn, (
+        "the finite lifetime must be policy-derived and reach the presentation"
+    )
+    assert "setCanJoinRaid(false)" in spawn, (
+        "a Personal Echo takes no raid slot and shows no raid/bar state"
+    )
+    assert "setCanPickupItems(false)" in spawn, (
+        "§10.4.3: a Personal Echo drops no loot"
+    )
+
+
+def test_the_rare_echo_is_cleaned_on_every_phase_exit():
+    runtime = source()
+    for reason in ('"phase-transition"', '"entered-last-seal"', '"stage-released"'):
+        assert "clearRageEchoes(" + reason + ")" in runtime, (
+            "every phase/stage exit must retire the rare Echo: " + reason
+        )
+    retire = method("void retireRageEcho(")
+    assert "carrier.remove()" in retire, (
+        "retiring a rare Echo must remove its real hitbox"
+    )
+    assert "unregisterOwnedEntity(carrierId," in retire, (
+        "the owner registry must be released with the body"
+    )
+    clear = method("int clearRageEchoes(")
+    assert "rageEchoBroadcast.clear();" in clear, (
+        "the broadcast cache is bounded by teardown, not by uptime"
+    )
+
+
+def test_the_rare_echo_presentation_is_capability_and_range_gated():
+    send = method("void sendRageEchoView(")
+    assert '"END_ECHO_STATE"' in send, (
+        "the rare Echo reuses the proven client echo-state operation"
+    )
+    assert "echoPresentationCapablePlayers.contains(viewer.getUniqueId())" in send, (
+        "only clients running the presentation bridge may receive echo frames"
+    )
+    assert "64.0D * 64.0D" in send, (
+        "the frame must not be broadcast across the whole world"
+    )
+    assert "rageEchoBroadcast.shouldSend(" in send
+    assert "rageEchoBroadcast.record(" in send, (
+        "a delivered frame must be recorded so the next identical frame is "
+        "coalesced"
+    )
+
+
+def test_the_rare_echo_never_teleports_or_locks_the_owner():
+    for name in ("boolean spawnRageEcho(", "void tickRageEchoes(",
+                 "void tickOneRageEcho("):
+        body = code_only(method(name))
+        assert ".teleport(" not in body, (
+            name + " must never teleport the copied owner or its body"
+        )

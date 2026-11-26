@@ -74,6 +74,7 @@ import me.copimine.endevent.domain.SmallKaguneSpawnPolicy;
 import me.copimine.endevent.domain.GuardianDeathLedger;
 import me.copimine.endevent.domain.KaguneCocoonGuardianPolicy;
 import me.copimine.endevent.domain.EchoDecoyPolicy;
+import me.copimine.endevent.domain.RageEchoSummonPolicy;
 import me.copimine.endevent.domain.CocoonFallPolicy;
 import me.copimine.endevent.domain.CocoonShatterPolicy;
 import me.copimine.endevent.domain.BossSummonAdmissionPolicy;
@@ -545,6 +546,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * is a hazard with a lifetime, never a wave mob and never the boss.
      */
     private static final String EVENT_KIND_ECHO_REPLICA = "ECHO_REPLICA";
+    /**
+     * E-01 / §10.4.3: the rare Phase 5 Personal Echo. It is a real hostile
+     * actor with an independent summon budget, no boss bar, no loot and no
+     * Wave 7 room lock; it reuses the common combat engine but its own kind so
+     * cleanup can never confuse it with a Wave 7 duel or the Guardian's decoys.
+     */
+    private static final String EVENT_KIND_RAGE_ECHO = "RAGE_ECHO";
     private static final String CLIENT_VISUAL_ENDERMAN = "END_RIFT_ENDERMAN_V1";
     private static final String CLIENT_VISUAL_ELITE = "END_RIFT_ELITE_V1";
     /** N23-P1-09: the three authored Phase 4 infernal summons. */
@@ -1046,6 +1054,22 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Set<UUID> echoDecoyArrowIds = new LinkedHashSet<>();
     private long echoDecoyLastSummonTick = Long.MIN_VALUE;
     private int echoDecoyCursor;
+    /**
+     * E-01 / §10.4.3: the rare Phase 5 Personal Echo. A separate budget from the
+     * Guardian's own decoys; at most one alive, no boss bar, no loot, no duel
+     * teleport or Wave 7 progression. The session is driven by the common combat
+     * engine, exactly like a Wave 7 duel.
+     */
+    private final Map<UUID, me.copimine.endevent.runtime.wave7.RageEchoSession> rageEchoSessions =
+            new LinkedHashMap<>();
+    private final Map<UUID, EchoPresentationProbeState> rageEchoPresentationStates =
+            new LinkedHashMap<>();
+    private final me.copimine.endevent.domain.wave7.EchoFrameBroadcastPolicy rageEchoBroadcast =
+            new me.copimine.endevent.domain.wave7.EchoFrameBroadcastPolicy();
+    private long rageEchoLastSummonTick = -1L;
+    private long rageEchoGeneration = Long.MIN_VALUE;
+    private long rageEchoEpoch;
+    private int rageEchoCursor;
     private final Map<UUID, CombatTacticsPolicy.MobTactic> waveMobTactics = new HashMap<>();
     private final Map<Long, Integer> wave3GateAssignments = new LinkedHashMap<>();
     private final Map<Long, Set<UUID>> wave3GateAssignmentMembers = new HashMap<>();
@@ -10402,6 +10426,472 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 echoCloneBroadcast.record(viewer.getUniqueId(), frame.actor(), signature, eventTickCounter);
             }
         }
+    }
+
+    // ---------------------------------------------------------------------
+    // E-01 / §10.4.3: rare Phase 5 Personal Echo
+    // ---------------------------------------------------------------------
+
+    /**
+     * Drives the rare Phase 5 Personal Echoes.
+     *
+     * <p>§10.4.3: at most one full copy alive, usually one per phase and never
+     * one after every hit; no boss bar, no loot, no Wave 7 room lock and no
+     * teleport of the copied player. The copy is a real hostile actor driven by
+     * the common combat engine ({@link EchoDuelCombatRuntimeAdapter}); only its
+     * ownership adapter differs from a Wave 7 duel.</p>
+     */
+    private void tickRageEchoes(LivingEntity boss) {
+        if (bossPhase != BossPhase.RAGE || boss == null || !isBossCombatRuntimeActive(boss)) {
+            if (!rageEchoSessions.isEmpty()) clearRageEchoes("phase-ended");
+            return;
+        }
+        if (rageEchoGeneration != generation) {
+            // A new encounter generation never inherits a previous phase's copy.
+            if (!rageEchoSessions.isEmpty()) clearRageEchoes("generation-changed");
+            rageEchoGeneration = generation;
+            rageEchoLastSummonTick = -1L;
+        }
+        for (UUID carrierId : new ArrayList<>(rageEchoSessions.keySet())) {
+            me.copimine.endevent.runtime.wave7.RageEchoSession session = rageEchoSessions.get(carrierId);
+            if (session == null) continue;
+            Player owner = Bukkit.getPlayer(session.ownerId());
+            Entity raw = Bukkit.getEntity(carrierId);
+            boolean alive = owner != null && owner.isOnline() && !owner.isDead()
+                    && raw instanceof Pillager && raw.isValid() && !raw.isDead()
+                    && raw.getWorld().equals(owner.getWorld());
+            if (session.expired(eventTickCounter) || !session.canTick() || !alive) {
+                retireRageEcho(carrierId, !alive ? "actor-or-owner-lost" : "expired");
+                continue;
+            }
+            tickOneRageEcho(session, owner, (Pillager) raw);
+        }
+        if (RageEchoSummonPolicy.maySummon(rageEchoLastSummonTick, eventTickCounter,
+                rageEchoSessions.size(), true, true)) {
+            trySummonRageEcho(boss);
+        }
+    }
+
+    /** Picks one living participant and forms their rare Echo in front of them. */
+    private void trySummonRageEcho(LivingEntity boss) {
+        List<Player> participants = activeBossParticipants();
+        if (participants.isEmpty()) return;
+        // Deterministic rotation: the copy is rare, so the same participant must
+        // not always be the one snapped up.
+        for (int attempt = 0; attempt < participants.size(); attempt++) {
+            int index = Math.floorMod(rageEchoCursor + attempt, participants.size());
+            Player owner = participants.get(index);
+            if (!spawnRageEcho(owner)) continue;
+            rageEchoCursor = index + 1;
+            rageEchoLastSummonTick = eventTickCounter;
+            getLogger().info("RAGE_ECHO_SUMMONED event=" + eventId + " generation=" + generation
+                    + " owner=" + owner.getName() + " tick=" + eventTickCounter
+                    + " alive=" + rageEchoSessions.size());
+            return;
+        }
+    }
+
+    /** Spawns one rare Echo body copied from {@code owner}. */
+    private boolean spawnRageEcho(Player owner) {
+        if (owner == null || !owner.isOnline() || owner.isDead() || generation <= 0L) return false;
+        if (rageEchoSessions.size() >= RageEchoSummonPolicy.MAX_SIMULTANEOUS) return false;
+        // The combat engine keys everything off the event UUID, not the tag string.
+        UUID eventUuid = parseUuidOrNull(eventId);
+        if (eventUuid == null) return false;
+        Location anchor = coreCombatAnchorLocation();
+        if (anchor == null) return false;
+        Location preferred = owner.getLocation().clone().add(
+                owner.getLocation().getDirection().setY(0.0D).multiply(4.0D));
+        Location spawn = findSafeCombatLocation(anchor, preferred, waveMovementRadius(),
+                MIN_WAVE_CORE_DISTANCE_BLOCKS, -1, owner);
+        if (spawn == null || spawn.distanceSquared(owner.getLocation()) > 400.0D) return false;
+        AttributeInstance ownerMax = owner.getAttribute(Attribute.GENERIC_MAX_HEALTH);
+        if (ownerMax == null) return false;
+        double ownerMaxHealth = ownerMax.getValue();
+        me.copimine.endevent.domain.wave7.EchoBehaviorStrategy strategy =
+                combatProfiles.echoBehaviorStrategy(owner.getUniqueId());
+        if (strategy == null) return false;
+        me.copimine.endevent.runtime.wave7.EchoReplicaInventory replica;
+        try {
+            replica = me.copimine.endevent.runtime.wave7.EchoReplicaInventory.capture(
+                    owner.getInventory(), UUID.randomUUID(), 1L, UUID.randomUUID(), owner.getUniqueId());
+            for (int slot = 0; slot < 42; slot++) if (replica.state().item(slot).custom()) return false;
+        } catch (RuntimeException invalidLoadout) {
+            return false;
+        }
+        double copyHealth = Math.max(1.0D, Math.min(
+                RageEchoSummonPolicy.summonHealth(ownerMaxHealth),
+                me.copimine.endevent.runtime.RealitySplitEchoDuelState.MAX_HEALTH));
+        Pillager carrier;
+        try {
+            carrier = spawn.getWorld().spawn(spawn, Pillager.class, clone -> {
+                clone.setPersistent(true);
+                clone.setCanJoinRaid(false);
+                clone.setCanPickupItems(false);
+                AttributeInstance cloneMax = clone.getAttribute(Attribute.GENERIC_MAX_HEALTH);
+                if (cloneMax != null) cloneMax.setBaseValue(copyHealth);
+                clone.setHealth(copyHealth);
+            });
+        } catch (RuntimeException spawnFailure) {
+            getLogger().log(Level.WARNING, "Rage Echo could not spawn", spawnFailure);
+            return false;
+        }
+        if (carrier == null) return false;
+        try {
+            rageEchoEpoch = Math.max(generation, rageEchoEpoch + 1L);
+            UUID duelId = UUID.randomUUID();
+            EchoPresentationProbeState view = new EchoPresentationProbeState(eventUuid, generation,
+                    rageEchoEpoch, duelId, carrier.getUniqueId(), owner.getUniqueId(),
+                    carrier.getWorld().getKey().toString(), eventTickCounter,
+                    RageEchoSummonPolicy.lifetimeTicks());
+            me.copimine.endevent.runtime.wave7.RageEchoSession session =
+                    new me.copimine.endevent.runtime.wave7.RageEchoSession(eventUuid, generation,
+                            rageEchoEpoch, duelId, owner.getUniqueId(), carrier.getUniqueId(),
+                            carrier.getWorld().getUID(), eventTickCounter, replica.state(), strategy,
+                            ownerMaxHealth, Math.min(owner.getHealth(), ownerMaxHealth));
+            carrier.setCustomName(ChatColor.DARK_PURPLE + "Echo " + owner.getName());
+            carrier.setCustomNameVisible(false);
+            carrier.setAI(true);
+            carrier.setAware(true);
+            Bukkit.getMobGoals().removeAllGoals(carrier);
+            tag(carrier, EVENT_KIND_RAGE_ECHO, 0, isOfficialCurrentAttempt());
+            replica.equip(carrier.getEquipment(), replica.state().selectedSlot(), 40);
+            rageEchoPresentationStates.put(carrier.getUniqueId(), view);
+            rageEchoSessions.put(carrier.getUniqueId(), session);
+            if (isNamedEchoClientReady(owner)) sendRageEchoView(session, view, carrier);
+            return true;
+        } catch (RuntimeException setupFailure) {
+            getLogger().log(Level.WARNING, "Rage Echo setup failed", setupFailure);
+            carrier.remove();
+            unregisterOwnedEntity(carrier.getUniqueId(), "rage-echo-setup-failed");
+            return false;
+        }
+    }
+
+    /** Drives one rare Echo for a single tick through the common combat engine. */
+    private void tickOneRageEcho(me.copimine.endevent.runtime.wave7.RageEchoSession session,
+            Player owner, Pillager carrier) {
+        EchoPresentationProbeState view = rageEchoPresentationStates.get(carrier.getUniqueId());
+        if (view == null) return;
+        double distanceSquared = carrier.getLocation().distanceSquared(owner.getLocation());
+        if (!Double.isFinite(distanceSquared)) return;
+        EchoDuelCombatRuntimeAdapter.Scope scope;
+        try {
+            scope = new EchoDuelCombatRuntimeAdapter.Scope(session.eventId(), session.generation(),
+                    session.epoch(), me.copimine.endevent.runtime.wave7.RageEchoSession.ROOM,
+                    session.duelId(), session.ownerId(), session.carrierId(),
+                    session.worldId(), true, true, true, true);
+        } catch (RuntimeException invalidScope) {
+            return;
+        }
+        java.util.Optional<EchoDuelCombatRuntimeAdapter.Decision> decision;
+        try {
+            decision = EchoDuelCombatRuntimeAdapter.tick(session.duel(), session.replica(), scope,
+                    new EchoDuelCombatRuntimeAdapter.Observation(eventTickCounter, distanceSquared,
+                            carrier.hasLineOfSight(owner), carrier.isOnGround(),
+                            isNamedEchoCriticalWindow(carrier), -1L, -1L),
+                    this::emitNamedEchoCombatDiagnostic);
+        } catch (RuntimeException unexpectedFailure) {
+            return;
+        }
+        if (decision.isEmpty()) {
+            // The engine rejected the snapshot; leave the last durable receipt
+            // in place and retry next tick.
+            return;
+        }
+        EchoDuelCombatRuntimeAdapter.Decision accepted = decision.get();
+        if (accepted.action() != EchoDuelCombatRuntimeAdapter.Action.NONE) {
+            boolean executed;
+            try {
+                executed = executeRageEchoCombatAction(owner, carrier, accepted);
+            } catch (RuntimeException nativeFailure) {
+                getLogger().log(Level.WARNING, "Rage Echo native action failed", nativeFailure);
+                executed = false;
+            }
+            if (!executed) {
+                // The action was not accepted natively, so the engine's spent
+                // supply must not persist. Keep the previous durable receipt.
+                return;
+            }
+        }
+        session.updateDuel(accepted.nextDuel());
+        session.updateReplica(accepted.replica());
+        driveRageEchoMovement(carrier, owner, accepted.intent());
+        driveRageEchoGait(carrier, accepted, carrier.hasLineOfSight(owner));
+        sendRageEchoView(session, view, carrier);
+    }
+
+    /**
+     * Executes one already-committed rare-Echo action natively.
+     *
+     * <p>The action's item values were frozen by the engine before any cost was
+     * applied, so this method only publishes the accepted native effect: a real
+     * melee hit, a real arrow, a real drink or a real shield. A wind charge or
+     * splash bottle is not projected by the rare Echo; those profile actions are
+     * a Wave 7 presentation-only concern and the copy simply does not fire them.</p>
+     */
+    private boolean executeRageEchoCombatAction(Player owner, Pillager carrier,
+            EchoDuelCombatRuntimeAdapter.Decision decision) {
+        if (owner == null || carrier == null || decision == null) return false;
+        if (!decision.scope().ownerUuid().equals(owner.getUniqueId())
+                || !decision.scope().actorUuid().equals(carrier.getUniqueId())) return false;
+        me.copimine.endevent.runtime.wave7.EchoReplicaInventory replica;
+        try {
+            replica = me.copimine.endevent.runtime.wave7.EchoReplicaInventory.restore(
+                    decision.replica().encode(), decision.nextDuel().eventId(),
+                    decision.nextDuel().attemptGeneration(), decision.nextDuel().duelId(),
+                    decision.nextDuel().ownerUuid(), decision.replica().revision());
+        } catch (RuntimeException invalidReplica) {
+            return false;
+        }
+        ItemStack actionItem = decision.actionItem() == null
+                ? null : materializeNamedEchoItem(decision.actionItem());
+        if (actionItem == null && decision.action() != EchoDuelCombatRuntimeAdapter.Action.JUMP) return false;
+        if (actionItem != null && decision.action() != EchoDuelCombatRuntimeAdapter.Action.SHIELD) {
+            carrier.getEquipment().setItemInMainHand(actionItem);
+        }
+        switch (decision.action()) {
+            case RANGED_DRAW -> { }
+            case MELEE, CRITICAL -> {
+                boolean critical = decision.action() == EchoDuelCombatRuntimeAdapter.Action.CRITICAL;
+                if (decision.actionItem().kind() != me.copimine.endevent.domain.wave7.EchoLoadoutState.Kind.MELEE
+                        || owner.isDead() || !owner.isValid() || carrier.isDead() || !carrier.isValid()
+                        || !carrier.hasLineOfSight(owner)
+                        || carrier.getLocation().distanceSquared(owner.getLocation()) > 16.0D
+                        || critical && !isNamedEchoCriticalWindow(carrier)) return false;
+                AttributeInstance attack = carrier.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE);
+                if (attack == null || !Double.isFinite(attack.getValue()) || attack.getValue() <= 0.0D
+                        || attack.getValue() > 100.0D) return false;
+                double amount = RageEchoSummonPolicy.summonDamage(
+                        attack.getValue() * (critical ? 1.5D : 1.0D));
+                if (applyRageEchoDamage(owner, amount, carrier) <= 0.0D) return false;
+                carrier.swingMainHand();
+                Location contact = owner.getLocation().add(0, .9D, 0);
+                renderEchoDuelStrike(owner, contact, horizontalDirection(carrier.getLocation(), contact), critical);
+            }
+            case RANGED -> {
+                if (decision.actionItem().kind() != me.copimine.endevent.domain.wave7.EchoLoadoutState.Kind.BOW
+                        && decision.actionItem().kind()
+                        != me.copimine.endevent.domain.wave7.EchoLoadoutState.Kind.CROSSBOW) return false;
+                if (decision.ammoSlot() < 0 || !carrier.hasLineOfSight(owner)
+                        || carrier.getLocation().distanceSquared(owner.getLocation()) > 900.0D) return false;
+                Location origin = carrier.getEyeLocation();
+                Vector direction = owner.getEyeLocation().toVector().subtract(origin.toVector());
+                if (direction.lengthSquared() < 0.01D || !Double.isFinite(direction.lengthSquared())) return false;
+                try {
+                    Arrow arrow = carrier.getWorld().spawn(origin, Arrow.class);
+                    if (arrow == null) return false;
+                    arrow.setShooter(carrier);
+                    arrow.setPickupStatus(AbstractArrow.PickupStatus.DISALLOWED);
+                    int power = decision.actionItem().enchantments().getOrDefault("minecraft:power", 0);
+                    arrow.setDamage(Math.min(20.0D, RageEchoSummonPolicy.summonDamage(
+                            2.0D + (power > 0 ? 0.5D * power + 0.5D : 0.0D))));
+                    float speed = decision.actionItem().kind()
+                            == me.copimine.endevent.domain.wave7.EchoLoadoutState.Kind.CROSSBOW ? 3.0F : 2.0F;
+                    arrow.setVelocity(direction.normalize().multiply(speed));
+                } catch (RuntimeException launchFailure) {
+                    return false;
+                }
+            }
+            case CONSUMABLE -> {
+                if (decision.actionItem().kind()
+                        == me.copimine.endevent.domain.wave7.EchoLoadoutState.Kind.POTION) {
+                    try {
+                        replica.equip(carrier.getEquipment(), replica.state().selectedSlot(), 40);
+                    } catch (RuntimeException equipmentProjectionFailure) {
+                        getLogger().fine("Rage Echo potion projection needs a tick repair");
+                    }
+                    try {
+                        carrier.getWorld().playSound(carrier.getLocation(), Sound.ENTITY_GENERIC_DRINK, 0.6F, 1.0F);
+                    } catch (RuntimeException ignoredSoundFailure) {
+                        // Sound is cosmetic; the buff below is the accepted effect.
+                    }
+                    for (PotionEffect granted : namedEchoPotionEffects(decision.actionItem())) {
+                        if (granted != null) carrier.addPotionEffect(granted);
+                    }
+                    return true;
+                }
+                double expectedHealth = decision.nextDuel().actor().currentHealth();
+                if (!Double.isFinite(expectedHealth) || expectedHealth > carrier.getMaxHealth()) return false;
+                if (expectedHealth > carrier.getHealth()) {
+                    try {
+                        carrier.setHealth(expectedHealth);
+                    } catch (RuntimeException rejectedHeal) {
+                        if (Double.compare(carrier.getHealth(), expectedHealth) != 0) return false;
+                    }
+                }
+                try {
+                    carrier.getWorld().playSound(carrier.getLocation(), Sound.ENTITY_GENERIC_EAT, 0.55F, 1.0F);
+                } catch (RuntimeException ignoredSoundFailure) {
+                    // Server health is the accepted effect; sound is cosmetic.
+                }
+            }
+            case SHIELD -> {
+                if (decision.actionItem().kind()
+                        != me.copimine.endevent.domain.wave7.EchoLoadoutState.Kind.SHIELD) return false;
+                carrier.getEquipment().setItemInOffHand(replica.stack(decision.itemSlot()));
+                carrier.clearActiveItem();
+                carrier.startUsingItem(EquipmentSlot.OFF_HAND);
+            }
+            case JUMP -> {
+                if (carrier.isOnGround()) carrier.setVelocity(carrier.getVelocity().setY(0.5D));
+            }
+            default -> {
+                // WIND_CHARGE / SPLASH are Wave 7 presentation actions. The rare
+                // Echo has no such native projection and simply does not fire
+                // them; the committed state is still advanced below.
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Applies one accepted rare-Echo hit, respecting native cancellation.
+     *
+     * <p>The copy is not the Guardian boss, so this cannot reuse the boss-actor
+     * path that requires the attacker to be a Wave 7 actor; it still pins the
+     * phase, generation, world and legal-target checks, and reports only damage
+     * the server actually accepted.</p>
+     */
+    private double applyRageEchoDamage(Player target, double amount, LivingEntity attacker) {
+        if (target == null || target.isDead() || !target.isOnline()
+                || !Double.isFinite(amount) || amount <= 0.0D) return 0.0D;
+        LivingEntity boss = liveBoss();
+        if (boss == null || !boss.isValid() || boss.isDead() || !isCurrentBossCarrier(boss)
+                || bossPhase != BossPhase.RAGE || attacker == null || !attacker.isValid()
+                || attacker.isDead() || !attacker.getWorld().equals(target.getWorld())
+                || !isActiveBossParticipant(target)) return 0.0D;
+        double before = target.getHealth() + target.getAbsorptionAmount();
+        PendingPlayerDamageOutcome pending = new PendingPlayerDamageOutcome(
+                eventId, generation, attacker.getUniqueId(), target.getUniqueId());
+        PendingPlayerDamageOutcome previous = pendingPlayerDamageOutcome;
+        pendingPlayerDamageOutcome = pending;
+        try {
+            target.damage(amount, attacker);
+        } finally {
+            pendingPlayerDamageOutcome = previous;
+        }
+        EntityDamageEvent outcome = pending.outcome;
+        if (outcome == null || outcome.isCancelled()) return 0.0D;
+        return Math.max(0.0D,
+                before - target.getHealth() - target.getAbsorptionAmount());
+    }
+
+    private void driveRageEchoMovement(Pillager carrier, Player owner,
+            EchoDuelCombatRuntimeAdapter.MovementIntent intent) {
+        if (carrier == null || !carrier.isValid() || carrier.isDead() || owner == null
+                || intent == null || intent == EchoDuelCombatRuntimeAdapter.MovementIntent.HOLD) {
+            if (carrier != null && carrier.isValid() && !carrier.isDead()) {
+                carrier.getPathfinder().stopPathfinding();
+            }
+            return;
+        }
+        Vector toOwner = owner.getLocation().toVector().subtract(carrier.getLocation().toVector());
+        toOwner.setY(0.0D);
+        if (toOwner.lengthSquared() < 1.0E-4D) return;
+        toOwner.normalize();
+        Vector lateral = new Vector(-toOwner.getZ(), 0.0D, toOwner.getX());
+        Location target;
+        switch (intent) {
+            case APPROACH -> target = carrier.getLocation().clone().add(toOwner.clone().multiply(2.5D));
+            case KITE -> target = carrier.getLocation().clone().subtract(toOwner.clone().multiply(2.5D));
+            case STRAFE_LEFT -> target = carrier.getLocation().clone().subtract(lateral.clone().multiply(2.5D));
+            case STRAFE_RIGHT -> target = carrier.getLocation().clone().add(lateral.clone().multiply(2.5D));
+            default -> { return; }
+        }
+        if (eventTickCounter % 4L == 0L) {
+            double speed = EchoDuelCombatRuntimeAdapter.sneaking(intent,
+                    carrier.hasLineOfSight(owner)) ? 0.42D : 1.05D;
+            carrier.getPathfinder().moveTo(target, speed);
+        }
+    }
+
+    private void driveRageEchoGait(Pillager carrier,
+            EchoDuelCombatRuntimeAdapter.Decision decision, boolean ownerVisible) {
+        if (carrier == null || !carrier.isValid() || carrier.isDead() || decision == null) return;
+        EchoPresentationProbeState view = rageEchoPresentationStates.get(carrier.getUniqueId());
+        if (view == null) return;
+        EchoPresentationProbeState.Action current = view.action();
+        if (current == EchoPresentationProbeState.Action.SWING
+                || current == EchoPresentationProbeState.Action.BOW
+                || current == EchoPresentationProbeState.Action.CROSSBOW
+                || current == EchoPresentationProbeState.Action.SHIELD
+                || current == EchoPresentationProbeState.Action.EAT
+                || current == EchoPresentationProbeState.Action.JUMP
+                || current == EchoPresentationProbeState.Action.HURT
+                || current == EchoPresentationProbeState.Action.DEATH) return;
+        if (decision.action() == EchoDuelCombatRuntimeAdapter.Action.MELEE
+                || decision.action() == EchoDuelCombatRuntimeAdapter.Action.CRITICAL
+                || decision.action() == EchoDuelCombatRuntimeAdapter.Action.RANGED
+                || decision.action() == EchoDuelCombatRuntimeAdapter.Action.RANGED_DRAW
+                || decision.action() == EchoDuelCombatRuntimeAdapter.Action.CONSUMABLE
+                || decision.action() == EchoDuelCombatRuntimeAdapter.Action.SHIELD
+                || decision.action() == EchoDuelCombatRuntimeAdapter.Action.JUMP) return;
+        boolean moving = decision.intent() != EchoDuelCombatRuntimeAdapter.MovementIntent.HOLD;
+        boolean chasing = decision.intent() == EchoDuelCombatRuntimeAdapter.MovementIntent.APPROACH;
+        boolean sneaking = EchoDuelCombatRuntimeAdapter.sneaking(decision.intent(), ownerVisible);
+        EchoPresentationProbeState.Action wanted = sneaking
+                ? EchoPresentationProbeState.Action.CROUCH
+                : moving
+                ? (chasing ? EchoPresentationProbeState.Action.SPRINT : EchoPresentationProbeState.Action.WALK)
+                : EchoPresentationProbeState.Action.IDLE;
+        if (wanted == current) return;
+        view.begin(wanted, eventTickCounter);
+    }
+
+    private void sendRageEchoView(me.copimine.endevent.runtime.wave7.RageEchoSession session,
+            EchoPresentationProbeState view, Pillager carrier) {
+        if (session == null || view == null || carrier == null || !carrier.isValid()) return;
+        EchoPresentationProbeState.Frame frame = view.nextFrame(eventTickCounter);
+        if (frame == null) return;
+        String signature = me.copimine.endevent.domain.wave7.EchoFrameBroadcastPolicy.signatureOf(frame.fields());
+        World world = carrier.getWorld();
+        if (world == null) return;
+        for (Player viewer : world.getPlayers()) {
+            if (!echoPresentationCapablePlayers.contains(viewer.getUniqueId())) continue;
+            if (viewer.getLocation().distanceSquared(carrier.getLocation()) > 64.0D * 64.0D) continue;
+            if (!rageEchoBroadcast.shouldSend(viewer.getUniqueId(), frame.actor(), signature, eventTickCounter)) {
+                continue;
+            }
+            boolean delivered = sendClientPacket(viewer, "END_ECHO_STATE", frame.duel().toString(), 0L,
+                    frame.actor().toString(), "END_RIFT_ECHO_V1", 0, 0, 0,
+                    frame.fields(), frame.dimension());
+            if (delivered) {
+                rageEchoBroadcast.record(viewer.getUniqueId(), frame.actor(), signature, eventTickCounter);
+            }
+        }
+    }
+
+    /** Removes one rare Echo body and its presentation; safe to call twice. */
+    private void retireRageEcho(UUID carrierId, String reason) {
+        me.copimine.endevent.runtime.wave7.RageEchoSession session = rageEchoSessions.remove(carrierId);
+        rageEchoPresentationStates.remove(carrierId);
+        Entity carrier = ownedEntities.get(carrierId);
+        if (carrier == null) carrier = Bukkit.getEntity(carrierId);
+        if (carrier != null) {
+            try {
+                carrier.remove();
+            } catch (RuntimeException ignoredRemovalFailure) {
+                // A missing world must not abort the remaining cleanup.
+            }
+        }
+        unregisterOwnedEntity(carrierId, "rage-echo-" + reason);
+        if (session != null) session.deactivate();
+    }
+
+    /** Removes every rare Echo and its presentation; returns how many were stopped. */
+    private int clearRageEchoes(String reason) {
+        int removed = rageEchoSessions.size();
+        for (UUID carrierId : new ArrayList<>(rageEchoSessions.keySet())) {
+            retireRageEcho(carrierId, reason);
+        }
+        rageEchoPresentationStates.clear();
+        rageEchoBroadcast.clear();
+        if (removed > 0) {
+            getLogger().info("RAGE_ECHO_CLEARED event=" + eventId + " generation=" + generation
+                    + " reason=" + reason + " removed=" + removed);
+        }
+        return removed;
     }
 
     private void handleTestEchoPresentation(CommandSender sender, String[] args) {
@@ -37650,6 +38140,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         namedEchoCombatListeners.clear();
         namedEchoReplicas.clear();
         clearEchoClones();
+        clearRageEchoes("stage-released");
         namedEchoCells.clear();
         namedEchoBridgeSessions.clear();
         namedEchoCombatDiagnosticThrottle.clear();
@@ -49893,6 +50384,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // advances a copy exactly once per server tick.
         tickEchoAttackReplicas(boss);
         tickEchoDecoyFence(boss);
+        // E-01: rare Phase 5 Personal Echo, driven by the same common combat
+        // engine as the Wave 7 duel but without its room lock, rewards or
+        // teleport. Cleanup is owned by the generation/phase fence inside.
+        tickRageEchoes(boss);
         boolean finalSealPinned = pinBossToFinalSealCore(boss);
         if (generation == cocoonFallGeneration && cocoonFallStarted
                 && cocoonFallStage != CocoonFallPolicy.Stage.MELEE_FURY) {
@@ -50355,6 +50850,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             // Contract 15.2: copies are temporary by nature and never survive a
             // phase change; one left behind would be an orphaned hazard.
             clearEchoAttackReplicas("phase-transition");
+            // E-01: the rare Phase 5 Personal Echo is temporary too; a phase
+            // change retires it rather than leaving a hostile orphan behind.
+            clearRageEchoes("phase-transition");
         }
         // Echo replicas are committed by real contact attack releases, not by
         // phase entry: entering RAGE alone is not an attack to copy.
@@ -50363,6 +50861,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // permanent orphan or, worse, be mistaken for the real boss.
         if (transition.entered().contains(BossPhase.LAST_SEAL)) {
             clearEchoDecoys("entered-last-seal");
+            clearRageEchoes("entered-last-seal");
             // V6 §13.2 / OV4.6: the RAGE→LAST SEAL hand-off is one directed
             // 12–16 s, five-shot arena-merge scene, not a single 5 s intro. The
             // scene draws the fracture, the falling square walls, the colliding

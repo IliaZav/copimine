@@ -2,11 +2,11 @@
 
 The reveal's per-cell decision is delegated to a Bukkit-free policy so this
 probe can execute the real rule. It proves the concealed corridor is the only
-demolishable interior volume (and only above the floor), the outer wall exists
-only when no corridor is configured and only on the hall boundary ring, and an
-outer floor fissure opens only outside the hall at exactly floor level — so a
-regression cannot quietly start removing a real block outside the approved
-corridor.
+demolishable interior volume (and only above the floor), an approved inner wall
+panel is confined to the hall boundary ring (and may coexist with a configured
+corridor, V7 A-01), and an outer floor fissure opens only outside the hall at
+exactly floor level — so a regression cannot quietly start removing a real block
+outside the approved masks.
 """
 
 from pathlib import Path
@@ -64,8 +64,16 @@ public class LastSealGeometryProbe {
                 "a wall cell at floor level is refused");
         require(!approved("wall", 0, 81, 10, square, floor, null),
                 "a wall cell above the hall is refused");
-        require(!approved("wall", 0, 70, 10, square, floor, corridor),
-                "the outer wall is refused while a concealed corridor is configured");
+        // V7 A-01: the inner partition panels are a separate authored mask from
+        // the corridor. A legitimate plan carries both, so a wall cell on the
+        // boundary ring must be approved even while a corridor is configured;
+        // the previous `corridor == null` guard rejected every combined plan.
+        require(approved("wall", 0, 70, 10, square, floor, corridor),
+                "an approved inner wall panel is accepted alongside a corridor");
+        require(approved("wall", 20, 80, 20, square, floor, corridor),
+                "a boundary wall panel at the hall corner is accepted alongside a corridor");
+        require(!approved("wall", 10, 70, 10, square, floor, corridor),
+                "an interior wall cell is still refused while a corridor is configured");
 
         // Floor fissure: only outside the hall, only at exactly floor level.
         require(approved("fissure", 30, 64, 30, square, floor, null),
@@ -97,6 +105,78 @@ public class LastSealGeometryProbe {
     assert built.returncode == 0, built.stdout + built.stderr
     run = subprocess.run(
         ["java", "-cp", str(tmp_path), "LastSealGeometryProbe"],
+        capture_output=True,
+        text=True,
+    )
+    assert run.returncode == 0, run.stdout + run.stderr
+
+
+def test_recovery_never_teleports_a_surface_or_stacked_floor_body(tmp_path):
+    """V7 A-02: the broad recovery sweep is horizontal, so it must be fenced by
+    the arena's real vertical volume. A surface player above an underground
+    complex, or a body on a stacked neighbouring floor, shares the arena's X/Z
+    and used to be teleported into the rescue landing. A body that actually
+    overlaps a restored cell is still displaced in every journal version."""
+    assert POLICY.exists(), "the reveal geometry policy must exist"
+    probe = tmp_path / "LastSealRecoveryProbe.java"
+    probe.write_text(
+        """
+import java.util.List;
+import me.copimine.endevent.domain.LastSealStructuralGeometryPolicy;
+import me.copimine.endevent.domain.LastSealStructuralGeometryPolicy.Box;
+
+public class LastSealRecoveryProbe {
+    static int checks = 0;
+    static void require(boolean value, String message) {
+        checks++;
+        if (!value) throw new AssertionError(message);
+    }
+    // A 0.6 x 1.8 x 0.6 player body centred on (x, z) with feet at y.
+    static boolean evacuate(double x, double y, double z, List<Box> cells, Box original,
+                            boolean known, boolean revealed) {
+        double hw = 0.3, h = 1.8;
+        return LastSealStructuralGeometryPolicy.recoveryEvacuation(
+                x - hw, y, z - hw, x + hw, y + h, z + hw,
+                x, y, z, cells, original, 10, 10, 57, known, revealed);
+    }
+
+    public static void main(String[] args) {
+        Box original = new Box(0, 60, 0, 20, 80, 20);
+        // One restored cell in the round hall, outside the square, inside radius.
+        List<Box> cells = List.of(new Box(30, 70, 30, 31, 71, 31));
+
+        require(evacuate(28, 70, 28, cells, original, true, true),
+                "an arena-volume body in the round hall is displaced by the broad sweep");
+        require(!evacuate(28, 90, 28, cells, original, true, true),
+                "a surface body above the complex is never displaced");
+        require(!evacuate(28, 20, 28, cells, original, true, true),
+                "a stacked-floor body below the arena is never displaced");
+        require(!evacuate(10, 70, 10, cells, original, true, true),
+                "a body inside the arena square is not displaced by the broad sweep");
+        // Legacy V1 journals do not know the vertical volume: the broad sweep is
+        // refused outright, but a body intersecting a restored cell still moves.
+        require(!evacuate(28, 70, 28, cells, original, false, true),
+                "a legacy journal never runs the broad horizontal sweep");
+        require(evacuate(30.2, 70, 30.2, cells, original, false, true),
+                "a body intersecting a restored cell is displaced even from a legacy journal");
+        // A not-yet-revealed journal (no air cell) never runs the broad sweep.
+        require(!evacuate(28, 70, 28, cells, original, true, false),
+                "the broad sweep requires an actually revealed cell");
+
+        System.out.println("PASS last-seal recovery kept " + checks + " vertical-isolation checks");
+    }
+}
+""",
+        encoding="utf-8",
+    )
+    built = subprocess.run(
+        ["javac", "-encoding", "UTF-8", "-d", str(tmp_path), str(POLICY), str(probe)],
+        capture_output=True,
+        text=True,
+    )
+    assert built.returncode == 0, built.stdout + built.stderr
+    run = subprocess.run(
+        ["java", "-cp", str(tmp_path), "LastSealRecoveryProbe"],
         capture_output=True,
         text=True,
     )

@@ -39,6 +39,8 @@ public final class EchoDuelCombatRuntimeAdapterTest {
         carriedCapabilitiesAreActuallyUsed();
         shieldParriesTheMeasuredStrike();
         meleeCopiesCloseIntoMeleeReach();
+        rangedCopiesCloseIntoTheirOwnHoldBand();
+        exhaustedQuiverSwitchesRangedCopyToMelee();
         jumpAttackOwnersHopWhileClosingIntoTheFallingCrit();
         frequentWeaponSwitchersTradeASwingForAShot();
         sprintHeavyCopiesAttackBeforeTheyHop();
@@ -461,6 +463,56 @@ public final class EchoDuelCombatRuntimeAdapterTest {
                 new Observation(100, 9.0D, true)).orElseThrow();
         check(kiting.intent() == MovementIntent.KITE,
                 "a melee-armed copy whose profile holds range still kites, got " + kiting.intent());
+    }
+
+    /**
+     * E-02: a ranged copy that is out of position must close to its owner's
+     * hold band, not strafe in a dead zone.
+     *
+     * <p>Before the fix the ranged APPROACH branch also required
+     * {@code distance > RANGED_RANGE_BLOCKS} (30). A copy of an archer whose
+     * measured band was ~5 blocks therefore held/strafed at 20 blocks forever:
+     * it was outside its band, yet the only branch that closed the gap refused
+     * to fire because it was still inside the 30-block envelope.</p>
+     */
+    private static void rangedCopiesCloseIntoTheirOwnHoldBand() {
+        var archer = new me.copimine.endevent.domain.wave7.EchoBehaviorStrategy(
+                100, 900, 500, 0, 0, 1_000, 0, true,
+                0, 330, 500, 0, 0);
+        Fixture fixture = activeFixture(18.0D, archer);
+        // 20 blocks out: beyond the ~5-block band edge (6.5) and inside the
+        // 30-block envelope. This is the dead zone the old guard created.
+        Decision closing = EchoDuelCombatRuntimeAdapter.tick(fixture.duel(),
+                restore(fixture.duel()),
+                scope(fixture.duel(), true, true, true, true),
+                new Observation(24, 400.0D, true)).orElseThrow();
+        check(closing.intent() == MovementIntent.APPROACH,
+                "an out-of-position archer copy closes to its hold band instead of strafing, got "
+                        + closing.intent());
+    }
+
+    /**
+     * E-02: a ranged-profile copy with an empty quiver has no ranged option left
+     * and must close to melee reach instead of kiting from a band it cannot use.
+     *
+     * <p>{@code wantsRange} used to be derived from the profile alone, so a copy
+     * whose owner preferred range kept strafing at range after its arrows were
+     * gone and never initiated the melee its sword could still win.</p>
+     */
+    private static void exhaustedQuiverSwitchesRangedCopyToMelee() {
+        var archer = new me.copimine.endevent.domain.wave7.EchoBehaviorStrategy(
+                100, 900, 0, 0, 0, 1_000, 0, true,
+                0, 950, 400, 0, 0);
+        Fixture fixture = activeFixture(18.0D, archer,
+                Map.of(4, EchoLoadoutState.Item.empty()));
+        Decision closing = EchoDuelCombatRuntimeAdapter.tick(fixture.duel(),
+                restore(fixture.duel()),
+                scope(fixture.duel(), true, true, true, true),
+                new Observation(100, 100.0D, true)).orElseThrow();
+        check(closing.intent() == MovementIntent.APPROACH,
+                "a ranged copy with no arrows closes to melee reach, got " + closing.intent());
+        check(closing.action() != Action.RANGED,
+                "a copy with an empty quiver cannot fire, got " + closing.action());
     }
 
     /**

@@ -206,11 +206,29 @@ public final class EchoDuelCombatRuntimeAdapter {
      */
     static MovementIntent movementIntent(EchoBehaviorStrategy strategy, Observation observation,
                                          boolean wounded, boolean canHeal) {
+        // A caller that only knows the profile assumes the copy still carries its
+        // ranged supplies; the live tick path passes the real, finite state.
+        boolean profilePrefersRange = strategy != null
+                && strategy.rangedPermille() > strategy.meleePermille();
+        return movementIntent(strategy, observation, wounded, canHeal, profilePrefersRange);
+    }
+
+    /**
+     * @param rangedAvailable the copy still carries a usable ranged weapon and
+     *                ammunition (or a loaded crossbow). A ranged-profile copy
+     *                that has burned through its arrows must close to melee
+     *                reach instead of kiting forever from a band it can no
+     *                longer fire from - the "exhausted quiver holds range"
+     *                dead zone E-02 names.
+     */
+    static MovementIntent movementIntent(EchoBehaviorStrategy strategy, Observation observation,
+                                         boolean wounded, boolean canHeal, boolean rangedAvailable) {
         if (strategy == null || observation == null) return MovementIntent.HOLD;
         double distance = Math.sqrt(observation.distanceSquared());
         // Map 0..1000 onto a 1.5..12 block hold band inside the ranged envelope.
         double preferred = 1.5D + 10.5D * strategy.holdDistancePermille() / 1_000.0D;
-        boolean wantsRange = strategy.rangedPermille() > strategy.meleePermille();
+        boolean wantsRange = rangedAvailable
+                && strategy.rangedPermille() > strategy.meleePermille();
         // A brawler copy has to reach melee reach. The band is anchored on the
         // owner's measured distance, but its upper edge is clamped to the melee
         // envelope: a neutral 500 per mille produced a 6.75-block hold with a
@@ -225,8 +243,13 @@ public final class EchoDuelCombatRuntimeAdapter {
         if (wounded && canHeal && !wantsRange) return MovementIntent.KITE;
         if (wantsRange) {
             if (distance < preferred - HOLD_TOLERANCE_BLOCKS) return MovementIntent.KITE;
-            if (distance > preferred + HOLD_TOLERANCE_BLOCKS
-                    && distance > RANGED_RANGE_BLOCKS) return MovementIntent.APPROACH;
+            // E-02: close to the owner's hold band. The previous guard also
+            // required distance > RANGED_RANGE_BLOCKS, so a ranged copy at, for
+            // example, 20 blocks with a 5-block preference strafed forever
+            // instead of closing - a navigation dead zone between the band edge
+            // and the 30-block envelope. Approaching the band is what a real
+            // archer does when it is out of position.
+            if (distance > preferred + HOLD_TOLERANCE_BLOCKS) return MovementIntent.APPROACH;
             return lateralIntent(strategy, observation);
         }
         if (distance > preferred + HOLD_TOLERANCE_BLOCKS) return MovementIntent.APPROACH;
@@ -329,7 +352,12 @@ public final class EchoDuelCombatRuntimeAdapter {
             // forever without attacking, which the navigation rule forbids.
             boolean canHeal = consumableSlot >= 0
                     && duel.behaviorStrategy().sustainPermille() >= SUSTAIN_FLOOR_PERMILLE;
-            MovementIntent intent = movementIntent(duel.behaviorStrategy(), observation, wounded, canHeal);
+            // E-02: the copy may only keep its owner's ranged band while it
+            // actually has a usable ranged weapon and ammunition; otherwise it
+            // closes to melee reach instead of kiting from an unusable band.
+            boolean rangedAvailable = rangedSlot >= 0 && ammoSlot >= 0;
+            MovementIntent intent = movementIntent(duel.behaviorStrategy(), observation, wounded,
+                    canHeal, rangedAvailable);
             if (duel.actor().shieldActiveUntilTick() > observation.tick()) {
                 return Optional.of(new Decision(scope, Action.NONE, duel, duel, baselineReplica,
                         replica, -1, -1, null, intent));

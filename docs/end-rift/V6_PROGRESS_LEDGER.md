@@ -64,6 +64,24 @@
 
 ## 4. Completed work (newest first)
 
+### 4.13 V7 Echo E-02, arena A-01/A-02, V7 acceptance ledger (2026-11-26)
+
+- **E-02:** Echo navigation dead zones fixed:
+  `runtime/wave7/EchoDuelCombatRuntimeAdapter.movementIntent` now receives
+  `rangedAvailable` from live tick; ranged APPROACH no longer requires 30-block
+  envelope; exhausted-quiver copy closes to melee reach instead of kiting. Two
+  new regression tests, 91 total assertions.
+- **A-01:** `domain/LastSealStructuralGeometryPolicy.cellKindApproved` allows
+  `wall` cells (inner partition panels) alongside a configured corridor.
+  `corridor == null` guard removed. Policy test updated.
+- **A-02:** `LastSealArenaReveal.restore` journal upgraded to `last-seal-v2`
+  (persists floor + original minY/maxY). Recovery evacuation decision extracted
+  to pure `LastSealStructuralGeometryPolicy.recoveryEvacuation` with stacked-floor
+  unit test. Legacy V1 journals recover safely, skipping the broad horizontal
+  sweep. Yield: 3 new Python probe tests.
+- `docs/end-rift/V7_ACCEPTANCE_LEDGER.md` created (V7-01..28 matrix, honest
+  statuses, open defects, blocked items).
+
 ### 4.12 Production deployment + local client install (2026-11-26)
 
 - **Deployed to `copimine-game.service`** (Paper 26.3-205, Java 25.0.5). Staged

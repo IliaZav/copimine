@@ -51,9 +51,10 @@ final class LastSealArenaReveal {
     // ceiling so the two journaled block writers share one approved magnitude.
     static final int MAX_CELLS = 1536;
     static final int MAX_BYTES = 384_000;
+    private static final String VERSION = "last-seal-v1";
+    private static final String VERSION_V2 = "last-seal-v2";
     private static final int BATCH = 26;
     private static final int FALL_TICKS = 22;
-    private static final String VERSION = "last-seal-v1";
 
     record Square(int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
         boolean horizontal(int x, int z) { return x >= minX && x <= maxX && z >= minZ && z <= maxZ; }
@@ -332,17 +333,32 @@ final class LastSealArenaReveal {
         String contents = new String(readBounded(journal), StandardCharsets.UTF_8);
         List<String> lines = java.util.Arrays.asList(contents.split("\\R"));
         String[] header = lines.getFirst().split("\t", -1);
-        if ((header.length != 14 && header.length != 20) || !VERSION.equals(header[0]))
+        // V2 persists the arena floor and exact vertical extent; a V1 journal
+        // stored only horizontal bounds. Both are still recoverable, but a
+        // legacy journal must not run the broad horizontal evacuation - see the
+        // withinArenaVolume guard below (V7 A-02).
+        boolean v2 = VERSION_V2.equals(header[0]);
+        int baseFields = v2 ? 17 : 14;
+        int safeFields = v2 ? 23 : 20;
+        if ((header.length != baseFields && header.length != safeFields)
+                || !(v2 || VERSION.equals(header[0])))
             throw new IOException("invalid arena recovery journal");
         try {
             World world = Bukkit.getWorld(UUID.fromString(header[1]));
             if (world == null) throw new IOException("arena journal world unavailable");
             Cell landing = new Cell(number(header[2]), number(header[3]), number(header[4]));
-            Square original = new Square(number(header[7]), world.getMinHeight(), number(header[8]),
-                    number(header[9]), world.getMaxHeight() - 1, number(header[10]));
-            int centerX = number(header[11]), centerZ = number(header[12]), radius = number(header[13]);
-            Square safeZone = header.length == 20 ? new Square(number(header[14]), number(header[15]), number(header[16]),
-                    number(header[17]), number(header[18]), number(header[19])) : null;
+            int originalMinY = v2 ? number(header[12]) : world.getMinHeight();
+            int originalMaxY = v2 ? number(header[13]) : world.getMaxHeight() - 1;
+            Square original = new Square(number(header[7]), originalMinY, number(header[8]),
+                    number(header[9]), originalMaxY, number(header[10]));
+            int centerX = v2 ? number(header[14]) : number(header[11]);
+            int centerZ = v2 ? number(header[15]) : number(header[12]);
+            int radius = v2 ? number(header[16]) : number(header[13]);
+            int safeBase = v2 ? 17 : 14;
+            Square safeZone = header.length > safeBase
+                    ? new Square(number(header[safeBase]), number(header[safeBase + 1]), number(header[safeBase + 2]),
+                            number(header[safeBase + 3]), number(header[safeBase + 4]), number(header[safeBase + 5]))
+                    : null;
             if (radius < 8 || radius > 96 || original.minX() > original.maxX() || original.minZ() > original.maxZ())
                 throw new IOException("invalid recovery footprint");
             List<Change> changes = parseChanges(lines.subList(1, lines.size()));
@@ -358,17 +374,35 @@ final class LastSealArenaReveal {
                 Bukkit.createBlockData(change.original());
             }
             boolean wasRevealed = changes.stream().anyMatch(change -> change.cell().block(world).getType().isAir());
+            // Build the changed-cell boxes once; recovery runs at a boundary, not
+            // per tick, but the displacement decision itself is a pure policy and
+            // is unit tested (V7 A-02).
+            List<LastSealStructuralGeometryPolicy.Box> changedBoxes = changes.stream()
+                    .map(change -> {
+                        Cell cell = change.cell();
+                        return new LastSealStructuralGeometryPolicy.Box(cell.x(), cell.y(), cell.z(),
+                                cell.x() + 1, cell.y() + 1, cell.z() + 1);
+                    })
+                    .toList();
+            LastSealStructuralGeometryPolicy.Box arenaBox = new LastSealStructuralGeometryPolicy.Box(
+                    original.minX(), originalMinY, original.minZ(),
+                    original.maxX(), originalMaxY, original.maxZ());
             for (Player player : world.getPlayers()) {
                 Location at = player.getLocation();
                 if (safeZone != null && safeZone.contains(at)) continue;
-                boolean inClosingCell = changes.stream().anyMatch(change -> {
-                    Cell cell = change.cell();
-                    return player.getBoundingBox().overlaps(new BoundingBox(cell.x(), cell.y(), cell.z(),
-                            cell.x() + 1, cell.y() + 1, cell.z() + 1));
-                });
-                double dx = at.getX() - centerX - .5, dz = at.getZ() - centerZ - .5;
-                if (inClosingCell || wasRevealed && dx * dx + dz * dz <= (double) radius * radius
-                        && !original.horizontal(at.getBlockX(), at.getBlockZ())) evacuate(player, landing, world);
+                BoundingBox body = player.getBoundingBox();
+                // A body may only be displaced by the broad sweep when the
+                // journal knows the true vertical volume (V2) and the body is
+                // actually inside the arena's floor/ceiling band. A player on
+                // the surface above an underground complex, or on a stacked
+                // neighbouring floor, shares X/Z but is not in the arena, so
+                // the horizontal radius test alone must never teleport them.
+                boolean evacuate = LastSealStructuralGeometryPolicy.recoveryEvacuation(
+                        body.getMinX(), body.getMinY(), body.getMinZ(),
+                        body.getMaxX(), body.getMaxY(), body.getMaxZ(),
+                        at.getX(), at.getY(), at.getZ(),
+                        changedBoxes, arenaBox, centerX, centerZ, radius, v2, wasRevealed);
+                if (evacuate) evacuate(player, landing, world);
             }
             for (Change change : changes.reversed()) {
                 var block = change.cell().block(world);
@@ -392,9 +426,13 @@ final class LastSealArenaReveal {
                     .append(c.y()).append('\t').append(c.z()).append('\t').append(change.original()).append('\n');
         }
         Cell safe = checked.landing();
-        String header = String.join("\t", VERSION, checked.worldId().toString(), "" + safe.x(), "" + safe.y(),
-                "" + safe.z(), "" + checked.changes().size(), digest(body.toString().getBytes(StandardCharsets.UTF_8)),
-                "" + original.minX(), "" + original.minZ(), "" + original.maxX(), "" + original.maxZ(),
+        // V2: floor, origMinY, origMaxY inserted after origXZ (indices 11-13)
+        String header = String.join("\t", VERSION_V2, checked.worldId().toString(),
+                "" + safe.x(), "" + safe.y(), "" + safe.z(),
+                "" + checked.changes().size(), digest(body.toString().getBytes(StandardCharsets.UTF_8)),
+                "" + original.minX(), "" + original.minZ(),
+                "" + original.maxX(), "" + original.maxZ(),
+                "" + checked.floor(), "" + original.minY(), "" + original.maxY(),
                 "" + checked.x(), "" + checked.z(), "" + checked.radius());
         Square safeZone = checked.protectedSafeZone();
         if (safeZone != null) header += "\t" + String.join("\t", "" + safeZone.minX(), "" + safeZone.minY(),

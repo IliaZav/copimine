@@ -458,6 +458,9 @@ $runtimeSources = @(
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\wave7\EchoDuelCombatRuntimeAdapter.java'),
   # E-06: bounded per-actor throttle for the named Echo decision failure channel.
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\wave7\EchoCombatDiagnosticThrottle.java'),
+  # E-01: rare Phase 5 Personal Echo session, driven by the same common engine
+  # as the Wave 7 duel but without its room lock, rewards or teleport.
+  (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\wave7\RageEchoSession.java'),
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\RealitySplitTrialController.java'),
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\RealitySplitTrialSnapshot.java'),
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\TentacleController.java'),
@@ -608,6 +611,9 @@ $pureTests = @(
   # E-06: bounded per-actor throttling for the named Echo decision failure
   # channel, so a permanently broken body cannot write a diagnostic every tick.
   'EchoCombatDiagnosticThrottleTest',
+  # E-01: rare Phase 5 Personal Echo admission, lifetime, health/damage scaling
+  # and common-engine integration, proven without a live server.
+  'RageEchoSummonPolicyTest',
   'RealitySplitEchoDuelSnapshotTest',
   'RealitySplitTrialControllerTest',
   'Wave7WardenCombatPolicyTest',

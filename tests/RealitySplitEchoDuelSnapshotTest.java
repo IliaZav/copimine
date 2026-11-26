@@ -35,6 +35,7 @@ public final class RealitySplitEchoDuelSnapshotTest {
         rejectsInvalidHealthAndReplicaRevision();
         rejectsUnequalInitialOwnerAndEchoHealth();
         rejectsStaleOrUnboundReceipts();
+        schemaFiveUpgradesToNeutralRangedCharge();
         schemaTwoActiveEchoFailsClosed();
         System.out.println("RealitySplitEchoDuelSnapshotTest OK");
     }
@@ -47,8 +48,8 @@ public final class RealitySplitEchoDuelSnapshotTest {
         source = withDuel(source, room, owner, active);
 
         Map<String, String> activeEncoded = RealitySplitTrialSnapshot.encodeNamed(source);
-        check("5".equals(activeEncoded.get("reality-split-trial.schema")),
-                "named checkpoint persists Echo shield and jump cooldown schema 5");
+        check("6".equals(activeEncoded.get("reality-split-trial.schema")),
+                "named checkpoint persists the Echo ranged-charge lifecycle schema 6");
         NamedData activeDecoded = RealitySplitTrialSnapshot.decodeNamed(
                 activeEncoded, EVENT, ATTEMPT, RUNTIME);
         check(activeDecoded.equals(source), "active Echo actor and allowlisted supplies round trip exactly");
@@ -372,6 +373,35 @@ public final class RealitySplitEchoDuelSnapshotTest {
         staleStates.put(room, new NamedTrialState(room, NamedTrial.PERSONAL_ECHO, Stage.COMPLETE,
                 state.owners(), badReceipts));
         expectRejected(() -> namedWithTrials(completed, staleStates), "wrong death serial rejected");
+    }
+
+    /**
+     * E-05: a snapshot written before the ranged-charge deadline existed must
+     * upgrade to schema 6 with a neutral zero charge instead of failing closed
+     * or inventing a draw in flight. This is the exact 5 -> 6 transition, not
+     * merely "the current schema round-trips".
+     */
+    private static void schemaFiveUpgradesToNeutralRangedCharge() {
+        NamedData source = activeNamedData();
+        Map<String, String> legacy = new LinkedHashMap<>(
+                RealitySplitTrialSnapshot.encodeNamed(source));
+        legacy.put("reality-split-trial.schema", "5");
+        for (Map.Entry<String, String> entry : new LinkedHashMap<>(legacy).entrySet()) {
+            if (!entry.getKey().startsWith("reality-split-trial.echo.duel.")) continue;
+            String[] duel = entry.getValue().split("\\|", -1);
+            String[] actor = duel[11].split(":", -1);
+            // Schema 6 appended rangedChargeUntilTick; a schema-5 record has 13
+            // actor fields, so drop the trailing charge to reconstruct it.
+            String[] schemaFiveActor = java.util.Arrays.copyOf(actor, actor.length - 1);
+            duel[11] = String.join(":", schemaFiveActor);
+            legacy.put(entry.getKey(), String.join("|", duel));
+        }
+        NamedData decoded = RealitySplitTrialSnapshot.decodeNamed(legacy, EVENT, ATTEMPT, RUNTIME);
+        check(decoded.equals(source),
+                "schema-5 snapshot upgrades to schema 6 with a neutral ranged charge");
+        UUID owner = decoded.trials().get(1).owners().iterator().next();
+        check(decoded.personalEchoDuels().get(1).get(owner).actor().rangedChargeUntilTick() == 0L,
+                "the migrated ranged-charge deadline is zero (no draw in flight)");
     }
 
     private static void schemaTwoActiveEchoFailsClosed() {

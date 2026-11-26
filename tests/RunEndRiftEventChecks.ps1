@@ -456,6 +456,8 @@ $runtimeSources = @(
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\RealitySplitChamberController.java'),
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\RealitySplitEchoDuelState.java'),
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\wave7\EchoDuelCombatRuntimeAdapter.java'),
+  # E-06: bounded per-actor throttle for the named Echo decision failure channel.
+  (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\wave7\EchoCombatDiagnosticThrottle.java'),
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\RealitySplitTrialController.java'),
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\RealitySplitTrialSnapshot.java'),
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\TentacleController.java'),
@@ -603,6 +605,9 @@ $pureTests = @(
   # directly, so it lives in tests\harness and is resolved by qualified name.
   'me.copimine.endevent.runtime.wave7.EchoWoundedRetreatTest',
   'EchoDuelCapabilityPolicyTest',
+  # E-06: bounded per-actor throttling for the named Echo decision failure
+  # channel, so a permanently broken body cannot write a diagnostic every tick.
+  'EchoCombatDiagnosticThrottleTest',
   'RealitySplitEchoDuelSnapshotTest',
   'RealitySplitTrialControllerTest',
   'Wave7WardenCombatPolicyTest',

@@ -18,8 +18,8 @@ import me.copimine.endevent.runtime.wave7.EchoDuelCombatRuntimeAdapter.Action;
 import me.copimine.endevent.runtime.wave7.EchoDuelCombatRuntimeAdapter.Decision;
 import me.copimine.endevent.runtime.wave7.EchoDuelCombatRuntimeAdapter.MovementIntent;
 import me.copimine.endevent.runtime.wave7.EchoDuelCombatRuntimeAdapter.Observation;
+import me.copimine.endevent.runtime.wave7.EchoDuelCombatRuntimeAdapter.Diagnostics;
 import me.copimine.endevent.runtime.wave7.EchoDuelCombatRuntimeAdapter.Scope;
-
 /** Adapter-level regressions for the official named Echo five-tick runtime seam. */
 public final class EchoDuelCombatRuntimeAdapterTest {
     private static final UUID EVENT = id(100);
@@ -46,6 +46,7 @@ public final class EchoDuelCombatRuntimeAdapterTest {
         sprintHeavyCopiesAttackBeforeTheyHop();
         woundedCopyWithoutFoodKeepsFighting();
         restoredDuelDeadlinesRebaseOntoFreshCounter();
+        diagnosticsClassifyAndReportBoundedReasons();
         System.out.println("EchoDuelCombatRuntimeAdapterTest OK assertions=" + assertions);
     }
 
@@ -762,6 +763,55 @@ public final class EchoDuelCombatRuntimeAdapterTest {
                         + untouched.pendingUseUntilTick() + "/" + untouched.shieldActiveUntilTick()
                         + "/" + untouched.shieldCooldownUntilTick() + "/"
                         + untouched.jumpCooldownUntilTick());
+    }
+
+    /**
+     * E-06: the adapter must not silently swallow a broken actor. An expected
+     * invalid snapshot is classified as such, an unexpected failure is
+     * classified separately and surfaced, and both report exactly one bounded
+     * structured reason to the runtime.
+     */
+    private static void diagnosticsClassifyAndReportBoundedReasons() {
+        Fixture fixture = activeFixture(18.0D);
+        Scope scope = scope(fixture.duel(), true, true, true, true);
+
+        List<String> reasons = new ArrayList<>();
+        List<RuntimeException> failures = new ArrayList<>();
+        Diagnostics recording = (reportedScope, tick, reason, failure) -> {
+            check(reportedScope == scope, "the adapter reports the live scope");
+            check(tick == 100L, "the adapter reports the failing tick, got " + tick);
+            reasons.add(reason);
+            failures.add(failure);
+        };
+
+        IllegalArgumentException expected =
+                new IllegalArgumentException("invalid bounded replica receipt");
+        check(Diagnostics.classify(recording, scope, 100L, expected),
+                "an IllegalArgumentException is an expected invalid snapshot");
+        check(reasons.size() == 1
+                        && EchoDuelCombatRuntimeAdapter.REASON_INVALID_SNAPSHOT.equals(reasons.get(0)),
+                "an invalid snapshot reports INVALID_SNAPSHOT, got " + reasons);
+        check(failures.get(0) == expected, "the exact failure is handed to the runtime");
+
+        IllegalStateException unexpected = new IllegalStateException("adapter invariant");
+        check(!Diagnostics.classify(recording, scope, 100L, unexpected),
+                "a non-IllegalArgumentException is an unexpected failure");
+        check(reasons.size() == 2
+                        && EchoDuelCombatRuntimeAdapter.REASON_UNEXPECTED_FAILURE.equals(reasons.get(1)),
+                "an unexpected failure reports UNEXPECTED_FAILURE, got " + reasons);
+
+        // Neither a null sink nor the shared NONE sink may change control flow.
+        Diagnostics.classify(null, scope, 100L, expected);
+        Diagnostics.NONE.tickRejected(scope, 100L,
+                EchoDuelCombatRuntimeAdapter.REASON_INVALID_SNAPSHOT, expected);
+
+        // The four-argument tick form remains the unobserved default and must
+        // never touch a caller's diagnostics.
+        int before = reasons.size();
+        EchoDuelCombatRuntimeAdapter.tick(fixture.duel(), restore(fixture.duel()), scope,
+                new Observation(100, 100.0D, true));
+        check(reasons.size() == before,
+                "the unobserved tick overload never invokes a diagnostics sink");
     }
 
     private static me.copimine.endevent.domain.wave7.EchoBehaviorStrategy meleeStrategy() {

@@ -1936,6 +1936,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Map<UUID, me.copimine.endevent.domain.Wave7EchoDuelCellPolicy.Cell> namedEchoCells = new LinkedHashMap<>();
     private final Map<UUID, String> namedEchoBridgeSessions = new LinkedHashMap<>();
     /**
+     * E-06: per-actor throttle for the named Echo decision failure channel so a
+     * permanently broken body cannot write a diagnostic every single tick.
+     */
+    private final me.copimine.endevent.runtime.wave7.EchoCombatDiagnosticThrottle
+            namedEchoCombatDiagnosticThrottle =
+            new me.copimine.endevent.runtime.wave7.EchoCombatDiagnosticThrottle();
+    /**
      * Marksman partners: actor id to the OTHER marksman of the same trial.
      *
      * <p>Both skeletons of the Wave 7 marksman trial are scored together as one
@@ -27365,6 +27372,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         namedEchoReplicas.remove(actorId);
         namedEchoCells.remove(actorId);
         namedEchoBridgeSessions.remove(actorId);
+        namedEchoCombatDiagnosticThrottle.forget(actorId);
     }
 
     private boolean isNamedRealitySplitActor(Entity entity) {
@@ -37644,6 +37652,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         clearEchoClones();
         namedEchoCells.clear();
         namedEchoBridgeSessions.clear();
+        namedEchoCombatDiagnosticThrottle.clear();
         // ECHO-002/ECHO-004: the realm split dies with the stage, and the limbo
         // mirror is put back exactly as it was authored.
         namedEchoRealmSplit = null;
@@ -38243,27 +38252,26 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         java.util.Optional<EchoDuelCombatRuntimeAdapter.Decision> decision;
         try {
             EchoCombatAdmissionListener cadence = namedEchoCombatListeners.get(carrier.getUniqueId());
+            // E-06: an invalid snapshot is reported with a throttled structured
+            // reason and fails the actor closed; an unexpected failure is
+            // reported and surfaced here so it is never mistaken for an idle tick.
             decision = EchoDuelCombatRuntimeAdapter.tick(current, replica.state(), scope,
                     new EchoDuelCombatRuntimeAdapter.Observation(eventTickCounter, distanceSquared,
                             carrier.hasLineOfSight(owner), carrier.isOnGround(),
                             isNamedEchoCriticalWindow(carrier),
                             cadence == null ? -1L : cadence.ownerStrikeIntervalTicks(),
-                            cadence == null ? -1L : cadence.ticksSinceOwnerStrike(eventTickCounter)));
-        } catch (RuntimeException invalidObservation) {
-            return false;
+                            cadence == null ? -1L : cadence.ticksSinceOwnerStrike(eventTickCounter)),
+                    this::emitNamedEchoCombatDiagnostic);
+        } catch (RuntimeException unexpectedAdapterFailure) {
+            // E-06: the adapter already reported the structured reason. Restore
+            // the last durable receipt so a partially mutated inventory cannot
+            // leak through the cache, then fail this tick closed.
+            return restoreNamedEchoReplica(carrier, current);
         }
         if (decision.isEmpty()) {
             // Adapter failures can occur after a pure policy mutates its local replica.
             // Restore the controller receipt so no uncommitted quantity leaks through the cache.
-            try {
-                namedEchoReplicas.put(carrier.getUniqueId(),
-                        me.copimine.endevent.runtime.wave7.EchoReplicaInventory.restore(
-                                current.replicaState(), current.eventId(), current.attemptGeneration(),
-                                current.duelId(), current.ownerUuid(), current.replicaRevision()));
-            } catch (RuntimeException invalidReplica) {
-                return false;
-            }
-            return false;
+            return restoreNamedEchoReplica(carrier, current);
         }
         if (!commitNamedEchoCombatAction(world, core, trial, cell, owner, carrier, replica, decision.get())) {
             return false;
@@ -38272,6 +38280,54 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         driveNamedEchoGait(carrier, decision.get(), carrier.hasLineOfSight(owner));
         sendNamedEchoView(carrier.getUniqueId(), "END_ECHO_STATE");
         return true;
+    }
+
+    /**
+     * E-06: restore the last durable receipt after a rejected tick so no
+     * partially applied supply or cooldown can leak through the cached
+     * inventory. Always fails the tick closed; the caller retries next tick.
+     */
+    private boolean restoreNamedEchoReplica(Pillager carrier,
+            me.copimine.endevent.runtime.RealitySplitEchoDuelState.DuelRecord current) {
+        try {
+            namedEchoReplicas.put(carrier.getUniqueId(),
+                    me.copimine.endevent.runtime.wave7.EchoReplicaInventory.restore(
+                            current.replicaState(), current.eventId(), current.attemptGeneration(),
+                            current.duelId(), current.ownerUuid(), current.replicaRevision()));
+        } catch (RuntimeException invalidReplica) {
+            // Bounded recovery: if even the durable receipt cannot be restored,
+            // keep failing closed rather than inventing state.
+        }
+        return false;
+    }
+
+    /**
+     * E-06: throttled structured reason for a named Echo tick the adapter could
+     * not complete. Only bounded identity and the exception type are logged, so
+     * the private loadout is never dumped.
+     */
+    private void emitNamedEchoCombatDiagnostic(
+            me.copimine.endevent.runtime.wave7.EchoDuelCombatRuntimeAdapter.Scope scope,
+            long tick, String reason, RuntimeException failure) {
+        if (scope == null || !namedEchoCombatDiagnosticThrottle.shouldEmit(scope.actorUuid(), tick)) {
+            return;
+        }
+        namedEchoCombatDiagnosticThrottle.record(scope.actorUuid(), tick);
+        try {
+            emitDiagnostic("ERROR", "ECHO_TICK_REJECTED",
+                    me.copimine.endevent.runtime.wave7.EchoDuelCombatRuntimeAdapter
+                            .REASON_INVALID_SNAPSHOT.equals(reason) ? "WARN" : "ERROR",
+                    activeWave, reason, scope.ownerUuid(), scope.actorUuid(),
+                    "echo-duel:" + scope.duelId(),
+                    Map.of("eventGeneration", Long.toString(scope.attemptGeneration()),
+                            "runtimeGeneration", Long.toString(scope.runtimeGeneration()),
+                            "room", Integer.toString(scope.room()),
+                            "duelId", scope.duelId().toString(),
+                            "action", "TICK",
+                            "exceptionType", failure == null ? "" : failure.getClass().getName()));
+        } catch (RuntimeException ignored) {
+            // An observational channel must never change gameplay control flow.
+        }
     }
 
     private boolean synchronizeNamedEchoShield(Pillager carrier,

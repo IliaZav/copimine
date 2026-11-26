@@ -35,7 +35,7 @@ never a pass without real Minecraft 26.3 evidence.
 | V7-13 | Warden: real base, 5×4, 20t/60t, R6 through-wall, resonance counterplay | W5.1 Warden runtime | `test_warden_v5_runtime.py` | SRC+TEST (native BLOCKED) |
 | V7-14 | Archmage: frequent bounded Vexes, 3-block fang line, crown gap, staff | Archmage runtime | `test_wave7_archmage_*` | SRC+TEST (native BLOCKED; low-HP cadence pending owner approval) |
 | V7-15 | Distinct skeleton models/arrows, textured bars, no Echo bar | active 26.3 client | `SpellVisualGeometryTest`, `GuardianSpellMeshTest` | IMPLEMENTED_UNVERIFIED (Wave7 V4 ZIP content not extractable; native BLOCKED) |
-| V7-16 | Echo AI: 4 distinct + hybrid profiles, independent tactics, finite resources | `runtime/wave7/EchoDuelCombatRuntimeAdapter`, `domain/wave7/EchoBehaviorStrategy`, `EchoDuelCombatPolicy`, `EventCombatProfileService` | `EchoDuelCombatRuntimeAdapterTest` (100 assertions), `EchoWoundedRetreatTest` (actor-phase lockstep divergence), `EchoBehaviorPersonalisationTest` (115 assertions: personalised heal threshold, axe-vs-sword preference, melee + ranged draw cadence), `EchoBehaviorStrategyTest` (schema-2→3 migration), `EchoDuelCapabilityPolicyTest` | IMPLEMENTED_UNVERIFIED (E-02 navigation dead zones + E-03 actor-local phase + E-04 confidence-blended weapon/cadence/sustain evidence + E-05 ranged draw/charge cadence + E-05 draw→release/cancel lifecycle 2026-11-26; throttled diagnostics open; native BLOCKED) |
+| V7-16 | Echo AI: 4 distinct + hybrid profiles, independent tactics, finite resources | `runtime/wave7/EchoDuelCombatRuntimeAdapter`, `domain/wave7/EchoBehaviorStrategy`, `EchoDuelCombatPolicy`, `EventCombatProfileService` | `EchoDuelCombatRuntimeAdapterTest` (110 assertions), `EchoCombatDiagnosticThrottleTest` (15 assertions), `EchoWoundedRetreatTest` (actor-phase lockstep divergence), `EchoBehaviorPersonalisationTest` (115 assertions: personalised heal threshold, axe-vs-sword preference, melee + ranged draw cadence), `EchoBehaviorStrategyTest` (schema-2→3 migration), `EchoDuelCapabilityPolicyTest` | IMPLEMENTED_UNVERIFIED (E-02 navigation dead zones + E-03 actor-local phase + E-04 confidence-blended weapon/cadence/sustain evidence + E-05 ranged draw/charge cadence + E-05 draw→release/cancel lifecycle + E-06 throttled structured diagnostics/bounded recovery 2026-11-26; native BLOCKED) |
 | V7-17 | Two Echo modes: Wave 7 duel + rare Phase 5 summon, no teleport-to-room | Wave 7 `EchoDuelCombatRuntimeAdapter`; Phase 5 `spawnEchoClone` | — | NOT_IMPLEMENTED (Phase 5 still uses simplified `spawnEchoClone`; E-01 call-graph replacement open) |
 | V7-18 | Guardian phases 1–5: real HP/damage/hurt, grounded, 4 physical attacks | EndEvent boss runtime | boss phase probes | SRC+TEST (native BLOCKED) |
 | V7-19 | Phases 3–4: geysers + temporary blocks, rare ring/forge, no spam | EndEvent hazard runtime | wave timing probes | IMPLEMENTED_UNVERIFIED (overlapping hazard batches remain open per V6 ledger) |
@@ -155,7 +155,7 @@ never a pass without real Minecraft 26.3 evidence.
   scenarios, focused suite green. Native draw/shoot capture remains BLOCKED (no
   graphical Fabric client in this environment).
 
-### E-06 (part) — Duplicate private-loadout serialisation on the decision hot path (`runtime/wave7/EchoDuelCombatRuntimeAdapter`)
+### E-06 (allocation) — Duplicate private-loadout serialisation on the decision hot path (`runtime/wave7/EchoDuelCombatRuntimeAdapter`)
 - Root cause: `tick` serialised the 42-slot private replica twice per decision —
   once for the identity guard (`replica.encode().equals(duel.replicaState())`)
   and again to freeze the `baselineReplica` — which is avoidable allocation in
@@ -163,10 +163,37 @@ never a pass without real Minecraft 26.3 evidence.
 - Fix: encode once into `replicaSnapshot`, compare that to the persisted state,
   and restore the baseline from the same immutable snapshot. Revision and
   rollback guarantees are unchanged; only the redundant serialisation is gone.
-- Scope: this is the allocation half of E-06. Throttled structured diagnostics
-  and bounded recovery for permanently broken actors remain open (tracked under
-  V7-16/V7-27) because they require an observability seam the pure domain
-  adapter does not currently have.
+
+### E-06 (observability) — A broken actor hid behind a silent idle tick (`runtime/wave7/EchoDuelCombatRuntimeAdapter`, `runtime/wave7/EchoCombatDiagnosticThrottle`, `CopiMineEndEvent`)
+- Root cause: the adapter's `catch (RuntimeException) { return Optional.empty(); }`
+  treated every failure — including a permanently corrupt snapshot — as "no
+  action this tick". A broken Echo therefore froze forever with no boundable
+  diagnostic, while a partial supply mutation could only be recovered by the
+  caller noticing the empty decision.
+- Fix: the adapter now has a `Diagnostics` seam (`Diagnostics.NONE` for the
+  four-argument overload, so every existing caller is untouched).
+  - An expected invalid snapshot (`IllegalArgumentException`) is classified as
+    `REASON_INVALID_SNAPSHOT`, reported, and fails the actor closed; the
+    monolith restores the last durable receipt.
+  - Any other `RuntimeException` is classified as `REASON_UNEXPECTED_FAILURE`,
+    reported, and rethrown to the runtime boundary instead of being swallowed.
+  - `EchoCombatDiagnosticThrottle` bounds the channel to one report per actor per
+    200-tick window (a restarted counter is always a fresh window), and its
+    entries are dropped with `removeNamedEchoRuntime`/teardown, so the map is
+    bounded by the roster, not by uptime.
+  - The monolith `emitNamedEchoCombatDiagnostic` logs only `eventGeneration`,
+    `runtimeGeneration`, `room`, `duelId`, `action=TICK` and the exception
+    type — never the private 42-slot inventory.
+  - Recovery is bounded: `restoreNamedEchoReplica` restores from
+    `current.replicaState()` and, if even that receipt is corrupt, keeps failing
+    the tick closed rather than inventing state.
+- Regression: `EchoDuelCombatRuntimeAdapterTest.diagnosticsClassifyAndReportBoundedReasons`
+  (expected vs unexpected classification, exact failure handed through, null/`NONE`
+  sinks are inert, the unobserved overload never fires), `EchoCombatDiagnosticThrottleTest`
+  (first report, in-window suppression, window boundary, clock reset, forget/clear,
+  null actor, invalid interval).
+- Result: `EchoDuelCombatRuntimeAdapterTest OK assertions=110`,
+  `EchoCombatDiagnosticThrottleTest OK assertions=15`, focused suite green.
 
 ### E-03 — Shared global clock made every same-profile copy strafe in lockstep (`runtime/wave7/EchoDuelCombatRuntimeAdapter`)
 - Root cause: `lateralIntent` derived the strafe phase from `observation.tick() / 12`

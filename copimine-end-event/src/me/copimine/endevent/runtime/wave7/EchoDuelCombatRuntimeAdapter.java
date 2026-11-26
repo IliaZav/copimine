@@ -35,6 +35,19 @@ public final class EchoDuelCombatRuntimeAdapter {
     private static final EchoDuelCombatPolicy.Cooldowns COOLDOWNS =
             new EchoDuelCombatPolicy.Cooldowns(10, 20, 40, 32, 20, 100, 60);
     /**
+     * E-06: structured reason for a tick that could not produce a decision
+     * because the persisted snapshot/loadout was invalid. This is an expected
+     * corruption family: fail the actor closed and let the runtime restore its
+     * last durable receipt.
+     */
+    public static final String REASON_INVALID_SNAPSHOT = "INVALID_SNAPSHOT";
+    /**
+     * E-06: structured reason for an unexpected failure. Unlike an invalid
+     * snapshot this is not normal, so it is reported and then surfaced to the
+     * runtime boundary instead of being silently swallowed as an idle tick.
+     */
+    public static final String REASON_UNEXPECTED_FAILURE = "UNEXPECTED_FAILURE";
+    /**
      * E-05: the longest bow draw / crossbow charge a personalisation may record.
      * The persisted charge deadline is rebased with this ceiling so a cold
      * restart can neither invent an extra-long draw nor fire before the operator's
@@ -77,6 +90,43 @@ public final class EchoDuelCombatRuntimeAdapter {
     }
 
     public enum Action { NONE, MELEE, CRITICAL, RANGED, RANGED_DRAW, CONSUMABLE, SHIELD, JUMP, WIND_CHARGE, SPLASH }
+
+    /**
+     * E-06: structured observability seam for the per-tick adapter.
+     *
+     * <p>The adapter used to swallow every {@link RuntimeException} as "no
+     * action", which can hide a permanently broken actor behind a copy that
+     * silently never acts. A tick that cannot produce a decision now reports a
+     * bounded reason to the runtime instead. The runtime is responsible for
+     * throttling and for restoring the last durable receipt; this callback must
+     * stay observational and never change control flow.</p>
+     */
+    @FunctionalInterface
+    public interface Diagnostics {
+        /** A do-nothing sink for callers that do not observe the adapter. */
+        Diagnostics NONE = (scope, tick, reason, failure) -> { };
+
+        /**
+         * Called once when a tick fails. {@code reason} is one of the
+         * {@code REASON_*} constants and must never include the private
+         * inventory; only the exception type is intended for the log.
+         */
+        void tickRejected(Scope scope, long tick, String reason, RuntimeException failure);
+
+        /**
+         * Classifies a failure, reports it to {@code diagnostics}, and returns
+         * true when it is an expected invalid snapshot. Keeping the
+         * classification in one place means the catch block and its regression
+         * test cannot drift.
+         */
+        static boolean classify(Diagnostics diagnostics, Scope scope, long tick,
+                                RuntimeException failure) {
+            boolean expected = failure instanceof IllegalArgumentException;
+            (diagnostics == null ? NONE : diagnostics).tickRejected(scope, tick,
+                    expected ? REASON_INVALID_SNAPSHOT : REASON_UNEXPECTED_FAILURE, failure);
+            return expected;
+        }
+    }
 
     /** The live context must exactly match the persisted event, room, actor and duel identity. */
     public record Scope(UUID eventId, long attemptGeneration, long runtimeGeneration, int room,
@@ -389,6 +439,17 @@ public final class EchoDuelCombatRuntimeAdapter {
      */
     public static Optional<Decision> tick(DuelRecord duel, EchoLoadoutState replica,
                                           Scope scope, Observation observation) {
+        return tick(duel, replica, scope, observation, Diagnostics.NONE);
+    }
+
+    /**
+     * E-06: identical to {@link #tick(DuelRecord, EchoLoadoutState, Scope, Observation)}
+     * but reports a bounded structured reason when the tick cannot produce a
+     * decision. The four-argument form is the unobserved default.
+     */
+    public static Optional<Decision> tick(DuelRecord duel, EchoLoadoutState replica,
+                                          Scope scope, Observation observation,
+                                          Diagnostics diagnostics) {
         if (duel == null || replica == null || scope == null || observation == null
                 || !scope.matches(duel) || duel.lifecycle() != Lifecycle.ACTIVE
                 || duel.actor().lifecycle() != ActorLifecycle.ALIVE
@@ -725,8 +786,18 @@ public final class EchoDuelCombatRuntimeAdapter {
 
             return Optional.of(new Decision(scope, Action.NONE, duel, duel, baselineReplica,
                     replica, -1, -1, null, intent));
-        } catch (RuntimeException invalidSnapshot) {
+        } catch (IllegalArgumentException expectedSnapshot) {
+            // E-06: an expected invalid snapshot is a real fault, not an idle
+            // tick. Report the bounded reason and fail this actor closed; the
+            // runtime restores the last durable receipt before the next tick.
+            Diagnostics.classify(diagnostics, scope, observation.tick(), expectedSnapshot);
             return Optional.empty();
+        } catch (RuntimeException unexpectedFailure) {
+            // E-06: never let a permanently broken actor hide behind a silent
+            // idle tick. Report the failure and surface it to the runtime
+            // boundary, which fails this tick closed and restores the receipt.
+            Diagnostics.classify(diagnostics, scope, observation.tick(), unexpectedFailure);
+            throw unexpectedFailure;
         }
     }
 

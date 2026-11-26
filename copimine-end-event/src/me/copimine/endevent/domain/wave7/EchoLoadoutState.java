@@ -179,6 +179,24 @@ public final class EchoLoadoutState {
         for (int slot=0;slot<41;slot++) if (remaining[slot]>0 && frozen.get(slot).kind()==kind) return slot;
         return -1;
     }
+    /**
+     * E-04: the melee slot the owner's recorded weapon preference favours. An
+     * axe-preferring owner's copy reaches for an axe when it carries one and
+     * falls back to any melee weapon otherwise; a sword-preferring owner does
+     * the reverse. This is only a preference over what the replica already
+     * carries - it never invents a weapon.
+     */
+    public int findPreferredMelee(boolean preferAxe) {
+        int fallback = -1;
+        for (int slot=0;slot<41;slot++) {
+            if (remaining[slot]<=0 || frozen.get(slot).kind()!=Kind.MELEE) continue;
+            if (fallback<0) fallback=slot;
+            String material=frozen.get(slot).material();
+            boolean axe=material.endsWith("_AXE") || material.equals("AXE");
+            if (axe==preferAxe) return slot;
+        }
+        return fallback;
+    }
     public boolean consume(int slot, int amount, long expectedRevision) {
         if (slot<0 || slot>=42 || amount<=0 || remaining[slot]<amount || revision!=expectedRevision
                 || revision>=Long.MAX_VALUE-1) return false;

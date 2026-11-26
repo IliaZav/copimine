@@ -35,7 +35,7 @@ never a pass without real Minecraft 26.3 evidence.
 | V7-13 | Warden: real base, 5×4, 20t/60t, R6 through-wall, resonance counterplay | W5.1 Warden runtime | `test_warden_v5_runtime.py` | SRC+TEST (native BLOCKED) |
 | V7-14 | Archmage: frequent bounded Vexes, 3-block fang line, crown gap, staff | Archmage runtime | `test_wave7_archmage_*` | SRC+TEST (native BLOCKED; low-HP cadence pending owner approval) |
 | V7-15 | Distinct skeleton models/arrows, textured bars, no Echo bar | active 26.3 client | `SpellVisualGeometryTest`, `GuardianSpellMeshTest` | IMPLEMENTED_UNVERIFIED (Wave7 V4 ZIP content not extractable; native BLOCKED) |
-| V7-16 | Echo AI: 4 distinct + hybrid profiles, independent tactics, finite resources | `runtime/wave7/EchoDuelCombatRuntimeAdapter`, `domain/wave7/EchoBehaviorStrategy`, `EchoDuelCombatPolicy` | `EchoDuelCombatRuntimeAdapterTest` (91 assertions), `EchoWoundedRetreatTest` (actor-phase lockstep divergence), `EchoDuelCapabilityPolicyTest` | IMPLEMENTED_UNVERIFIED (E-02 navigation dead zones + E-03 actor-local phase fixed 2026-11-26; E-04/E-05 open; native BLOCKED) |
+| V7-16 | Echo AI: 4 distinct + hybrid profiles, independent tactics, finite resources | `runtime/wave7/EchoDuelCombatRuntimeAdapter`, `domain/wave7/EchoBehaviorStrategy`, `EchoDuelCombatPolicy`, `EventCombatProfileService` | `EchoDuelCombatRuntimeAdapterTest` (91 assertions), `EchoWoundedRetreatTest` (actor-phase lockstep divergence), `EchoBehaviorPersonalisationTest` (113 assertions: personalised heal threshold, axe-vs-sword preference, cadence), `EchoBehaviorStrategyTest` (schema-2→3 migration), `EchoDuelCapabilityPolicyTest` | IMPLEMENTED_UNVERIFIED (E-02 navigation dead zones + E-03 actor-local phase + E-04 confidence-blended weapon/cadence/sustain evidence fixed 2026-11-26; E-05 real action-lifecycle executor open; native BLOCKED) |
 | V7-17 | Two Echo modes: Wave 7 duel + rare Phase 5 summon, no teleport-to-room | Wave 7 `EchoDuelCombatRuntimeAdapter`; Phase 5 `spawnEchoClone` | — | NOT_IMPLEMENTED (Phase 5 still uses simplified `spawnEchoClone`; E-01 call-graph replacement open) |
 | V7-18 | Guardian phases 1–5: real HP/damage/hurt, grounded, 4 physical attacks | EndEvent boss runtime | boss phase probes | SRC+TEST (native BLOCKED) |
 | V7-19 | Phases 3–4: geysers + temporary blocks, rare ring/forge, no spam | EndEvent hazard runtime | wave timing probes | IMPLEMENTED_UNVERIFIED (overlapping hazard batches remain open per V6 ledger) |
@@ -50,6 +50,26 @@ never a pass without real Minecraft 26.3 evidence.
 | V7-28 | Assets/release: active sources, real hashes, CI at final SHA, no old sphere/camera/Echo bar | build + CI | validators, `RunEndRiftEventChecks.ps1` | IMPLEMENTED_UNVERIFIED (CI P0 encoding resolved; native visual BLOCKED) |
 
 ## Defects fixed this session (2026-11-26)
+
+### E-04 — Rich weapon/cadence/sustain evidence was compiled away (`domain/wave7/EchoBehaviorStrategy`, `runtime/EventCombatProfileService`)
+- Root cause: the profile service measured accepted hits by weapon, attack
+  intervals, bow/crossbow charge and the health ratio at which each owner heals,
+  but `echoBehaviorStrategy()` compiled only coarse hit/sample counts and the
+  adapter used fixed `HEAL_THRESHOLD_PERMILLE=550`, a fixed melee cooldown and the
+  first melee slot. Rich evidence and per-feature confidence were discarded.
+- Fix: `EchoBehaviorStrategy` is now schema 3 and persists five more bounded
+  features — healing threshold, swing cadence, axe-vs-sword preference, bow draw
+  and crossbow charge — with a schema-2 migration that restores the neutral
+  baselines. `EventCombatProfileService.blendMean` blends each feature's sample
+  mean towards a competent neutral baseline by its OWN per-feature confidence, so
+  one accidental sample cannot lock a style. The adapter now derives the `wounded`
+  threshold from `healThresholdPermille`, the melee cooldown from
+  `swingCadenceTicks` (clamped 10..40), and the held melee weapon from
+  `weaponPreferencePermille` (via `EchoLoadoutState.findPreferredMelee`).
+- Regression: `EchoBehaviorPersonalisationTest` (`healThresholdIsPersonalised`,
+  `weaponPreferencePicksTheRecordedBlade`, `swingCadencePersonalisesMeleeCooldown`),
+  `EchoBehaviorStrategyTest` (schema-2 migration + truncated-record rejection).
+  Result: 113 assertions OK; `EchoBehaviorStrategyTest OK`.
 
 ### E-03 — Shared global clock made every same-profile copy strafe in lockstep (`runtime/wave7/EchoDuelCombatRuntimeAdapter`)
 - Root cause: `lateralIntent` derived the strafe phase from `observation.tick() / 12`

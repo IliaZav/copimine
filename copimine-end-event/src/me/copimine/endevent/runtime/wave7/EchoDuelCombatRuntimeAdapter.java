@@ -21,7 +21,10 @@ public final class EchoDuelCombatRuntimeAdapter {
     private static final int RANGED_RANGE_BLOCKS = 30;
     /** A parry only makes sense against a body close enough to actually strike. */
     private static final double PARRY_RANGE_BLOCKS = 5.0D;
-    private static final int HEAL_THRESHOLD_PERMILLE = 550;
+    /** A strong recorded axe habit (this share of melee hits) swaps the held weapon. */
+    private static final int AXE_PREFERENCE_FLOOR_PERMILLE = 650;
+    /** A strong recorded sword habit (this share of melee hits) keeps the sword. */
+    private static final int SWORD_PREFERENCE_CEILING_PERMILLE = 350;
     /**
      * The "never heals" floor for the recorded sustain share. Any player who
      * healed at least once while acting clears it; a profile with no healing at
@@ -30,6 +33,17 @@ public final class EchoDuelCombatRuntimeAdapter {
     private static final int SUSTAIN_FLOOR_PERMILLE = 1;
     private static final EchoDuelCombatPolicy.Cooldowns COOLDOWNS =
             new EchoDuelCombatPolicy.Cooldowns(10, 20, 40, 32, 20, 100, 60);
+
+    /** E-04: the owner's recorded swing cadence personalises the melee cooldown, clamped to a fair native band. */
+    private static EchoDuelCombatPolicy.Cooldowns cooldownsFor(EchoBehaviorStrategy strategy) {
+        if (strategy == null) return COOLDOWNS;
+        int cadence = Math.max(10, Math.min(40, strategy.swingCadenceTicks()));
+        if (cadence == COOLDOWNS.meleeTicks()) return COOLDOWNS;
+        return new EchoDuelCombatPolicy.Cooldowns(COOLDOWNS.sharedActionTicks(), cadence,
+                COOLDOWNS.rangedTicks(), COOLDOWNS.consumableUseTicks(),
+                COOLDOWNS.shieldHoldTicks(), COOLDOWNS.shieldCooldownTicks(),
+                COOLDOWNS.jumpCooldownTicks());
+    }
 
     private EchoDuelCombatRuntimeAdapter() {
     }
@@ -356,9 +370,13 @@ public final class EchoDuelCombatRuntimeAdapter {
         }
 
         try {
+            // E-04: the owner's recorded swing cadence personalises the melee
+            // cooldown inside a fair native band. Every other gate keeps the
+            // neutral baseline, so a sparse profile behaves exactly as before.
+            EchoDuelCombatPolicy.Cooldowns cooldowns = cooldownsFor(duel.behaviorStrategy());
             EchoLoadoutState baselineReplica = EchoLoadoutState.restore(replica.encode(),
                     duel.eventId(), duel.attemptGeneration(), duel.duelId(), duel.ownerUuid(), replica.revision());
-            int meleeSlot = replica.find(EchoLoadoutState.Kind.MELEE);
+            int meleeSlot = meleeSlotFor(duel.behaviorStrategy(), replica);
             int bowSlot = replica.find(EchoLoadoutState.Kind.BOW);
             int crossbowSlot = replica.find(EchoLoadoutState.Kind.CROSSBOW);
             int rangedSlot = duel.behaviorStrategy().rangedPermille() >= duel.behaviorStrategy().meleePermille()
@@ -371,7 +389,7 @@ public final class EchoDuelCombatRuntimeAdapter {
             if (duel.actor().pendingUseUntilTick() > 0L
                     && observation.tick() >= duel.actor().pendingUseUntilTick()) {
                 Optional<ActorState> completed = EchoDuelCombatPolicy.completeConsumable(
-                        duel.actor(), observation.tick(), COOLDOWNS);
+                        duel.actor(), observation.tick(), cooldowns);
                 if (completed.isPresent()) {
                     // The supply was spent when the use STARTED, so by now the slot is
                     // empty and there is no item to report. The resolution is a state
@@ -393,7 +411,7 @@ public final class EchoDuelCombatRuntimeAdapter {
             // anyway keeps the guarded copy visibly moving, and it still grants
             // no action: the shield window stays the only thing happening.
             boolean wounded = duel.actor().currentHealth() * 1_000.0D
-                    <= duel.actor().maximumHealth() * HEAL_THRESHOLD_PERMILLE;
+                    <= duel.actor().maximumHealth() * duel.behaviorStrategy().healThresholdPermille();
             // The retreat is only worth taking when the heal branch below can
             // actually fire this fight: a consumable is carried and the recorded
             // sustain habit clears the floor. Otherwise the copy would kite
@@ -424,7 +442,7 @@ public final class EchoDuelCombatRuntimeAdapter {
                 EchoLoadoutState.Item item = replica.item(consumableSlot);
                 Optional<ActorState> actor = EchoDuelCombatPolicy.tryStartConsumable(
                         duel.actor(), replica, consumableSlot, replica.revision(),
-                        observation.tick(), COOLDOWNS);
+                        observation.tick(), cooldowns);
                 if (actor.isPresent()) {
                     // Audit ECHO error: the copy used to regain health on the very
                     // tick it STARTED eating, so a visible apple never had to finish
@@ -471,7 +489,7 @@ public final class EchoDuelCombatRuntimeAdapter {
                 EchoLoadoutState.Item item = replica.item(potionSlot);
                 Optional<ActorState> actor = EchoDuelCombatPolicy.tryStartPotion(
                         duel.actor(), replica, potionSlot, replica.revision(),
-                        observation.tick(), COOLDOWNS);
+                        observation.tick(), cooldowns);
                 if (actor.isPresent()) {
                     return decision(duel, baselineReplica, replica, scope, Action.CONSUMABLE, actor.get(),
                             potionSlot, -1, item, intent);
@@ -491,7 +509,7 @@ public final class EchoDuelCombatRuntimeAdapter {
                 if (parry.isPresent()) {
                     Optional<ActorState> actor = EchoDuelCombatPolicy.tryStartReactiveShield(
                             duel.actor(), replica, shieldSlot, replica.revision(), observation.tick(),
-                            parry.get(), COOLDOWNS);
+                            parry.get(), cooldowns);
                     if (actor.isPresent()) {
                         return decision(duel, baselineReplica, replica, scope, Action.SHIELD, actor.get(),
                                 shieldSlot, -1, replica.item(shieldSlot), intent);
@@ -505,7 +523,7 @@ public final class EchoDuelCombatRuntimeAdapter {
                 long holdTicks = 5L + 15L * duel.behaviorStrategy().defensePermille() / 1_000L;
                 Optional<ActorState> actor = EchoDuelCombatPolicy.tryStartShield(
                         duel.actor(), replica, shieldSlot, replica.revision(), observation.tick(),
-                        holdTicks, COOLDOWNS);
+                        holdTicks, cooldowns);
                 if (actor.isPresent()) {
                     return decision(duel, baselineReplica, replica, scope, Action.SHIELD, actor.get(),
                             shieldSlot, -1, replica.item(shieldSlot), intent);
@@ -515,7 +533,7 @@ public final class EchoDuelCombatRuntimeAdapter {
             if (inMeleeRange && !observation.onGround() && observation.criticalWindow() && meleeSlot >= 0) {
                 EchoLoadoutState.Item item = replica.item(meleeSlot);
                 Optional<ActorState> actor = EchoDuelCombatPolicy.tryStartCriticalMelee(
-                        duel.actor(), observation.tick(), COOLDOWNS);
+                        duel.actor(), observation.tick(), cooldowns);
                 if (actor.isPresent() && EchoDuelCombatPolicy.tryApplyGearWear(
                         replica, meleeSlot, 1, replica.revision())) {
                     return decision(duel, baselineReplica, replica, scope, Action.CRITICAL, actor.get(),
@@ -526,7 +544,7 @@ public final class EchoDuelCombatRuntimeAdapter {
                     && duel.behaviorStrategy().meleePermille() >= duel.behaviorStrategy().rangedPermille()) {
                 EchoLoadoutState.Item item = replica.item(meleeSlot);
                 Optional<ActorState> actor = EchoDuelCombatPolicy.tryStartMelee(
-                        duel.actor(), observation.tick(), COOLDOWNS);
+                        duel.actor(), observation.tick(), cooldowns);
                 if (actor.isPresent() && EchoDuelCombatPolicy.tryApplyGearWear(
                         replica, meleeSlot, 1, replica.revision())) {
                     return decision(duel, baselineReplica, replica, scope, Action.MELEE, actor.get(),
@@ -539,7 +557,7 @@ public final class EchoDuelCombatRuntimeAdapter {
                 EchoLoadoutState.Item item = replica.item(rangedSlot);
                 Optional<ActorState> actor = EchoDuelCombatPolicy.tryStartRanged(
                         duel.actor(), replica, rangedSlot, ammoSlot, replica.revision(),
-                        observation.tick(), COOLDOWNS);
+                        observation.tick(), cooldowns);
                 if (actor.isPresent()) {
                     if (!EchoDuelCombatPolicy.tryApplyGearWear(
                             replica, rangedSlot, 1, replica.revision())) return Optional.empty();
@@ -555,7 +573,7 @@ public final class EchoDuelCombatRuntimeAdapter {
                     && observation.distanceSquared() <= RANGED_RANGE_BLOCKS * (double) RANGED_RANGE_BLOCKS) {
                 EchoLoadoutState.Item item = replica.item(chargeSlot);
                 Optional<ActorState> actor = EchoDuelCombatPolicy.tryStartWindCharge(
-                        duel.actor(), replica, chargeSlot, replica.revision(), observation.tick(), COOLDOWNS);
+                        duel.actor(), replica, chargeSlot, replica.revision(), observation.tick(), cooldowns);
                 if (actor.isPresent()) {
                     return decision(duel, baselineReplica, replica, scope, Action.WIND_CHARGE, actor.get(),
                             chargeSlot, -1, item, intent);
@@ -569,7 +587,7 @@ public final class EchoDuelCombatRuntimeAdapter {
                     && observation.distanceSquared() <= RANGED_RANGE_BLOCKS * (double) RANGED_RANGE_BLOCKS) {
                 EchoLoadoutState.Item item = replica.item(splashSlot);
                 Optional<ActorState> actor = EchoDuelCombatPolicy.tryStartSplash(
-                        duel.actor(), replica, splashSlot, replica.revision(), observation.tick(), COOLDOWNS);
+                        duel.actor(), replica, splashSlot, replica.revision(), observation.tick(), cooldowns);
                 if (actor.isPresent()) {
                     return decision(duel, baselineReplica, replica, scope, Action.SPLASH, actor.get(),
                             splashSlot, -1, item, intent);
@@ -588,7 +606,7 @@ public final class EchoDuelCombatRuntimeAdapter {
                     && inProfileWindow(observation.tick(), duel.behaviorStrategy().jumpAttackPermille(),
                             actorPhase)) {
                 Optional<ActorState> actor = EchoDuelCombatPolicy.tryStartJump(
-                        duel.actor(), observation.tick(), COOLDOWNS);
+                        duel.actor(), observation.tick(), cooldowns);
                 if (actor.isPresent()) {
                     return decision(duel, baselineReplica, replica, scope, Action.JUMP, actor.get(),
                             -1, -1, null, intent);
@@ -598,7 +616,7 @@ public final class EchoDuelCombatRuntimeAdapter {
             if (inMeleeRange && meleeSlot >= 0 && !swapsToRanged) {
                 EchoLoadoutState.Item item = replica.item(meleeSlot);
                 Optional<ActorState> actor = EchoDuelCombatPolicy.tryStartMelee(
-                        duel.actor(), observation.tick(), COOLDOWNS);
+                        duel.actor(), observation.tick(), cooldowns);
                 if (actor.isPresent() && EchoDuelCombatPolicy.tryApplyGearWear(
                         replica, meleeSlot, 1, replica.revision())) {
                     return decision(duel, baselineReplica, replica, scope, Action.MELEE, actor.get(),
@@ -620,7 +638,7 @@ public final class EchoDuelCombatRuntimeAdapter {
             if (observation.onGround() && inProfileWindow(
                     observation.tick(), duel.behaviorStrategy().mobilityPermille(), actorPhase)) {
                 Optional<ActorState> actor = EchoDuelCombatPolicy.tryStartJump(
-                        duel.actor(), observation.tick(), COOLDOWNS);
+                        duel.actor(), observation.tick(), cooldowns);
                 if (actor.isPresent()) {
                     return decision(duel, baselineReplica, replica, scope, Action.JUMP, actor.get(),
                             -1, -1, null, intent);
@@ -788,6 +806,22 @@ public final class EchoDuelCombatRuntimeAdapter {
 
     private static int firstUsable(int preferred, int fallback) {
         return preferred >= 0 ? preferred : fallback;
+    }
+
+    /**
+     * E-04: reach for the melee weapon the owner actually used. A neutral
+     * preference keeps the first melee slot, so a sparse profile behaves exactly
+     * as before; only a strong recorded axe/sword habit switches the held weapon.
+     */
+    private static int meleeSlotFor(EchoBehaviorStrategy strategy, EchoLoadoutState replica) {
+        if (strategy == null) return replica.find(EchoLoadoutState.Kind.MELEE);
+        if (strategy.weaponPreferencePermille() >= AXE_PREFERENCE_FLOOR_PERMILLE) {
+            return replica.findPreferredMelee(true);
+        }
+        if (strategy.weaponPreferencePermille() <= SWORD_PREFERENCE_CEILING_PERMILLE) {
+            return replica.findPreferredMelee(false);
+        }
+        return replica.find(EchoLoadoutState.Kind.MELEE);
     }
 
     private static boolean inProfileWindow(long tick, int weightPermille) {

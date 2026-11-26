@@ -38,9 +38,9 @@ never a pass without real Minecraft 26.3 evidence.
 | V7-16 | Echo AI: 4 distinct + hybrid profiles, independent tactics, finite resources | `runtime/wave7/EchoDuelCombatRuntimeAdapter`, `domain/wave7/EchoBehaviorStrategy`, `EchoDuelCombatPolicy`, `EventCombatProfileService` | `EchoDuelCombatRuntimeAdapterTest` (110 assertions), `EchoCombatDiagnosticThrottleTest` (15 assertions), `EchoWoundedRetreatTest` (actor-phase lockstep divergence), `EchoBehaviorPersonalisationTest` (115 assertions: personalised heal threshold, axe-vs-sword preference, melee + ranged draw cadence), `EchoBehaviorStrategyTest` (schema-2→3 migration), `EchoDuelCapabilityPolicyTest` | IMPLEMENTED_UNVERIFIED (E-02 navigation dead zones + E-03 actor-local phase + E-04 confidence-blended weapon/cadence/sustain evidence + E-05 ranged draw/charge cadence + E-05 draw→release/cancel lifecycle + E-06 throttled structured diagnostics/bounded recovery 2026-11-26; native BLOCKED) |
 | V7-17 | Two Echo modes: Wave 7 duel + rare Phase 5 summon, no teleport-to-room | Wave 7 `EchoDuelCombatRuntimeAdapter`; Phase 5 `RAGE_ECHO` mode on the same engine (`spawnRageEcho`, `tickRageEchoes`, `RageEchoSummonPolicy`, `RageEchoSession`) | `test_end_rift_echo_runtime_wiring.py` (rare Echo tick ownership, phase/generation fences, own kind, common engine, accepted damage, policy budget, cleanup, range gate, no teleport), `RageEchoSummonPolicyTest` | IMPLEMENTED_UNVERIFIED (E-01 monolith wiring 2026-11-27; `spawnEchoClone` remains a diagnostic only; native BLOCKED) |
 | V7-18 | Guardian phases 1–5: real HP/damage/hurt, grounded, 4 physical attacks | EndEvent boss runtime | boss phase probes | SRC+TEST (native BLOCKED) |
-| V7-19 | Phases 3–4: geysers + temporary blocks, rare ring/forge, no spam | EndEvent hazard runtime | wave timing probes | IMPLEMENTED_UNVERIFIED (overlapping hazard batches remain open per V6 ledger) |
+| V7-19 | Phases 3–4: geysers + temporary blocks, rare ring/forge, no spam | EndEvent hazard runtime; `BossSignatureCastGatePolicy`; `ArenaInfernoPolicy.allowsConcurrent` | `test_phase4_infernal_wiring.py` (signature thresholds live inside OVERLOAD; signature ticker refuses while magma is live), `test_phase4_infernal_expansion.py` (five-stage fracture, once-per-eruption damage, journal) | IMPLEMENTED_UNVERIFIED (2026-11-27: ring/forge can no longer start mid-Inferno; the former 0.30/0.26 thresholds were unreachable and are now 0.33/0.31, so the second authored set-piece really exists; native BLOCKED) |
 | V7-20 | Phase 5: transparent coordinated decoys, up to 5, independent death, rare Echo | Phase 5 Rage runtime | `test_event_combat_profile.py`, `test_end_rift_echo_runtime_wiring.py` | IMPLEMENTED_UNVERIFIED (rare Echo wired 2026-11-27; coordinated-skill repertoire still pending owner approval) |
-| V7-21 | Cooperative actions: enough members, prepare, loss, miss, cancel | cooperative admission | `test_end_rift_sky_hail_and_guardian_permanence.py` | IMPLEMENTED_UNVERIFIED (candidate skills not ratified) |
+| V7-21 | Cooperative actions: enough members, prepare, loss, miss, cancel | `domain/BossCopyCooperationPolicy` + Phase 5 runtime `tickBossCopyCooperations` | `BossCopyCooperationPolicyTest` (admission sufficiency, prepare→fix, copy loss before/after fixation, miss, cancellation, cooldown band, beam concurrency, no dead-source shot) | IMPLEMENTED_UNVERIFIED (2026-11-27: three provisional cooperative techniques wired to the RAGE phase; owner has not ratified the repertoire, so the profiles stay windowed 25–35/20–30/40–60 s) |
 | V7-22 | Transition 5→6: corridor + exact panels, safe zone/roof/portal intact | `LastSealArenaReveal`, `ArenaMergeCinematicPolicy` | `test_end_rift_arena_merge_cinematic.py` | SRC+TEST (native BLOCKED) |
 | V7-23 | Last Seal: 6–8 defenders, shield per living, ring gap, real grab/throw | Kagune runtime | `test_tentacle_guardian_role_separation.py`, `test_end_rift_last_seal_ring_runtime.py` | SRC+TEST (native BLOCKED) |
 | V7-24 | Victory/defeat: square restored, no stuck damage/tasks, no rewards on defeat | `EndRiftVictoryCoordinatorPolicy` | victory probes | SRC+TEST (native BLOCKED) |
@@ -280,6 +280,57 @@ never a pass without real Minecraft 26.3 evidence.
   and only inside the arena's vertical band. Legacy V1 journals recover safely and
   skip the broad sweep.
 - Regression: `tests/test_last_seal_structural_geometry.py::test_recovery_never_teleports_a_surface_or_stacked_floor_body`.
+
+### V7-19 — Overload set-pieces could stack on the Inferno; two thresholds were dead (`CopiMineEndEvent`)
+
+- Root cause: `tickOverloadSignatureCasts` refused a ring/forge only while another
+  *boss ability* owned the cast slot. The Inferno is not a `BossAbilityState` —
+  it is a live block hazard — so a Rift Fire Ring or Infernal Forge could begin
+  while the magma floor and steam vents were still burning, producing exactly the
+  unavoidable combo V7-19 forbids. Separately, the configured thresholds ended
+  at `0.30`/`0.26`, but the OVERLOAD band is `(0.30, 0.45]`; both were already
+  in RAGE when crossed, so the second authored cast of each set-piece was
+  silently deleted.
+- Fix: the signature ticker now bails on `!arenaInfernoBlocks.isEmpty()` before
+  it spends a threshold, so the set-piece is deferred to a real gap instead of
+  being lost. The thresholds are now `{0.40, 0.33}` (ring) and `{0.36, 0.31}`
+  (forge) — strictly inside OVERLOAD, still staggered and still paced by the
+  existing 50 s / 80 s cooldowns, so both casts are reachable without spam.
+- Regression: `tests/test_phase4_infernal_wiring.py`
+  (`test_signature_thresholds_are_inside_the_overload_band`,
+  `test_signature_cast_cannot_start_mid_inferno`); both files are now part of
+  the canonical gate step.
+
+### V7-21 — Cooperative Guardian + copy techniques did not exist in the runtime
+
+- Root cause: §10.4.2 requires the Rift Guardian and its Phase 5 copies to
+  perform coordinated techniques (mirror substitution, coordinated salvo,
+  reflection chain) with preparation, a committed fix, honest copy-loss handling,
+  a real miss, cancellation and cleanup. The runtime had no cooperative
+  sequence at all, so the provisional repertoire was absent from the live call
+  graph.
+- Fix: added `domain/BossCopyCooperationPolicy`, a pure policy that owns every
+  admission, timeline, copy-loss, cooldown, beam-concurrency and friendly-fire
+  rule for the three windowed profiles. The Phase 5 runtime
+  (`tickBossCopyCooperations`, called next to `tickEchoAttackReplicas`) owns only
+  the real actors: it reserves one `BossHazardBudget` slot, captures each
+  caster's eye origin and fixed aim at the fix tick, and executes real damage
+  through `applyEchoReplicaDamage` on the scheduled execute ticks.
+  - A copy that dies before fixation cancels the whole technique; after fixation
+    mirror/chain still cancel (no invisible shot from a dead source) while the
+    salvo shortens to its surviving casters.
+  - `clearEchoAttackReplicas`, `clearBossOnly` and every phase/generation fence
+    cancel the technique so no remote sequence survives a copy wipe.
+  - `MIRROR_SUBSTITUTION` reserves `REPOSITION` (not `MAJOR_GRAB`, which needs a
+    target and would always be refused) and `REFLECTION_CHAIN` reserves
+    `CHEST_STRIKE`; cooperative techniques never complete a phase and never drop
+    loot.
+- Regression: `tests/BossCopyCooperationPolicyTest.java` (admission sufficiency,
+  prepare→fix ordering, damage only on execute ticks, copy loss before/after
+  fixation, miss, cancellation matrix, cooldown band, beam concurrency, no
+  dead-source shot, cleanup-required).
+- Status: IMPLEMENTED_UNVERIFIED — owner ratification of the provisional
+  repertoire is still pending; native visual remains BLOCKED.
 
 ## Blocked (never a pass)
 

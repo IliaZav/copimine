@@ -60,3 +60,62 @@ def test_signature_ledgers_retire_on_phase_leave():
     source = _source()
     assert "overloadFireRingSpentThresholds.clear();" in source
     assert "infernalForgeSpentThresholds.clear();" in source
+
+
+def _signature_thresholds(source: str, name: str) -> list[float]:
+    import re
+
+    match = re.search(
+        rf"{name}\s*=\s*List\.of\(([^)]*)\)", source
+    )
+    assert match, f"{name} must stay a real configured threshold list"
+    return [float(value.strip().rstrip("D")) for value in match.group(1).split(",")]
+
+
+def test_signature_thresholds_are_inside_the_overload_band():
+    """V7-19: a threshold below the OVERLOAD floor is a silently deleted cast.
+
+    The phase walk moves to RAGE at ``0.30`` (``BossPhase.OVERLOAD`` is
+    ``(0.30, 0.45]``). The former ring/forge lists ended at ``0.30``/``0.26``,
+    so their second authored set-piece could never fire. Every configured
+    threshold must stay strictly inside the band it is gated to.
+    """
+
+    source = _source()
+    ring = _signature_thresholds(source, "OVERLOAD_FIRE_RING_THRESHOLDS")
+    forge = _signature_thresholds(source, "OVERLOAD_INFERNAL_FORGE_THRESHOLDS")
+    for name, thresholds in (
+        ("ring", ring),
+        ("forge", forge),
+    ):
+        assert len(thresholds) == 2, f"{name} keeps two staggered set-pieces"
+        assert thresholds == sorted(thresholds, reverse=True), (
+            f"{name} thresholds are listed highest-first"
+        )
+        for threshold in thresholds:
+            assert 0.30 < threshold <= 0.45, (
+                f"{name} threshold {threshold} is outside OVERLOAD (0.30, 0.45]"
+            )
+    # Staggered: the two lists never share an HP window, so the set-pieces
+    # alternate instead of landing as one unavoidable combo.
+    assert not set(ring) & set(forge), "ring and forge thresholds must be distinct"
+
+
+def test_signature_cast_cannot_start_mid_inferno():
+    """V7-19: magma/vents plus a ring or forge would be an unavoidable combo.
+
+    ``ArenaInfernoPolicy`` forbids a new relocation volley or hard restraint
+    while the burning floor is live. The signature ticker must apply the same
+    rule and must bail *before* it spends a threshold, so the set-piece is
+    deferred to a real gap rather than deleted by the Inferno.
+    """
+
+    source = _source()
+    start = source.index("private void tickOverloadSignatureCasts(")
+    gate_start = source.index("bossAbilityState != BossAbilityState.NONE", start)
+    spend_ring = source.index("overloadFireRingSpentThresholds.add(", start)
+    guard = source[gate_start:spend_ring]
+    assert "!arenaInfernoBlocks.isEmpty()" in guard, (
+        "signature ticker must refuse while the Inferno floor is live"
+    )
+    assert guard.index("!arenaInfernoBlocks.isEmpty()") < len(guard)

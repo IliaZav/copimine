@@ -98,6 +98,7 @@ import me.copimine.endevent.domain.BossCommandPolicy;
 import me.copimine.endevent.domain.BossAmbushPolicy;
 import me.copimine.endevent.domain.BossCastTimeline;
 import me.copimine.endevent.domain.BossContactStrikePolicy;
+import me.copimine.endevent.domain.BossCopyCooperationPolicy;
 import me.copimine.endevent.domain.BossDamagePolicy;
 import me.copimine.endevent.domain.BossDefeatCinematicPolicy;
 import me.copimine.endevent.domain.BossFinalStrikePolicy;
@@ -888,9 +889,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * Owner request: the Phase 4 signature spells fire at most once at each of
      * these HP thresholds. The two lists are staggered so the ring and the forge
      * alternate rather than landing together.
+     *
+     * <p>Every threshold must stay strictly inside the OVERLOAD band
+     * {@code (0.30, 0.45]}: the phase walk moves to RAGE at 0.30, so a lower
+     * entry (the former 0.30/0.26 pair) could never be reached and silently
+     * deleted the second authored cast. The cooldowns still make each set-piece
+     * rare, but the thresholds are now real.</p>
      */
-    private static final List<Double> OVERLOAD_FIRE_RING_THRESHOLDS = List.of(0.40D, 0.30D);
-    private static final List<Double> OVERLOAD_INFERNAL_FORGE_THRESHOLDS = List.of(0.36D, 0.26D);
+    private static final List<Double> OVERLOAD_FIRE_RING_THRESHOLDS = List.of(0.40D, 0.33D);
+    private static final List<Double> OVERLOAD_INFERNAL_FORGE_THRESHOLDS = List.of(0.36D, 0.31D);
     /** Cycle-scoped seed base; the cast seed mixes in event, generation and time. */
     private static final long INFERNO_CYCLE_SEED = 7_919L;
     private static final int MAX_ACTIVE_WORLD_VFX = 64;
@@ -1802,6 +1809,26 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private String echoReplicaLastCastFamily = "";
     /** Encounter generation each copy was born in: the second fence. */
     private final Map<UUID, Long> echoReplicaGenerations = new LinkedHashMap<>();
+
+    // --- V7-21 cooperative Guardian + copy techniques --------------------
+    /**
+     * §10.4.2 / V7-21: at most ONE cooperative technique at a time. The
+     * admission, copy-loss, cooldown and concurrency rules live in the pure
+     * {@link BossCopyCooperationPolicy}; this state is only the server adapter
+     * (real actors, fixed aim, reservation and cleanup).
+     */
+    private BossCopyCooperationPolicy.Technique bossCopyCooperationTechnique;
+    private BossCopyCooperationPolicy.Timeline bossCopyCooperationTimeline;
+    private long bossCopyCooperationLastCastTick = Long.MIN_VALUE;
+    private long bossCopyCooperationLastAdvanceTick = Long.MIN_VALUE;
+    private UUID bossCopyCooperationReservationId;
+    /** The copies taking part in the current technique. */
+    private final List<UUID> bossCopyCooperationCopies = new ArrayList<>();
+    /** Fixed eye origin and aim point per caster, captured at the fix tick. */
+    private final Map<UUID, Location> bossCopyCooperationOrigins = new LinkedHashMap<>();
+    private final Map<UUID, Location> bossCopyCooperationAims = new LinkedHashMap<>();
+    /** Volley index already fired for the coordinated salvo. */
+    private int bossCopyCooperationVolleyIndex;
 
     /** Real server health of the copy's readable hitbox. */
     private static final double ECHO_REPLICA_ACTOR_HEALTH = 40.0D;
@@ -50134,6 +50161,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         clearWorldVfx();
         releaseBossHazardReservation("boss-cleanup");
+        cancelBossCopyCooperation("boss-cleanup");
         if (bossHazardBudget != null) {
             bossHazardBudget.clear();
         }
@@ -50383,6 +50411,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // method carries its own RAGE and encounter-generation fences, and it
         // advances a copy exactly once per server tick.
         tickEchoAttackReplicas(boss);
+        // V7-21 / §10.4.2: the Guardian and its copies perform at most one
+        // cooperative technique at a time; admission and copy-loss rules are pure.
+        tickBossCopyCooperations(boss);
         tickEchoDecoyFence(boss);
         // E-01: rare Phase 5 Personal Echo, driven by the same common combat
         // engine as the Wave 7 duel but without its room lock, rewards or
@@ -57363,7 +57394,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private void tickOverloadSignatureCasts(LivingEntity boss) {
         if (boss == null || bossPhase != BossPhase.OVERLOAD || bossDefeatCinematicStarted
                 || bossAbilityState != BossAbilityState.NONE || bossHazardReservationId != null
-                || bossAmbushOwnsMajorCast() || isKaguneRingCastActive()) {
+                || bossAmbushOwnsMajorCast() || isKaguneRingCastActive()
+                || !arenaInfernoBlocks.isEmpty()) {
             return;
         }
         if (phase != EventPhase.BOSS_ACTIVE && !isTestBoss(boss)) {
@@ -58916,6 +58948,467 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
+    // ------------------------------------------------------------------
+    // V7-21 / §10.4.2 cooperative Guardian + copy techniques
+    // ------------------------------------------------------------------
+
+    /**
+     * One cooperative technique at a time: admission, fixed aim, real damage
+     * geometry, copy-loss handling and cleanup.
+     *
+     * <p>The provisional repertoire is mirror substitution, coordinated salvo
+     * and reflection chain. Every decision is delegated to the pure
+     * {@link BossCopyCooperationPolicy}; this adapter owns only the real actors
+     * and the server-authoritative effects.</p>
+     */
+    private void tickBossCopyCooperations(LivingEntity boss) {
+        if (bossCopyCooperationTimeline == null) {
+            if (bossPhase == BossPhase.RAGE && !bossDefeatCinematicStarted
+                    && boss != null && boss.isValid() && !boss.isDead()) {
+                tryStartBossCopyCooperation(boss);
+            }
+            return;
+        }
+        if (bossPhase != BossPhase.RAGE || bossDefeatCinematicStarted
+                || boss == null || !boss.isValid() || boss.isDead()) {
+            cancelBossCopyCooperation("fence");
+            return;
+        }
+        if (bossCopyCooperationLastAdvanceTick == eventTickCounter) {
+            return;
+        }
+        bossCopyCooperationLastAdvanceTick = eventTickCounter;
+        BossCopyCooperationPolicy.Timeline timeline = bossCopyCooperationTimeline;
+        if (liveCooperationCopyCount() < bossCopyCooperationCopies.size()) {
+            BossCopyCooperationPolicy.CopyLoss loss =
+                    BossCopyCooperationPolicy.copyLossOutcome(
+                            bossCopyCooperationTechnique,
+                            timeline.fixedAt(eventTickCounter),
+                            liveCooperationCopyCount());
+            if (loss == BossCopyCooperationPolicy.CopyLoss.CANCEL) {
+                cancelBossCopyCooperation("copy-lost");
+                return;
+            }
+            dropDeadCooperationCopies();
+        }
+        if (eventTickCounter >= timeline.cleanupTick()) {
+            finishBossCopyCooperation();
+            return;
+        }
+        if (eventTickCounter == timeline.fixTick()) {
+            if (liveCooperationCopyCount() <= 0 || !cooperationRouteLegal(boss)) {
+                cancelBossCopyCooperation("fix-refused");
+                return;
+            }
+            fixCooperationAim(boss);
+            presentCooperationFix(boss);
+        }
+        if (timeline.executesAt(eventTickCounter)) {
+            executeCooperationBeat(boss, timeline);
+        }
+    }
+
+    private void tryStartBossCopyCooperation(LivingEntity boss) {
+        List<Player> roster = activeBossParticipants();
+        List<UUID> copies = new ArrayList<>();
+        for (Map.Entry<UUID, EchoReplicaActor> entry : echoReplicaActors.entrySet()) {
+            if (entry.getValue() != null && echoReplicaActorIsPresent(entry.getValue())) {
+                copies.add(entry.getKey());
+            }
+        }
+        if (roster.isEmpty() || copies.isEmpty()) {
+            return;
+        }
+        boolean heavyFree = bossAbilityState == BossAbilityState.NONE
+                && bossHazardReservationId == null
+                && !bossAmbushOwnsMajorCast()
+                && !isKaguneRingCastActive();
+        boolean hardControlAvailable = true;
+        for (Player player : roster) {
+            if (isPlayerUnderTentacleControl(player)) {
+                hardControlAvailable = false;
+                break;
+            }
+        }
+        BossCopyCooperationPolicy.AdmissionState state =
+                new BossCopyCooperationPolicy.AdmissionState(
+                        roster.size(), copies.size(), isKaguneRingCastActive() ? 1 : 0,
+                        true, cooperationRouteLegal(boss), heavyFree, true,
+                        hardControlAvailable, 0);
+        BossCopyCooperationPolicy.Technique chosen = null;
+        BossCopyCooperationPolicy.AdmissionDecision decision = null;
+        for (BossCopyCooperationPolicy.Technique technique :
+                BossCopyCooperationPolicy.supportedTechniques()) {
+            BossCopyCooperationPolicy.AdmissionDecision candidate =
+                    BossCopyCooperationPolicy.mayFire(technique, eventTickCounter,
+                            bossCopyCooperationLastCastTick, state, -1);
+            if (candidate.accepted()) {
+                chosen = technique;
+                decision = candidate;
+                break;
+            }
+        }
+        if (chosen == null || !reserveBossCopyCooperation(chosen)) {
+            return;
+        }
+        bossCopyCooperationTechnique = chosen;
+        bossCopyCooperationTimeline = decision.timeline();
+        bossCopyCooperationLastCastTick = eventTickCounter;
+        bossCopyCooperationCopies.clear();
+        bossCopyCooperationCopies.addAll(copies);
+        bossCopyCooperationVolleyIndex = 0;
+        presentCooperationPrepare(boss, chosen);
+        getLogger().info(BossCopyCooperationPolicy.describe(
+                chosen, bossCopyCooperationTimeline)
+                + " event=" + eventId + " generation=" + generation
+                + " copies=" + copies.size() + " players=" + roster.size());
+    }
+
+    private boolean reserveBossCopyCooperation(
+            BossCopyCooperationPolicy.Technique technique) {
+        if (bossHazardBudget == null) {
+            return true;
+        }
+        // MIRROR_SUBSTITUTION is a reposition, not a grab: reserving a
+        // hard-control slot without a target would always be refused and the
+        // technique would be silently dead.
+        BossHazardBudget.MechanicKind kind = switch (technique) {
+            case MIRROR_SUBSTITUTION -> BossHazardBudget.MechanicKind.REPOSITION;
+            case COORDINATED_SALVO -> BossHazardBudget.MechanicKind.GROUND_SLAM;
+            case REFLECTION_CHAIN -> BossHazardBudget.MechanicKind.CHEST_STRIKE;
+        };
+        BossHazardBudget.Decision decision = bossHazardBudget.reserve(
+                null, kind, Math.max(1L, generation));
+        if (!decision.accepted()) {
+            return false;
+        }
+        bossCopyCooperationReservationId = decision.reservation().id();
+        return true;
+    }
+
+    private boolean cooperationRouteLegal(LivingEntity boss) {
+        if (boss == null || boss.getWorld() == null) {
+            return false;
+        }
+        Location at = boss.getLocation();
+        if (!isFiniteLocation(at) || !isArenaLocation(at)) {
+            return false;
+        }
+        return at.getWorld().getWorldBorder().isInside(at)
+                && at.clone().add(0.0D, 1.0D, 0.0D).getBlock().isPassable();
+    }
+
+    private int liveCooperationCopyCount() {
+        int alive = 0;
+        for (UUID copyId : bossCopyCooperationCopies) {
+            if (cooperationCopyEntity(copyId) instanceof LivingEntity living
+                    && living.isValid() && !living.isDead()) {
+                alive++;
+            }
+        }
+        return alive;
+    }
+
+    private Entity cooperationCopyEntity(UUID copyId) {
+        EchoReplicaActor actor = copyId == null ? null : echoReplicaActors.get(copyId);
+        return actor == null ? null : ownedEntities.get(actor.entityId());
+    }
+
+    private void dropDeadCooperationCopies() {
+        bossCopyCooperationCopies.removeIf(copyId ->
+                !(cooperationCopyEntity(copyId) instanceof LivingEntity living)
+                        || !living.isValid() || living.isDead());
+    }
+
+    private void fixCooperationAim(LivingEntity boss) {
+        bossCopyCooperationOrigins.clear();
+        bossCopyCooperationAims.clear();
+        List<Player> roster = activeBossParticipants();
+        if (roster.isEmpty()) {
+            return;
+        }
+        List<LivingEntity> casters = new ArrayList<>();
+        casters.add(boss);
+        for (UUID copyId : bossCopyCooperationCopies) {
+            if (cooperationCopyEntity(copyId) instanceof LivingEntity living
+                    && living.isValid() && !living.isDead()) {
+                casters.add(living);
+            }
+        }
+        for (int index = 0; index < casters.size(); index++) {
+            LivingEntity caster = casters.get(index);
+            Player target = roster.get(Math.floorMod(
+                    (int) eventTickCounter + index, roster.size()));
+            bossCopyCooperationOrigins.put(caster.getUniqueId(),
+                    caster.getEyeLocation().clone());
+            bossCopyCooperationAims.put(caster.getUniqueId(),
+                    target.getEyeLocation().clone());
+        }
+    }
+
+    private void presentCooperationPrepare(LivingEntity boss,
+            BossCopyCooperationPolicy.Technique technique) {
+        Location at = boss.getLocation().clone().add(0.0D, 1.2D, 0.0D);
+        Particle particle = switch (technique) {
+            case MIRROR_SUBSTITUTION -> Particle.REVERSE_PORTAL;
+            case COORDINATED_SALVO -> Particle.ELECTRIC_SPARK;
+            case REFLECTION_CHAIN -> Particle.SOUL_FIRE_FLAME;
+        };
+        for (Player viewer : eventAudience()) {
+            if (!isEventParticleViewer(viewer, at)) {
+                continue;
+            }
+            viewer.spawnParticle(particle, at, 28, 1.1D, 0.6D, 1.1D, 0.02D);
+            viewer.playSound(at, Sound.BLOCK_BEACON_ACTIVATE,
+                    SoundCategory.HOSTILE, 0.8F, 0.7F);
+        }
+        for (UUID copyId : bossCopyCooperationCopies) {
+            Entity copy = cooperationCopyEntity(copyId);
+            if (copy == null || copy.getWorld() == null) {
+                continue;
+            }
+            copy.getWorld().spawnParticle(Particle.REVERSE_PORTAL,
+                    copy.getLocation().clone().add(0.0D, 1.0D, 0.0D),
+                    18, 0.5D, 0.6D, 0.5D, 0.01D);
+        }
+    }
+
+    private void presentCooperationFix(LivingEntity boss) {
+        Location at = boss.getLocation().clone().add(0.0D, 1.0D, 0.0D);
+        for (Player viewer : eventAudience()) {
+            if (!isEventParticleViewer(viewer, at)) {
+                continue;
+            }
+            viewer.playSound(at, Sound.ENTITY_ENDERMAN_TELEPORT,
+                    SoundCategory.HOSTILE, 1.0F, 0.6F);
+        }
+        if (bossCopyCooperationTechnique
+                == BossCopyCooperationPolicy.Technique.MIRROR_SUBSTITUTION) {
+            swapBossWithCooperationCopy(boss);
+        }
+    }
+
+    private void swapBossWithCooperationCopy(LivingEntity boss) {
+        UUID copyId = bossCopyCooperationCopies.isEmpty() ? null
+                : bossCopyCooperationCopies.get(0);
+        if (!(cooperationCopyEntity(copyId) instanceof LivingEntity livingCopy)) {
+            cancelBossCopyCooperation("mirror-copy-lost");
+            return;
+        }
+        Location bossAt = boss.getLocation().clone();
+        Location copyAt = livingCopy.getLocation().clone();
+        if (!isFiniteLocation(bossAt) || !isFiniteLocation(copyAt)
+                || !isArenaLocation(bossAt) || !isArenaLocation(copyAt)
+                || !bossAt.getBlock().isPassable() || !copyAt.getBlock().isPassable()) {
+            cancelBossCopyCooperation("mirror-route-refused");
+            return;
+        }
+        boss.teleport(copyAt);
+        livingCopy.teleport(bossAt);
+        for (Player viewer : eventAudience()) {
+            viewer.spawnParticle(Particle.REVERSE_PORTAL,
+                    bossAt.clone().add(0.0D, 1.0D, 0.0D), 32,
+                    0.6D, 0.9D, 0.6D, 0.04D);
+            viewer.spawnParticle(Particle.REVERSE_PORTAL,
+                    copyAt.clone().add(0.0D, 1.0D, 0.0D), 32,
+                    0.6D, 0.9D, 0.6D, 0.04D);
+            viewer.playSound(bossAt, Sound.ENTITY_ENDERMAN_TELEPORT,
+                    SoundCategory.HOSTILE, 1.0F, 0.6F);
+        }
+    }
+
+    private void executeCooperationBeat(LivingEntity boss,
+            BossCopyCooperationPolicy.Timeline timeline) {
+        switch (bossCopyCooperationTechnique) {
+            case MIRROR_SUBSTITUTION -> executeMirrorStrike(boss);
+            case COORDINATED_SALVO -> executeCoordinatedSalvo(boss);
+            case REFLECTION_CHAIN -> executeReflectionChain(boss, timeline);
+        }
+    }
+
+    private void executeMirrorStrike(LivingEntity boss) {
+        Location center = boss.getLocation().clone();
+        for (Player player : activeBossParticipants()) {
+            if (!player.getWorld().equals(center.getWorld())) {
+                continue;
+            }
+            Location at = player.getLocation();
+            double horizontal = Math.hypot(at.getX() - center.getX(),
+                    at.getZ() - center.getZ());
+            if (horizontal > BossContactStrikePolicy.GROUND_SLAM_RANGE
+                    || Math.abs(at.getY() - center.getY())
+                            > BossContactStrikePolicy.GROUND_SLAM_VERTICAL
+                    || !boss.hasLineOfSight(player)) {
+                continue;
+            }
+            double accepted = applyEchoReplicaDamage(player, 11.0D, boss);
+            if (accepted > 0.0D) {
+                getLogger().info("BOSS_COPY_COOPERATION_HIT event=" + eventId
+                        + " generation=" + generation
+                        + " technique=mirror_substitution"
+                        + " target=" + player.getUniqueId()
+                        + " accepted=" + accepted);
+            }
+        }
+    }
+
+    private void executeCoordinatedSalvo(LivingEntity boss) {
+        int volley = bossCopyCooperationVolleyIndex++;
+        List<LivingEntity> casters = new ArrayList<>();
+        casters.add(boss);
+        for (UUID copyId : bossCopyCooperationCopies) {
+            if (cooperationCopyEntity(copyId) instanceof LivingEntity living
+                    && living.isValid() && !living.isDead()) {
+                casters.add(living);
+            }
+        }
+        for (LivingEntity caster : casters) {
+            Location origin = bossCopyCooperationOrigins.get(caster.getUniqueId());
+            Location aim = bossCopyCooperationAims.get(caster.getUniqueId());
+            if (origin == null || aim == null || origin.getWorld() == null
+                    || !origin.getWorld().equals(aim.getWorld())) {
+                continue;
+            }
+            Vector direction = aim.toVector().subtract(origin.toVector());
+            if (direction.lengthSquared() < 1.0E-4D) {
+                continue;
+            }
+            sweepCooperationDamage(caster, origin, direction, 1.35D, 9.0D,
+                    "coordinated_salvo-" + volley);
+            for (Player viewer : eventAudience()) {
+                if (isEventParticleViewer(viewer, origin)) {
+                    viewer.spawnParticle(Particle.ELECTRIC_SPARK, origin, 12,
+                            0.1D, 0.1D, 0.1D, 0.06D);
+                }
+            }
+        }
+    }
+
+    private void executeReflectionChain(LivingEntity boss,
+            BossCopyCooperationPolicy.Timeline timeline) {
+        List<LivingEntity> casters = new ArrayList<>();
+        for (UUID copyId : bossCopyCooperationCopies) {
+            if (cooperationCopyEntity(copyId) instanceof LivingEntity living
+                    && living.isValid() && !living.isDead()) {
+                casters.add(living);
+            }
+        }
+        if (casters.isEmpty()) {
+            cancelBossCopyCooperation("chain-copy-lost");
+            return;
+        }
+        int transfer = bossCopyCooperationVolleyIndex++;
+        if (transfer < BossCopyCooperationPolicy.CHAIN_TRANSFERS) {
+            LivingEntity from = casters.get(transfer % casters.size());
+            LivingEntity to = casters.get((transfer + 1) % casters.size());
+            presentCooperationTransfer(from, to);
+            return;
+        }
+        // Final beam: the last live copy is the authoritative source. A dead
+        // source never fires; copy-loss already cancelled that case.
+        LivingEntity source = casters.get(casters.size() - 1);
+        Location origin = bossCopyCooperationOrigins.get(source.getUniqueId());
+        Location aim = bossCopyCooperationAims.get(source.getUniqueId());
+        if (origin == null || aim == null || origin.getWorld() == null) {
+            cancelBossCopyCooperation("chain-aim-lost");
+            return;
+        }
+        Vector direction = aim.toVector().subtract(origin.toVector());
+        sweepCooperationDamage(source, origin, direction, 2.0D, 14.0D,
+                "reflection_chain-beam");
+    }
+
+    private void presentCooperationTransfer(LivingEntity from, LivingEntity to) {
+        if (from == null || to == null) {
+            return;
+        }
+        Location start = from.getEyeLocation().clone();
+        Location end = to.getEyeLocation().clone();
+        if (start.getWorld() == null || !start.getWorld().equals(end.getWorld())) {
+            return;
+        }
+        Vector delta = end.toVector().subtract(start.toVector());
+        int steps = Math.max(2, (int) Math.min(24.0D, delta.length()));
+        for (Player viewer : eventAudience()) {
+            if (!isEventParticleViewer(viewer, start)) {
+                continue;
+            }
+            for (int step = 0; step <= steps; step++) {
+                Location point = start.clone().add(delta.clone().multiply(
+                        (double) step / (double) steps));
+                viewer.spawnParticle(Particle.SOUL_FIRE_FLAME, point, 1,
+                        0.0D, 0.0D, 0.0D, 0.0D);
+            }
+        }
+    }
+
+    private void sweepCooperationDamage(LivingEntity source, Location origin,
+            Vector direction, double radius, double damage, String key) {
+        Vector unit = direction.clone();
+        if (unit.lengthSquared() < 1.0E-4D) {
+            return;
+        }
+        unit.normalize();
+        for (Player player : activeBossParticipants()) {
+            if (!player.getWorld().equals(origin.getWorld())) {
+                continue;
+            }
+            Vector delta = player.getLocation().clone().add(0.0D, 1.0D, 0.0D)
+                    .toVector().subtract(origin.toVector());
+            double along = delta.dot(unit);
+            if (along < 0.0D || along > 48.0D) {
+                continue;
+            }
+            Vector perpendicular = delta.clone().subtract(
+                    unit.clone().multiply(along));
+            if (perpendicular.length() > radius || !source.hasLineOfSight(player)) {
+                continue;
+            }
+            double accepted = applyEchoReplicaDamage(player, damage, source);
+            if (accepted > 0.0D) {
+                getLogger().info("BOSS_COPY_COOPERATION_HIT event=" + eventId
+                        + " generation=" + generation + " technique=" + key
+                        + " target=" + player.getUniqueId()
+                        + " accepted=" + accepted);
+            }
+        }
+    }
+
+    private void cancelBossCopyCooperation(String reason) {
+        if (bossCopyCooperationTimeline == null
+                && bossCopyCooperationReservationId == null) {
+            return;
+        }
+        getLogger().info("BOSS_COPY_COOPERATION_CANCELLED event=" + eventId
+                + " generation=" + generation + " technique="
+                + (bossCopyCooperationTechnique == null
+                        ? "none" : bossCopyCooperationTechnique.id())
+                + " reason=" + reason);
+        clearBossCopyCooperation();
+    }
+
+    private void finishBossCopyCooperation() {
+        getLogger().info("BOSS_COPY_COOPERATION_COMPLETE event=" + eventId
+                + " generation=" + generation + " technique="
+                + (bossCopyCooperationTechnique == null
+                        ? "none" : bossCopyCooperationTechnique.id()));
+        clearBossCopyCooperation();
+    }
+
+    private void clearBossCopyCooperation() {
+        if (bossHazardBudget != null && bossCopyCooperationReservationId != null) {
+            bossHazardBudget.release(bossCopyCooperationReservationId);
+        }
+        bossCopyCooperationReservationId = null;
+        bossCopyCooperationTechnique = null;
+        bossCopyCooperationTimeline = null;
+        bossCopyCooperationLastAdvanceTick = Long.MIN_VALUE;
+        bossCopyCooperationCopies.clear();
+        bossCopyCooperationOrigins.clear();
+        bossCopyCooperationAims.clear();
+        bossCopyCooperationVolleyIndex = 0;
+    }
+
     private void recordEchoReplicaHit(UUID copy, String family, String source, Player player,
             double accepted, LivingEntity actor) {
         if (!echoReplicaContactActive(copy, actor)) return;
@@ -59409,6 +59902,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private int clearEchoAttackReplicas(String reason) {
+        // V7-21: a cooperative technique owns copies, so retiring them must
+        // never leave a remote technique running against a dead source.
+        cancelBossCopyCooperation("echo-replicas-cleared:" + reason);
         int removed = echoReplicaTimelines.size();
         for (UUID copyId : new ArrayList<>(echoReplicaTimelines.keySet())) {
             retireEchoReplica(copyId, reason);

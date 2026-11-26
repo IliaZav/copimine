@@ -366,7 +366,7 @@ Invoke-GateStep 'Current Python contract' {
   if ($LASTEXITCODE -ne 0) { throw "Wave presentation regression tests failed with exit code $LASTEXITCODE" }
   & python -m pytest -q '.\tests\test_wave6_visual_cleanup_contract.py' '.\tests\test_end_event_wave6_progression_contract.py' '.\tests\test_end_event_wave6_no_legacy_contract.py' '.\tests\test_wave6_ritual_amplifier_contract.py' '.\tests\test_official_live_runner_wave6_contract.py' '.\tests\test_end_rift_wave1_interaction_harness_contract.py' '.\tests\test_end_rift_prisoner_hud_assets.py' '.\tests\test_end_rift_guard_tactics_runtime.py' '.\tests\test_end_rift_supplied_asset_checkout.py' '.\tests\test_end_rift_wave_daylight_runtime.py' '.\tests\test_wave_skeleton_protection_runtime.py' '.\tests\test_end_event_wave6_guard_test_command_contract.py' '.\tests\test_wave6_anvil_single_target_columns.py'
   if ($LASTEXITCODE -ne 0) { throw "Additional wave gameplay regression tests failed with exit code $LASTEXITCODE" }
-  & python -m pytest -q '.\tests\test_end_rift_wave_ai_roles.py' '.\tests\test_end_rift_miniboss_counterplay.py' '.\tests\test_end_rift_waves2_4_mechanics.py' '.\tests\test_end_rift_wave2_cleanup_epoch_contract.py' '.\tests\test_wave2_unlaunchable_start_contract.py' '.\tests\test_wave2_recovery_ai_fence.py' '.\tests\test_end_rift_obelisk_pulse_roster.py' '.\tests\test_end_rift_wave_structure_assets.py' '.\tests\test_end_rift_wave5_safe_tile_assets.py' '.\tests\test_end_rift_wave_glyph_assets.py' '.\tests\test_end_rift_disabled_packet_cleanup.py' '.\tests\test_end_rift_local_pack_sync.py' '.\tests\test_end_rift_main_tick_dispatch.py' '.\tests\test_end_rift_wave4_objective_dispatch_once.py' '.\tests\test_end_rift_wave4_pressure_retries.py'
+  & python -m pytest -q '.\tests\test_end_rift_wave_ai_roles.py' '.\tests\test_end_rift_miniboss_counterplay.py' '.\tests\test_end_rift_waves2_4_mechanics.py' '.\tests\test_end_rift_wave2_cleanup_epoch_contract.py' '.\tests\test_wave2_unlaunchable_start_contract.py' '.\tests\test_wave2_recovery_ai_fence.py' '.\tests\test_end_rift_obelisk_pulse_roster.py' '.\tests\test_end_rift_wave_structure_assets.py' '.\tests\test_end_rift_wave5_safe_tile_assets.py' '.\tests\test_end_rift_wave_glyph_assets.py' '.\tests\test_end_rift_disabled_packet_cleanup.py' '.\tests\test_end_rift_local_pack_sync.py' '.\tests\test_end_rift_main_tick_dispatch.py' '.\tests\test_end_rift_wave4_objective_dispatch_once.py' '.\tests\test_end_rift_wave4_pressure_retries.py' '.\tests\test_end_rift_copy_cooperation_wiring.py'
   if ($LASTEXITCODE -ne 0) { throw "Waves 1-5 gameplay and authored assets failed with exit code $LASTEXITCODE" }
   } finally {
     Pop-Location
@@ -800,7 +800,10 @@ $pureTests = @(
   'InfernoArenaLifecyclePolicyTest',
   'EchoAttackReplicaPolicyTest',
   'EchoDecoyPolicyTest',
-  'BossSummonAdmissionPolicyTest'
+  'BossSummonAdmissionPolicyTest',
+  # V7-21 cooperative Guardian + copy techniques (admission, preparation,
+  # copy loss, miss, cancellation, no common unavoidable combination).
+  'BossCopyCooperationPolicyTest'
 )
 # Test sources are looked up by simple name across tests\ and the packaged
 # harness tree. EchoWoundedRetreatTest lives under tests\harness because it
@@ -1034,6 +1037,7 @@ Invoke-GateStep 'Boss accepted hits, cast ownership and Kagune recovery' {
       'tests/test_boss_telegraph_runtime.py' `
       'tests/test_boss_target_roster_adapter.py' `
       'tests/test_inferno_runtime_cadence.py' 'tests/test_guardian_respawn_recovery_adapter.py' `
+      'tests/test_phase4_infernal_wiring.py' 'tests/test_phase4_infernal_expansion.py' `
       'tests/test_small_kagune_strike_adapter.py' 'tests/test_tentacle_throw_protection_adapter.py' `
       'tests/test_boss_phase_damage_transaction_adapter.py' 'tests/test_boss_defeat_durability_adapter.py' `
       'tests/test_kagune_rig_transform_contract.py' `

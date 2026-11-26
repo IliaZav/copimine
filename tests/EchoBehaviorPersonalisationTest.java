@@ -37,6 +37,7 @@ public final class EchoBehaviorPersonalisationTest {
         healThresholdIsPersonalised();
         weaponPreferencePicksTheRecordedBlade();
         swingCadencePersonalisesMeleeCooldown();
+        rangedCadencePersonalisesRangedCooldown();
         System.out.println("EchoBehaviorPersonalisationTest OK assertions=" + assertions);
     }
 
@@ -163,6 +164,32 @@ public final class EchoBehaviorPersonalisationTest {
                 "a slow swinger's melee cooldown is 30 ticks, got " + slowSwing.meleeCooldownUntilTick());
     }
 
+    /**
+     * E-05: the owner's recorded bow draw / crossbow charge personalises the
+     * ranged cadence, so a snap-shooter copy fires faster than a heavy-draw copy
+     * under the identical observation. Both are clamped inside the fair 10..60
+     * native band, so the value is evidence, not an exploit.
+     */
+    private static void rangedCadencePersonalisesRangedCooldown() {
+        EchoBehaviorStrategy snapShooter = tunedRanged(12, 25);
+        EchoBehaviorStrategy heavyDraw = tunedRanged(55, 25);
+        Decision quick = decide(snapShooter, 100L, 400.0D);
+        Decision heavy = decide(heavyDraw, 100L, 400.0D);
+        check(quick.action() == Action.RANGED,
+                "a ranged original must shoot from its band, got " + quick.action());
+        check(quick.rangedCooldownUntilTick() == 112L,
+                "a snap-shooter's bow cooldown is 12 ticks, got " + quick.rangedCooldownUntilTick());
+        check(heavy.rangedCooldownUntilTick() == 155L,
+                "a heavy-draw shooter's bow cooldown is 55 ticks, got " + heavy.rangedCooldownUntilTick());
+    }
+
+    /** E-05: a ranged-heavy profile with a specific bow draw / crossbow charge time. */
+    private static EchoBehaviorStrategy tunedRanged(int bowDraw, int crossbowCharge) {
+        return new EchoBehaviorStrategy(100, 900, 0, 0, 0, 700,
+                0b111_1111, true, 250, 40, 400, 0, 250,
+                550, 20, 500, bowDraw, crossbowCharge);
+    }
+
     /** A sword in slot 0 and an axe in slot 6, with no ranged or shield to pre-empt melee. */
     private static Map<Integer, EchoLoadoutState.Item> dualMelee() {
         Map<Integer, EchoLoadoutState.Item> overrides = new LinkedHashMap<>();
@@ -174,7 +201,7 @@ public final class EchoBehaviorPersonalisationTest {
     }
 
     private record Decision(Action action, MovementIntent intent, int itemSlot,
-                            long meleeCooldownUntilTick) { }
+                            long meleeCooldownUntilTick, long rangedCooldownUntilTick) { }
 
     private static Decision decide(EchoBehaviorStrategy strategy, long tick, double distanceSquared) {
         return decide(strategy, tick, distanceSquared, 18.0D, Map.of());
@@ -229,7 +256,8 @@ public final class EchoBehaviorPersonalisationTest {
         assertions++;
         return new Decision(decision.get().action(), decision.get().intent(),
                 decision.get().itemSlot(),
-                decision.get().nextDuel().actor().meleeCooldownUntilTick());
+                decision.get().nextDuel().actor().meleeCooldownUntilTick(),
+                decision.get().nextDuel().actor().rangedCooldownUntilTick());
     }
 
     private static UUID id(long value) {

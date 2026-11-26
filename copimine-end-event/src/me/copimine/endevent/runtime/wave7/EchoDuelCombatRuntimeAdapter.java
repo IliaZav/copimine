@@ -45,6 +45,26 @@ public final class EchoDuelCombatRuntimeAdapter {
                 COOLDOWNS.jumpCooldownTicks());
     }
 
+    /**
+     * E-05: the owner's recorded bow draw / crossbow charge personalises the ranged
+     * cadence inside a fair native band. A copy of a player who charged a bow for
+     * fourteen ticks should not fire on the team's fixed forty-tick beat while a
+     * copy of a snap-shooter waits the same. The value is clamped to 10..60 so a
+     * sparse or extreme profile can neither beat vanilla nor stall the fight.
+     */
+    private static EchoDuelCombatPolicy.Cooldowns rangedCooldownsFor(EchoBehaviorStrategy strategy,
+            int rangedSlot, EchoLoadoutState replica) {
+        EchoDuelCombatPolicy.Cooldowns base = cooldownsFor(strategy);
+        if (strategy == null || rangedSlot < 0) return base;
+        int charge = replica.item(rangedSlot).kind() == EchoLoadoutState.Kind.CROSSBOW
+                ? strategy.crossbowChargeTicks() : strategy.bowDrawTicks();
+        int cadence = Math.max(10, Math.min(60, charge));
+        if (cadence == base.rangedTicks()) return base;
+        return new EchoDuelCombatPolicy.Cooldowns(base.sharedActionTicks(), base.meleeTicks(),
+                cadence, base.consumableUseTicks(), base.shieldHoldTicks(),
+                base.shieldCooldownTicks(), base.jumpCooldownTicks());
+    }
+
     private EchoDuelCombatRuntimeAdapter() {
     }
 
@@ -382,6 +402,11 @@ public final class EchoDuelCombatRuntimeAdapter {
             int rangedSlot = duel.behaviorStrategy().rangedPermille() >= duel.behaviorStrategy().meleePermille()
                     ? firstUsable(crossbowSlot, bowSlot) : firstUsable(bowSlot, crossbowSlot);
             int ammoSlot = replica.find(EchoLoadoutState.Kind.AMMO);
+            // E-05: the bow/crossbow the copy actually holds sets its own cadence
+            // from the owner's recorded draw/charge time, so ranged personalisation
+            // reaches the fight and not just the profile record.
+            EchoDuelCombatPolicy.Cooldowns rangedCooldowns =
+                    rangedCooldownsFor(duel.behaviorStrategy(), rangedSlot, replica);
 
             // Audit ECHO error: an in-flight consumable resolves HERE, at its own
             // deadline, and this is the only place its health is granted. Starting
@@ -557,7 +582,7 @@ public final class EchoDuelCombatRuntimeAdapter {
                 EchoLoadoutState.Item item = replica.item(rangedSlot);
                 Optional<ActorState> actor = EchoDuelCombatPolicy.tryStartRanged(
                         duel.actor(), replica, rangedSlot, ammoSlot, replica.revision(),
-                        observation.tick(), cooldowns);
+                        observation.tick(), rangedCooldowns);
                 if (actor.isPresent()) {
                     if (!EchoDuelCombatPolicy.tryApplyGearWear(
                             replica, rangedSlot, 1, replica.revision())) return Optional.empty();

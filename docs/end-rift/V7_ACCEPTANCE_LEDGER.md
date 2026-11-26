@@ -35,7 +35,7 @@ never a pass without real Minecraft 26.3 evidence.
 | V7-13 | Warden: real base, 5×4, 20t/60t, R6 through-wall, resonance counterplay | W5.1 Warden runtime | `test_warden_v5_runtime.py` | SRC+TEST (native BLOCKED) |
 | V7-14 | Archmage: frequent bounded Vexes, 3-block fang line, crown gap, staff | Archmage runtime | `test_wave7_archmage_*` | SRC+TEST (native BLOCKED; low-HP cadence pending owner approval) |
 | V7-15 | Distinct skeleton models/arrows, textured bars, no Echo bar | active 26.3 client | `SpellVisualGeometryTest`, `GuardianSpellMeshTest` | IMPLEMENTED_UNVERIFIED (Wave7 V4 ZIP content not extractable; native BLOCKED) |
-| V7-16 | Echo AI: 4 distinct + hybrid profiles, independent tactics, finite resources | `runtime/wave7/EchoDuelCombatRuntimeAdapter`, `domain/wave7/EchoBehaviorStrategy`, `EchoDuelCombatPolicy`, `EventCombatProfileService` | `EchoDuelCombatRuntimeAdapterTest` (91 assertions), `EchoWoundedRetreatTest` (actor-phase lockstep divergence), `EchoBehaviorPersonalisationTest` (113 assertions: personalised heal threshold, axe-vs-sword preference, cadence), `EchoBehaviorStrategyTest` (schema-2→3 migration), `EchoDuelCapabilityPolicyTest` | IMPLEMENTED_UNVERIFIED (E-02 navigation dead zones + E-03 actor-local phase + E-04 confidence-blended weapon/cadence/sustain evidence fixed 2026-11-26; E-05 real action-lifecycle executor open; native BLOCKED) |
+| V7-16 | Echo AI: 4 distinct + hybrid profiles, independent tactics, finite resources | `runtime/wave7/EchoDuelCombatRuntimeAdapter`, `domain/wave7/EchoBehaviorStrategy`, `EchoDuelCombatPolicy`, `EventCombatProfileService` | `EchoDuelCombatRuntimeAdapterTest` (91 assertions), `EchoWoundedRetreatTest` (actor-phase lockstep divergence), `EchoBehaviorPersonalisationTest` (115 assertions: personalised heal threshold, axe-vs-sword preference, melee + ranged cadence), `EchoBehaviorStrategyTest` (schema-2→3 migration), `EchoDuelCapabilityPolicyTest` | IMPLEMENTED_UNVERIFIED (E-02 navigation dead zones + E-03 actor-local phase + E-04 confidence-blended weapon/cadence/sustain evidence + E-05 ranged draw/charge cadence fixed 2026-11-26; full E-05 action-lifecycle executor open; native BLOCKED) |
 | V7-17 | Two Echo modes: Wave 7 duel + rare Phase 5 summon, no teleport-to-room | Wave 7 `EchoDuelCombatRuntimeAdapter`; Phase 5 `spawnEchoClone` | — | NOT_IMPLEMENTED (Phase 5 still uses simplified `spawnEchoClone`; E-01 call-graph replacement open) |
 | V7-18 | Guardian phases 1–5: real HP/damage/hurt, grounded, 4 physical attacks | EndEvent boss runtime | boss phase probes | SRC+TEST (native BLOCKED) |
 | V7-19 | Phases 3–4: geysers + temporary blocks, rare ring/forge, no spam | EndEvent hazard runtime | wave timing probes | IMPLEMENTED_UNVERIFIED (overlapping hazard batches remain open per V6 ledger) |
@@ -70,6 +70,24 @@ never a pass without real Minecraft 26.3 evidence.
   `weaponPreferencePicksTheRecordedBlade`, `swingCadencePersonalisesMeleeCooldown`),
   `EchoBehaviorStrategyTest` (schema-2 migration + truncated-record rejection).
   Result: 113 assertions OK; `EchoBehaviorStrategyTest OK`.
+
+### E-05 (part) — Ranged cadence ignored the recorded draw/charge time (`runtime/wave7/EchoDuelCombatRuntimeAdapter`)
+- Root cause: `tryStartRanged` always used the shared fixed tuple
+  (`rangedTicks=40`) for bows and crossbows, so every copy fired on the same team
+  beat. The E-04 `bowDrawTicks`/`crossbowChargeTicks` evidence reached the profile
+  record but never the fight, and a bow and a crossbow shared one cadence even
+  though they are different charged-item lifecycles.
+- Fix: `rangedCooldownsFor(strategy, rangedSlot, replica)` picks the owner's own
+  recorded bow draw or crossbow charge for the weapon the copy actually holds and
+  clamps it to a fair 10..60 tick band, then stages it only on the real ranged
+  branch. Wind charge and splash keep their own base cadence. A neutral profile
+  carries the vanilla 20-tick full draw, so its ranged cooldown is 20 — matching
+  the melee neutral (20↔20) rather than the former fixed 40.
+- Regression: `EchoBehaviorPersonalisationTest.rangedCadencePersonalisesRangedCooldown`
+  (12-tick snap-shooter fires on tick 112, 55-tick heavy drawer on tick 155 under
+  one identical observation) plus the updated exact checkpoints in
+  `EchoDuelCombatRuntimeAdapterTest.acceptedRangedActionsAreScopedAndDurablySpendSupplies`.
+  Result: `EchoBehaviorPersonalisationTest OK assertions=115`.
 
 ### E-03 — Shared global clock made every same-profile copy strafe in lockstep (`runtime/wave7/EchoDuelCombatRuntimeAdapter`)
 - Root cause: `lateralIntent` derived the strafe phase from `observation.tick() / 12`

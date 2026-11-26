@@ -59,7 +59,7 @@ public final class EchoDuelCombatRuntimeAdapterTest {
         check(shot.action() == Action.RANGED, "the official adapter selects a ranged action");
         check(replica.remaining(4) == 1, "ranged decision stages exactly one duel-local arrow");
         check(replica.item(3).damage() == 1, "ranged decision stages wear on the duel-local bow");
-        check(shot.nextDuel().actor().rangedCooldownUntilTick() == 140,
+        check(shot.nextDuel().actor().rangedCooldownUntilTick() == 120,
                 "ranged decision stages its cooldown in the actor checkpoint");
         check(shot.nextDuel().replicaRevision() == replica.revision()
                         && shot.nextDuel().replicaState().equals(replica.encode()),
@@ -75,7 +75,7 @@ public final class EchoDuelCombatRuntimeAdapterTest {
         DuelRecord restoredDuel = restoredData.personalEchoDuels().get(fixture.room()).get(fixture.owner());
         EchoLoadoutState restoredReplica = restore(restoredDuel);
         check(restoredReplica.remaining(4) == 1 && restoredReplica.item(3).damage() == 1
-                        && restoredDuel.actor().rangedCooldownUntilTick() == 140,
+                        && restoredDuel.actor().rangedCooldownUntilTick() == 120,
                 "snapshot restore keeps the accepted shot, finite arrow, bow wear and cooldown together");
 
         Decision cooldown = EchoDuelCombatRuntimeAdapter.tick(restoredDuel, restoredReplica,

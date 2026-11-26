@@ -109,6 +109,19 @@ never a pass without real Minecraft 26.3 evidence.
   wiring the draw→release state machine through `EchoDuelCombatPolicy` and the
   server executor is the remaining E-05 increment (tracked under V7-16).
 
+### E-06 (part) — Duplicate private-loadout serialisation on the decision hot path (`runtime/wave7/EchoDuelCombatRuntimeAdapter`)
+- Root cause: `tick` serialised the 42-slot private replica twice per decision —
+  once for the identity guard (`replica.encode().equals(duel.replicaState())`)
+  and again to freeze the `baselineReplica` — which is avoidable allocation in
+  the per-tick path E-06 names.
+- Fix: encode once into `replicaSnapshot`, compare that to the persisted state,
+  and restore the baseline from the same immutable snapshot. Revision and
+  rollback guarantees are unchanged; only the redundant serialisation is gone.
+- Scope: this is the allocation half of E-06. Throttled structured diagnostics
+  and bounded recovery for permanently broken actors remain open (tracked under
+  V7-16/V7-27) because they require an observability seam the pure domain
+  adapter does not currently have.
+
 ### E-03 — Shared global clock made every same-profile copy strafe in lockstep (`runtime/wave7/EchoDuelCombatRuntimeAdapter`)
 - Root cause: `lateralIntent` derived the strafe phase from `observation.tick() / 12`
   and the profile windows (`inProfileWindow`) from `tick % 100` with no per-actor

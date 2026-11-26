@@ -3,6 +3,7 @@ package me.copimine.endevent.runtime.wave7;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.Map;
 import me.copimine.endevent.domain.wave7.EchoBehaviorStrategy;
 import me.copimine.endevent.domain.wave7.EchoDuelCombatPolicy;
 import me.copimine.endevent.domain.wave7.EchoLoadoutState;
@@ -384,17 +385,23 @@ public final class EchoDuelCombatRuntimeAdapter {
                 || !scope.matches(duel) || duel.lifecycle() != Lifecycle.ACTIVE
                 || duel.actor().lifecycle() != ActorLifecycle.ALIVE
                 || duel.revision() >= RealitySplitEchoDuelState.MAX_COUNTER
-                || replica.revision() != duel.replicaRevision()
-                || !replica.encode().equals(duel.replicaState())) {
+                || replica.revision() != duel.replicaRevision()) {
             return Optional.empty();
         }
+        // E-06: encode the private loadout once per decision. The old guard
+        // serialised it for the identity check and then serialised it again to
+        // freeze the baseline, which is avoidable allocation on the per-tick
+        // hot path. The single snapshot is still an immutable copy, so the
+        // revision and rollback guarantees are unchanged.
+        Map<String, String> replicaSnapshot = replica.encode();
+        if (!replicaSnapshot.equals(duel.replicaState())) return Optional.empty();
 
         try {
             // E-04: the owner's recorded swing cadence personalises the melee
             // cooldown inside a fair native band. Every other gate keeps the
             // neutral baseline, so a sparse profile behaves exactly as before.
             EchoDuelCombatPolicy.Cooldowns cooldowns = cooldownsFor(duel.behaviorStrategy());
-            EchoLoadoutState baselineReplica = EchoLoadoutState.restore(replica.encode(),
+            EchoLoadoutState baselineReplica = EchoLoadoutState.restore(replicaSnapshot,
                     duel.eventId(), duel.attemptGeneration(), duel.duelId(), duel.ownerUuid(), replica.revision());
             int meleeSlot = meleeSlotFor(duel.behaviorStrategy(), replica);
             int bowSlot = replica.find(EchoLoadoutState.Kind.BOW);

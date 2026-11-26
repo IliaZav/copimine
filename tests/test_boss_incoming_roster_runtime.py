@@ -69,6 +69,7 @@ public class BossIncomingRosterProbe {
     final LivingEntity currentBoss=new LivingEntity();
     EventPhase phase=EventPhase.BOSS_ACTIVE;
     long generation=4, cocoonFallGeneration=Long.MIN_VALUE;
+    long eventTickCounter, infernalForgeVulnerableUntilTick=Long.MIN_VALUE;
     CocoonFallPolicy.Stage cocoonFallStage=CocoonFallPolicy.Stage.COCOONED;
     BossPhase bossPhase=BossPhase.AWAKENING;
     BossAbilityState bossAbilityState=BossAbilityState.NONE;
@@ -98,6 +99,12 @@ public class BossIncomingRosterProbe {
     boolean tentacleVulnerabilityOpen(){return false;}
     void releaseExpiredBossCastBeforeDamage(LivingEntity boss,long now){}
     void emitBossDamageDiagnostic(Object... args){}
+    BossHitFlavorPolicy.Flavor meleeHitFlavor(EntityDamageEvent event,LivingEntity boss,Entity source){
+        return new BossHitFlavorPolicy.Flavor(false,false);
+    }
+    BossHitFlavorPolicy.Flavor projectileHitFlavor(Projectile projectile){
+        return new BossHitFlavorPolicy.Flavor(false,false);
+    }
     void applyBossHitFeedback(Object... args){feedback++;}
     void applyBossHitFeedbackAt(Object... args){feedback++;}
     Object bodyImpactContact(Object... args){return null;}

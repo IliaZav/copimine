@@ -881,8 +881,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * these HP thresholds. The two lists are staggered so the ring and the forge
      * alternate rather than landing together.
      */
-    private static final List<Double> OVERLOAD_FIRE_RING_THRESHOLDS = List.of(0.40D, 0.30D);
-    private static final List<Double> OVERLOAD_INFERNAL_FORGE_THRESHOLDS = List.of(0.36D, 0.26D);
+    private static final List<Double> OVERLOAD_FIRE_RING_THRESHOLDS = List.of(0.40D);
+    private static final List<Double> OVERLOAD_INFERNAL_FORGE_THRESHOLDS = List.of(0.36D);
     /** Cycle-scoped seed base; the cast seed mixes in event, generation and time. */
     private static final long INFERNO_CYCLE_SEED = 7_919L;
     private static final int MAX_ACTIVE_WORLD_VFX = 64;
@@ -1024,6 +1024,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Set<Double> overloadFireRingSpentThresholds = new LinkedHashSet<>();
     private final Set<Double> infernalForgeSpentThresholds = new LinkedHashSet<>();
     private long overloadFireRingLastCastTick = Long.MIN_VALUE;
+    private BukkitTask overloadFireRingTask;
     private long infernalForgeLastCastTick = Long.MIN_VALUE;
     /** Absolute tick until which the broken Infernal Forge shell stays vulnerable. */
     private long infernalForgeVulnerableUntilTick = Long.MIN_VALUE;
@@ -1669,6 +1670,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     /** Cells a live fracture currently owns, so no second batch can collide with it. */
     private final Map<BlockCellKey, UUID> currentRiftFractureCells = new LinkedHashMap<>();
     private long nextCurrentRiftFractureBatchTick;
+    private long lastSuperGeyserTick = -1L;
+    private long riftClusterSinceTick = -1L;
+    private Set<UUID> riftClusterPair = Set.of();
     private int currentRiftFractureCursor;
     /** Real-block Wave 4 obelisks; boss-phase display obelisks remain separate. */
     private final Map<UUID, Wave4ObeliskRuntimeState> activeWave4Obelisks = new LinkedHashMap<>();
@@ -30802,6 +30806,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 viewer.spawnParticle(Particle.ASH, behind, 14, .22D, .88D, .22D, .014D);
                 viewer.spawnParticle(Particle.REVERSE_PORTAL, behind.clone().add(0, 1.0D, 0),
                         5, .12D, .24D, .12D, .025D);
+                if (beat == 3) {
+                    Location echo = behind.clone().add(2.2D, 0, -1.6D);
+                    if (isArenaLocation(echo) && echo.getBlock().isPassable()) {
+                        viewer.playSound(echo, Sound.ENTITY_ENDERMAN_AMBIENT, SoundCategory.HOSTILE, .36F, .48F);
+                        viewer.spawnParticle(Particle.LARGE_SMOKE, echo, 5, .22D, .72D, .22D, .008D);
+                    }
+                }
             }
             double reach = 2.5D + 1.8D * beat;
             spawnPatternRing(viewer, core.clone().add(0, .10D, 0),
@@ -50158,6 +50169,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // loop can break it, so the single release contract must run once the
         // stamped deadline is overdue by the whole stale budget. The budget is
         // far longer than any authored cast, so a live cast is never cut short.
+        if (bossPhase == BossPhase.OVERLOAD && overloadFireRingTask != null && !overloadFireRingTask.isCancelled()) {
+            // The physical shell advances on server ticks, including under lag.
+            bossCastDeadlineMillis = Math.max(bossCastDeadlineMillis, now + 250L);
+        }
         if (bossCastDeadlineMillis > 0L
                 && BossCastMobilityPolicy.stale(bossCastDeadlineMillis, now)) {
             // A lost callback stays overdue on every per-tick reconcile, so the
@@ -51194,8 +51209,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     Map.of("part", String.valueOf(bossHitboxController.partId(proxy))));
             return;
         }
-        if (!bossHitboxController.proxyRayIntersects(boss, proxy, event.getDamager(),
-                bossHitboxPoseOffsets(), 8.0D)) {
+        if (!isPlayerAreaDamageToBoss(event, boss, event.getDamager())
+                && !bossHitboxController.proxyRayIntersects(boss, proxy, event.getDamager(),
+                        bossHitboxPoseOffsets(), 8.0D)) {
             event.setCancelled(true);
             getLogger().fine("BOSS_HITBOX_RAY_BLOCKED event=" + eventId
                     + " boss=" + boss.getUniqueId() + " proxy=" + proxy.getUniqueId()
@@ -56819,17 +56835,24 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         double hpFraction = bossHealthFraction(boss);
+        NamespacedKey journalKey = new NamespacedKey(this, "overload_major_casts");
+        var receipt = boss.getPersistentDataContainer();
+        int signatures = receipt.getOrDefault(journalKey, PersistentDataType.INTEGER, 0);
         BossSignatureCastGatePolicy.Gate ring = BossSignatureCastGatePolicy.gate(
                 hpFraction, OVERLOAD_FIRE_RING_THRESHOLDS, overloadFireRingSpentThresholds);
-        if (ring.allowed() && RiftFireRingPolicy.mayCast(overloadFireRingLastCastTick, eventTickCounter)) {
+        if ((signatures & 1) == 0 && ring.allowed()
+                && RiftFireRingPolicy.mayCast(overloadFireRingLastCastTick, eventTickCounter)
+                && startRiftFireRing(boss)) {
+            receipt.set(journalKey, PersistentDataType.INTEGER, signatures | 1);
             overloadFireRingSpentThresholds.add(ring.threshold());
             overloadFireRingLastCastTick = eventTickCounter;
-            startRiftFireRing(boss);
             return;
         }
         BossSignatureCastGatePolicy.Gate forge = BossSignatureCastGatePolicy.gate(
                 hpFraction, OVERLOAD_INFERNAL_FORGE_THRESHOLDS, infernalForgeSpentThresholds);
-        if (forge.allowed() && InfernalForgePolicy.mayCast(infernalForgeLastCastTick, eventTickCounter)) {
+        if ((signatures & 2) == 0 && forge.allowed()
+                && InfernalForgePolicy.mayCast(infernalForgeLastCastTick, eventTickCounter)) {
+            receipt.set(journalKey, PersistentDataType.INTEGER, signatures | 2);
             infernalForgeSpentThresholds.add(forge.threshold());
             infernalForgeLastCastTick = eventTickCounter;
             startInfernalForge(boss);
@@ -56837,158 +56860,133 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     /** Owner request: the rotating Rift Fire Ring signature. */
-    private void startRiftFireRing(LivingEntity boss) {
-        if (boss == null || boss.getWorld() == null) {
-            return;
-        }
-        LivingEntity owner = boss;
-        World world = boss.getWorld();
-        String callbackEvent = eventId;
-        long callbackGeneration = generation;
-        Player nearest = null;
-        double best = Double.MAX_VALUE;
-        for (Player player : activeBossParticipants()) {
-            if (player == null || !player.getWorld().equals(world)) {
-                continue;
-            }
-            double distance = boss.getLocation().distanceSquared(player.getLocation());
-            if (distance < best) {
-                best = distance;
-                nearest = player;
-            }
-        }
-        if (nearest == null) {
-            return;
-        }
-        // Lock the heading at cast time: the ring never homes.
-        Vector heading = nearest.getLocation().toVector().subtract(boss.getLocation().toVector());
-        heading.setY(0.0D);
-        if (heading.lengthSquared() < 1.0E-4D) {
-            heading = new Vector(0.0D, 0.0D, 1.0D);
-        }
-        final Vector headingFixed = heading.normalize();
+    private boolean startRiftFireRing(LivingEntity boss) {
+        Location origin = boss.getLocation().add(0.0D, 1.55D, 0.0D);
+        World world = origin.getWorld();
+        Player target = activeBossParticipants().stream()
+                .filter(player -> player.getWorld().equals(world))
+                .min(Comparator.comparingDouble(player -> player.getLocation().distanceSquared(origin)))
+                .orElse(null);
+        if (target == null) return false;
+        Vector heading = target.getLocation().toVector().subtract(origin.toVector()).setY(0.0D);
+        if (heading.lengthSquared() < 1.0E-4D) heading = origin.getDirection().setY(0.0D);
+        if (heading.lengthSquared() < 1.0E-4D) return false;
+        Vector direction = heading.normalize();
+        if (fireRingShell(origin, direction).stream().anyMatch(this::fireRingCellBlocked)) return false;
+        String castEvent = eventId;
+        long castGeneration = generation;
         bossAbilityState = BossAbilityState.EXECUTING;
         bossCastDeadlineMillis = System.currentTimeMillis() + 50L
-                * (RiftFireRingPolicy.GATHER_TICKS + RiftFireRingPolicy.FLIGHT_TICKS_MAX
-                + RiftFireRingPolicy.BURST_TICKS);
-        announceEventTitle("§6ОГНЕННОЕ КОЛЬЦО", "§cРазлом собирает жар — уклоняйся!", true);
-        world.playSound(boss.getLocation(), Sound.ENTITY_BLAZE_SHOOT, SoundCategory.HOSTILE, 1.2F, 0.6F);
+                * (RiftFireRingPolicy.GATHER_TICKS + RiftFireRingPolicy.FLIGHT_TICKS_MAX + 4);
+        sendBossAnimationVisualUpdate(boss, BossAnimationId.CAST_CHARGE.wireId());
+        world.playSound(origin, Sound.BLOCK_BLASTFURNACE_FIRE_CRACKLE, SoundCategory.HOSTILE, 1.4F, .57F);
         getLogger().info("BOSS_SPELL_RIFT_FIRE_RING event=" + eventId + " " + RiftFireRingPolicy.describe());
-        final int[] elapsed = {0};
-        final boolean[] detonated = {false};
-        final Location[] centre = {boss.getLocation().clone()};
-        BukkitTask[] holder = new BukkitTask[1];
-        holder[0] = Bukkit.getScheduler().runTaskTimer(this, () -> {
-            if (!Objects.equals(eventId, callbackEvent) || generation != callbackGeneration
-                    || bossPhase != BossPhase.OVERLOAD || !owner.isValid() || owner.isDead()
-                    || taskRegistry != null && !taskRegistry.owns(callbackGeneration)) {
-                if (!detonated[0]) {
-                    detonateRiftFireRing(owner, centre[0]);
-                    detonated[0] = true;
+        BukkitTask task = new BukkitRunnable() {
+            private int age;
+            private Location centre = origin;
+
+            @Override public void run() {
+                if (!Objects.equals(eventId, castEvent) || generation != castGeneration
+                        || bossPhase != BossPhase.OVERLOAD || !boss.isValid() || boss.isDead()
+                        || !boss.getUniqueId().equals(bossUuid)
+                        || overloadFireRingTask == null || overloadFireRingTask.getTaskId() != getTaskId()
+                        || taskRegistry != null && !taskRegistry.owns(castGeneration)) {
+                    cancel();
+                    return;
                 }
-                holder[0].cancel();
-                return;
+                boolean gathering = age < RiftFireRingPolicy.GATHER_TICKS;
+                if (age++ == RiftFireRingPolicy.GATHER_TICKS) {
+                    world.playSound(centre, Sound.ENTITY_BLAZE_SHOOT, SoundCategory.HOSTILE, 1.35F, .54F);
+                }
+                Location next = gathering ? centre : centre.clone().add(direction.clone()
+                        .multiply(RiftFireRingPolicy.travelPerTick()));
+                List<Location> shell = fireRingShell(next, direction);
+                if (shell.stream().anyMatch(CopiMineEndEvent.this::fireRingCellBlocked)
+                        || age > RiftFireRingPolicy.GATHER_TICKS + RiftFireRingPolicy.FLIGHT_TICKS_MAX) {
+                    world.playSound(centre, Sound.BLOCK_FIRE_EXTINGUISH, SoundCategory.HOSTILE, .85F, .69F);
+                    spawnEventParticle(centre, Particle.LARGE_SMOKE, 18, 1.1D, .3D, 1.1D, .018D);
+                    overloadFireRingTask = null;
+                    finishSignatureCast(boss);
+                    cancel();
+                    return;
+                }
+                if (age % 2 == 0) renderRiftFireRing(shell, age, gathering);
+                if (!gathering && resolveFireRingContact(boss, shell, centre, next)) {
+                    world.playSound(next, Sound.ENTITY_GENERIC_EXPLODE, SoundCategory.HOSTILE, 1.15F, .78F);
+                    spawnEventParticle(next, Particle.SOUL_FIRE_FLAME, 32, 1.4D, .55D, 1.4D, .035D);
+                    overloadFireRingTask = null;
+                    finishSignatureCast(boss);
+                    cancel();
+                }
+                centre = next;
             }
-            int tick = elapsed[0]++;
-            switch (RiftFireRingPolicy.phaseFor(tick)) {
-                case GATHER -> renderRiftFireRingGather(owner, tick);
-                case FLIGHT -> {
-                    int flightTick = tick - RiftFireRingPolicy.GATHER_TICKS;
-                    Location next = centre[0].clone()
-                            .add(headingFixed.clone().multiply(RiftFireRingPolicy.travelPerTick()));
-                    centre[0] = next;
-                    renderRiftFireRing(owner, next, RiftFireRingPolicy.rotationDegrees(flightTick));
-                    Player hit = firstRiftFireRingContact(world, next);
-                    boolean floor = next.getBlock().getType().isSolid();
-                    if (RiftFireRingPolicy.detonates(
-                            hit == null ? Double.NaN : next.distance(hit.getLocation().add(0.0D, 1.0D, 0.0D)),
-                            floor)) {
-                        detonateRiftFireRing(owner, next);
-                        detonated[0] = true;
-                        holder[0].cancel();
-                    }
-                }
-                case BURST -> {
-                    if (!detonated[0]) {
-                        detonateRiftFireRing(owner, centre[0]);
-                        detonated[0] = true;
-                    }
-                }
-                case ENDED -> {
-                    if (!detonated[0]) {
-                        detonateRiftFireRing(owner, centre[0]);
-                        detonated[0] = true;
-                    }
-                    finishSignatureCast(owner);
-                    holder[0].cancel();
-                }
-                default -> { }
-            }
-        }, 0L, 1L);
-        registerEncounterTask(holder[0]);
+        }.runTaskTimer(this, 1L, 1L);
+        overloadFireRingTask = task;
+        registerEncounterTask(task);
+        return true;
     }
 
-    private void renderRiftFireRingGather(LivingEntity owner, int tick) {
-        World world = owner.getWorld();
-        Location core = owner.getLocation().add(0.0D, 1.0D, 0.0D);
-        if (world == null) {
-            return;
-        }
-        double spin = tick * 24.0D;
+    private List<Location> fireRingShell(Location centre, Vector heading) {
+        var ring = new ArrayList<Location>(RiftFireRingPolicy.SEGMENTS);
         for (int index = 0; index < RiftFireRingPolicy.SEGMENTS; index++) {
-            double[] offset = RiftFireRingPolicy.segmentOffset(index, spin);
-            Location point = core.clone().add(offset[0], 0.25D, offset[1]);
-            spawnEventParticle(point, index % 2 == 0 ? Particle.FLAME : Particle.SOUL_FIRE_FLAME,
-                    2, 0.06D, 0.06D, 0.06D, 0.0D);
+            double[] offset = RiftFireRingPolicy.segmentOffset(index, 0.0D);
+            double y = RiftFireRingPolicy.planeHeight(offset[0], offset[1], heading.getX(), heading.getZ());
+            ring.add(centre.clone().add(offset[0], y, offset[1]));
         }
+        return ring;
     }
 
-    private void renderRiftFireRing(LivingEntity owner, Location centre, double spin) {
-        World world = owner.getWorld();
-        if (world == null) {
-            return;
-        }
-        for (int index = 0; index < RiftFireRingPolicy.SEGMENTS; index++) {
-            double[] offset = RiftFireRingPolicy.segmentOffset(index, spin);
-            Location point = centre.clone().add(offset[0], 0.35D, offset[1]);
-            spawnEventParticle(point, Particle.FLAME, 3, 0.05D, 0.05D, 0.05D, 0.0D);
-        }
+    private boolean fireRingCellBlocked(Location point) {
+        World world = point.getWorld();
+        if (!world.isChunkLoaded(point.getBlockX() >> 4, point.getBlockZ() >> 4)
+                || !isArenaLocation(point) || protectedLastSealCell(point)) return true;
+        double radius = RiftFireRingPolicy.TUBE_RADIUS;
+        return !point.clone().add(0, -radius, 0).getBlock().isPassable()
+                || !point.clone().add(0, radius, 0).getBlock().isPassable();
     }
 
-    private Player firstRiftFireRingContact(World world, Location centre) {
-        double radiusSquared = RiftFireRingPolicy.HIT_RADIUS * RiftFireRingPolicy.HIT_RADIUS;
-        for (Player player : activeBossParticipants()) {
-            if (player == null || !player.getWorld().equals(world)) {
+    private void renderRiftFireRing(List<Location> shell, int age, boolean gathering) {
+        for (int i = 0; i < shell.size(); i++) {
+            Location point = shell.get(i);
+            if (gathering) {
+                if (i % 2 == 0) spawnEventParticle(point, Particle.SMALL_FLAME, 1, .08D, .09D, .08D, .01D);
                 continue;
             }
-            if (centre.distanceSquared(player.getLocation().add(0.0D, 1.0D, 0.0D)) <= radiusSquared) {
-                return player;
-            }
+            double roll = .25D * Math.sin(i * .52D + Math.toRadians(RiftFireRingPolicy.rotationDegrees(age)));
+            spawnEventParticle(point, Particle.FLAME, 1, .13D, .13D, .13D, .016D);
+            spawnEventParticle(point.clone().add(0, roll, 0), i % 3 == 0
+                    ? Particle.SOUL_FIRE_FLAME : Particle.SMALL_FLAME, 1, .18D, .20D, .18D, .02D);
+            if ((i + age) % 5 == 0) spawnEventParticle(point, Particle.LARGE_SMOKE, 1, .16D, .12D, .16D, .015D);
         }
-        return null;
     }
 
-    private void detonateRiftFireRing(LivingEntity owner, Location centre) {
-        World world = centre.getWorld();
-        if (world == null) {
-            return;
-        }
-        world.playSound(centre, Sound.ENTITY_GENERIC_EXPLODE, SoundCategory.HOSTILE, 1.5F, 0.8F);
-        spawnEventParticle(centre, Particle.LAVA, 40,
-                RiftFireRingPolicy.BURST_RADIUS, 0.6D, RiftFireRingPolicy.BURST_RADIUS, 0.12D);
-        spawnEventParticle(centre, Particle.SOUL_FIRE_FLAME, 30,
-                RiftFireRingPolicy.BURST_RADIUS, 0.6D, RiftFireRingPolicy.BURST_RADIUS, 0.02D);
+    private boolean resolveFireRingContact(LivingEntity boss, List<Location> shell, Location from, Location to) {
+        boolean hitAny = false;
+        double radius = RiftFireRingPolicy.TUBE_RADIUS;
+        Vector step = to.toVector().subtract(from.toVector());
         for (Player player : activeBossParticipants()) {
-            if (player == null || !player.getWorld().equals(world)) {
-                continue;
-            }
-            double distance = Math.sqrt(
-                    centre.distanceSquared(player.getLocation().add(0.0D, 1.0D, 0.0D)));
-            if (RiftFireRingPolicy.burstConnects(distance)
-                    && applyBossAbilityDamage(owner, player, RiftFireRingPolicy.BURST_DAMAGE)) {
-                player.setFireTicks(Math.max(player.getFireTicks(), RiftFireRingPolicy.IGNITE_TICKS));
+            if (player.getWorld() != to.getWorld() || !isArenaLocation(player.getLocation())
+                    || protectedLastSealCell(player.getLocation())) continue;
+            var body = player.getBoundingBox();
+            Vector middle = body.getCenter();
+            double bodyRadius = Math.hypot(body.getWidthX(), body.getWidthZ()) * .5D;
+            if (!RiftFireRingPolicy.mayReachRing(middle.getX() - to.getX(), middle.getZ() - to.getZ(),
+                    bodyRadius, step.length())) continue;
+            var box = body.expand(radius);
+            for (Location sample : shell) {
+                Vector end = sample.toVector();
+                Vector start = end.clone().subtract(step);
+                if ((!box.contains(end) && !box.contains(start)
+                        && box.rayTrace(start, step, step.length()) == null)
+                        || !hasProjectileBlockLineOfSight(sample, player.getEyeLocation())) continue;
+                if (applyBossAbilityDamage(boss, player, RiftFireRingPolicy.CONTACT_DAMAGE)) {
+                    player.setFireTicks(Math.max(player.getFireTicks(), RiftFireRingPolicy.IGNITE_TICKS));
+                    hitAny = true;
+                }
+                break;
             }
         }
+        return hitAny;
     }
 
     /** Owner request: the Infernal Forge ("Адская кузня") signature. */
@@ -57032,8 +57030,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     }
                 }
                 case VULNERABLE -> {
-                    infernalForgeVulnerableUntilTick = eventTickCounter
-                            + InfernalForgePolicy.VULNERABLE_TICKS;
+                    if (tick == InfernalForgePolicy.vulnerableStartTick()) {
+                        infernalForgeVulnerableUntilTick = eventTickCounter + InfernalForgePolicy.VULNERABLE_TICKS;
+                    }
                     renderInfernalForgeVulnerable(owner);
                 }
                 case ENDED -> {
@@ -61315,11 +61314,39 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 new AxisAngle4f(),
                 new Vector3f(fallbackScale, fallbackScale, fallbackScale),
                 new AxisAngle4f()));
+        if (state.state() == TentacleAnimationPolicy.State.EMERGING
+                || state.state() == TentacleAnimationPolicy.State.SPAWN_UNDER_PLAYER) {
+            renderTentacleEmergence(display, state, roleScale);
+        }
         if (eventTickCounter % 20L == 0L
                 && (state.state() == TentacleAnimationPolicy.State.TELEGRAPH_GRAB
                 || state.state() == TentacleAnimationPolicy.State.HOLD
                 || state.state() == TentacleAnimationPolicy.State.SHIELD_CHANNEL)) {
             renderTentaclePulse(display.getLocation());
+        }
+    }
+
+    private void renderTentacleEmergence(ItemDisplay display, TentacleController.VisualState state,
+                                           float scale) {
+        long age = eventTickCounter - state.startedTick();
+        int duration = TentacleAnimationPolicy.durationTicks(state.state());
+        if (age < 0 || age >= duration || (age & 3L) != 0L) return;
+        double progress = (age + 1D) / duration;
+        Location root = display.getLocation().add(0, .12D, 0);
+        if (age == 0) {
+            root.getWorld().playSound(root, Sound.BLOCK_DEEPSLATE_BREAK, SoundCategory.HOSTILE, .8F, .54F);
+            spawnEventParticle(root, Particle.DUST, 8, .46D * scale, .10D, .46D * scale,
+                    .07D, new Particle.DustOptions(Color.fromRGB(56, 45, 64), 1.1F));
+        }
+        double radius = (.36D + 1.05D * Math.sin(progress * Math.PI)) * scale;
+        double rise = Math.min(4.5D, 4.5D * progress) * scale;
+        for (int i = 0; i < 8; i++) {
+            double angle = i * Math.PI / 4D + progress * 2.8D;
+            Location spark = root.clone().add(Math.cos(angle) * radius, rise * ((i & 1) == 0 ? .75D : 1D),
+                    Math.sin(angle) * radius);
+            if (!isArenaLocation(spark) || !spark.getBlock().isPassable()) continue;
+            spawnEventParticle(spark, i % 3 == 0 ? Particle.SOUL_FIRE_FLAME : Particle.REVERSE_PORTAL,
+                    1, .04D, .04D, .04D, .018D);
         }
     }
 
@@ -61477,18 +61504,30 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         long seed = riftFractureBatchSeed(participants.size());
+        boolean superGeyser = RiftFractureEruptionPolicy.superDue(
+                eventTickCounter, lastSuperGeyserTick, riftClusterSinceTick);
+        long deadline = lastSuperGeyserTick + RiftFractureEruptionPolicy.SUPER_INTERVAL_TICKS;
+        if (!superGeyser && deadline - eventTickCounter < RiftFractureEruptionPolicy.rapidBatchGap(participants.size())) {
+            nextCurrentRiftFractureBatchTick = deadline;
+            return;
+        }
         int floorY = combatFloorY();
         Set<RiftFractureEruptionPolicy.TargetTile> targetTiles = new HashSet<>();
+        Set<RiftFractureEruptionPolicy.TargetTile> clusteredTiles = new HashSet<>();
         for (Player participant : participants) {
             Location feet = participant.getLocation();
             if (world.equals(feet.getWorld()) && isArenaLocation(feet)
                     && feet.getY() >= floorY + 1.0D && feet.getY() <= floorY + 2.5D) {
-                targetTiles.add(new RiftFractureEruptionPolicy.TargetTile(feet.getBlockX(), feet.getBlockZ()));
+                var tile = new RiftFractureEruptionPolicy.TargetTile(feet.getBlockX(), feet.getBlockZ());
+                targetTiles.add(tile);
+                if (riftClusterPair.contains(participant.getUniqueId())) clusteredTiles.add(tile);
             }
         }
         Map<BlockCellKey, String> originals = new LinkedHashMap<>();
-        List<RiftFractureEruptionPolicy.Cell> cells = selectRiftFractureCells(
-                world, anchor, wanted, seed, originals, targetTiles);
+        List<RiftFractureEruptionPolicy.Cell> cells = superGeyser && !clusteredTiles.isEmpty()
+                ? selectRiftFractureCells(world, anchor, 1, seed, originals, clusteredTiles) : List.of();
+        if (cells.isEmpty())
+            cells = selectRiftFractureCells(world, anchor, superGeyser ? 1 : wanted, seed, originals, targetTiles);
         if (cells.isEmpty()) {
             nextCurrentRiftFractureBatchTick = eventTickCounter + 20L;
             return;
@@ -61514,21 +61553,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             nextCurrentRiftFractureBatchTick = eventTickCounter + 20L;
             return;
         }
-        RiftFractureEruptionPolicy.Stage stage = RiftFractureEruptionPolicy.Stage.forBatch(
-                eventTickCounter, seed);
-        // The warning length of the stage is derived from the same seed, so the
-        // batch gap is clamped onto the contract floor rather than invented.
-        int warningTicks = stage.warningTicks(eventTickCounter);
-        int batchGapTicks = Math.max(RiftFractureEruptionPolicy.batchGapTicks(participants.size()),
-                warningTicks + RiftFractureEruptionPolicy.ERUPT_TICKS);
+        int batchGapTicks = RiftFractureEruptionPolicy.rapidBatchGap(participants.size());
         RiftFractureRuntimeState state = new RiftFractureRuntimeState(
-                UUID.randomUUID(), anchor.clone(), cells, selectedOriginals, stage, batchGapTicks);
+                UUID.randomUUID(), anchor.clone(), cells, selectedOriginals, eventTickCounter, seed, superGeyser);
+        int warningTicks = state.geysers.getFirst().stage.warningTicks(eventTickCounter);
         activeCurrentRiftFractures.put(state.id(), state);
         for (RiftFractureEruptionPolicy.Cell cell : cells) {
             currentRiftFractureCells.put(new BlockCellKey(world.getUID(), cell.x(),
                     combatFloorY(), cell.z()), state.id());
         }
-        boolean applied = applyRiftFractureSurface(state, 0.0D, false);
+        boolean applied = applyRiftFractureSurface(state);
         if (applied) {
             applied = hazardJournal.markApplied();
         }
@@ -61543,14 +61577,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             nextCurrentRiftFractureBatchTick = eventTickCounter + 20L;
             return;
         }
-        state.surfaceProgress = stage.width(eventTickCounter);
-        // N23-P1-06/N23-P1-08: the crack is now an authored floor-rift body, not
-        // only particles. It is leased to the boss and expires as the eruption
-        // takes over, so the warning and the column never fight for the cap.
-        for (Location center : state.centers()) {
-            playCasterSpellBody(boss, BossSpellGeometryPolicy.Shape.RIFT_FRACTURE,
-                    "PHASE3_RIFT_FRACTURE", center.clone().add(0D, 0.06D, 0D),
-                    warningTicks + 2);
+        if (superGeyser) {
+            lastSuperGeyserTick = eventTickCounter;
+            riftClusterSinceTick = eventTickCounter;
         }
         renderCurrentRiftFracture(state);
         nextCurrentRiftFractureBatchTick = eventTickCounter + batchGapTicks;
@@ -61559,7 +61588,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " generation=" + generation
                 + " " + RiftFractureEruptionPolicy.describe(participants.size(), cells)
                 + " max_simultaneous=" + RiftFractureEruptionPolicy.MAX_SIMULTANEOUS
-                + " warning_ticks=" + warningTicks
+                + " warning_ticks=" + warningTicks + " super=" + superGeyser
                 + " batch_gap_ticks=" + batchGapTicks
                 + " journal_entries=" + journalEntries.size()
                 + " target_tiles=" + cells.stream().map(cell -> cell.x() + ":" + cell.z()).toList()
@@ -61693,22 +61722,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * touched; the block data comes from the policy, never from a literal here.
      * </p>
      */
-    private boolean applyRiftFractureSurface(RiftFractureRuntimeState state,
-                                             double progress, boolean exploded) {
+    private boolean applyRiftFractureSurface(RiftFractureRuntimeState state) {
         if (state == null || state.world() == null) {
             return false;
         }
-        String blockData = RiftFractureEruptionPolicy.surfaceBlockDataFor(progress, exploded);
-        BlockData data;
-        try {
-            data = Bukkit.createBlockData(blockData);
-        } catch (IllegalArgumentException invalid) {
-            getLogger().warning("RIFT_FRACTURE_SURFACE_REFUSED event=" + eventId
-                    + " reason=invalid-polled-block-data block_data=" + blockData);
-            return false;
-        }
         Map<BlockCellKey, Block> surfaces = new LinkedHashMap<>();
-        for (BlockCellKey cell : state.cells()) {
+        Map<BlockCellKey, String> material = new HashMap<>();
+        for (int i = 0; i < state.cells().size(); i++) {
+            var stage = state.geysers.get(i).stage;
+            if (eventTickCounter < stage.preparedAt()) continue;
+            BlockCellKey cell = state.cells().get(i);
+            String blockData = RiftFractureEruptionPolicy.surfaceBlockDataFor(stage.width(eventTickCounter),
+                    stage.phase(eventTickCounter) == RiftFractureEruptionPolicy.Phase.ERUPTION);
             Block block = state.world().getBlockAt(cell.x(), cell.y(), cell.z());
             String expected = state.appliedSurfaces.getOrDefault(cell, state.originals().get(cell));
             if (!block.getBlockData().getAsString().equals(expected)) {
@@ -61717,11 +61742,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         + " cell=" + cell.x() + ":" + cell.z());
                 return false;
             }
-            if (!blockData.equals(expected)) surfaces.put(cell, block);
+            if (!blockData.equals(expected)) {
+                surfaces.put(cell, block);
+                material.put(cell, blockData);
+            }
         }
         try {
             for (Map.Entry<BlockCellKey, Block> surface : surfaces.entrySet()) {
-                surface.getValue().setBlockData(data, false);
+                String blockData = material.get(surface.getKey());
+                surface.getValue().setBlockData(Bukkit.createBlockData(blockData), false);
                 state.appliedSurfaces.put(surface.getKey(), blockData);
             }
         } catch (RuntimeException failure) {
@@ -61806,161 +61835,98 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             clearCurrentRiftFractures("boss-runtime-inactive");
             return;
         }
+        List<Player> participants = activeBossParticipants();
+        updateGeyserCluster(participants);
         if (activeCurrentRiftFractures.isEmpty()) {
-            if (eventTickCounter >= nextCurrentRiftFractureBatchTick) {
+            if (eventTickCounter >= nextCurrentRiftFractureBatchTick
+                    || RiftFractureEruptionPolicy.superDue(eventTickCounter, lastSuperGeyserTick, riftClusterSinceTick)
+                    && nextCurrentRiftFractureBatchTick - eventTickCounter <= 16L) {
                 startCurrentRiftFractures(boss);
             }
             return;
         }
-        List<Player> participants = activeBossParticipants();
-        for (RiftFractureRuntimeState state
-                : new ArrayList<>(activeCurrentRiftFractures.values())) {
-            RiftFractureEruptionPolicy.Stage stage = state.stage();
-            RiftFractureEruptionPolicy.Phase phase = stage.phase(eventTickCounter);
-            if (state.restorationPending || phase == RiftFractureEruptionPolicy.Phase.RESTORE
-                    || phase == RiftFractureEruptionPolicy.Phase.DONE) {
+        for (RiftFractureRuntimeState state : new ArrayList<>(activeCurrentRiftFractures.values())) {
+            if (state.restorationPending || state.restoreAt <= eventTickCounter) {
                 state.restorationPending = true;
                 if (eventTickCounter < state.nextRestoreAttemptTick) continue;
                 state.nextRestoreAttemptTick = eventTickCounter + 20L;
-                if (restoreCurrentRiftFractureBlocks(state)) {
-                    removeCurrentRiftFracture(state, "restored");
-                }
+                if (restoreCurrentRiftFractureBlocks(state)) removeCurrentRiftFracture(state, "restored");
                 continue;
             }
-            if (phase == RiftFractureEruptionPolicy.Phase.COLLAPSE) {
-                // The column is collapsing: the crack stops widening but the
-                // floor stays mutated until the restore stage owns it.
-                if (!applyRiftFractureSurface(state, 1.0D, false)) {
-                    state.restorationPending = true;
-                    continue;
-                }
-                state.surfaceProgress = 1.0D;
-            } else if (phase == RiftFractureEruptionPolicy.Phase.ERUPTION) {
-                if (!applyRiftFractureSurface(state, 1.0D, true)) {
-                    state.restorationPending = true;
-                    continue;
-                }
-                state.surfaceProgress = 1.0D;
-                if (!state.erupted()) {
-                    state.markErupted();
-                    Location center = state.center();
-                    if (center != null && center.getWorld() != null) {
-                        center.getWorld().playSound(center,
-                                Sound.BLOCK_RESPAWN_ANCHOR_DEPLETE, SoundCategory.HOSTILE,
-                                0.9F, 0.7F);
-                    }
-                    // N23-P1-08: the column is an authored pressure-fire body of
-                    // its own, matching the visible hit cylinder, not the rock
-                    // shards. It is bounded and removed with the event session.
-                    for (Location column : state.centers()) {
-                        playCasterSpellBody(boss, BossSpellGeometryPolicy.Shape.INFERNO_GEYSER,
-                                "PHASE3_GEYSER", column.clone().add(0D, 0.1D, 0D),
-                                RiftFractureEruptionPolicy.ERUPT_TICKS + 8);
-                    }
-                    getLogger().info("RIFT_FRACTURE_ERUPTION event=" + eventId
-                            + " fracture=" + state.id() + " phase=RIFT"
-                            + " geyser_height=" + (int) stage.geyserHeight(eventTickCounter)
-                            + " radius=" + RiftFractureEruptionPolicy.GEYSER_RADIUS_BLOCKS
-                            + " eruption_tick=" + stage.eruptionTick());
-                }
-                renderCurrentRiftFracture(state);
-                damageRiftFractureColumn(state, stage, participants);
+            if (!applyRiftFractureSurface(state)) {
+                state.restorationPending = true;
                 continue;
-            } else if (phase == RiftFractureEruptionPolicy.Phase.WARNING) {
-                double progress = stage.width(eventTickCounter);
-                if (progress > state.surfaceProgress) {
-                    if (!applyRiftFractureSurface(state, progress, false)) {
-                        state.restorationPending = true;
-                        continue;
-                    }
-                    state.surfaceProgress = progress;
-                }
             }
             renderCurrentRiftFracture(state);
+            damageRiftFractureColumn(state, participants);
         }
     }
 
-    /**
-     * Contract 13.2 stage 3: the column IS the damage volume.
-     *
-     * <p>One eruption may hurt a given player exactly once. The ledger key is
-     * the policy's {@code eruptionTick}, so a player who walks in halfway still
-     * takes their single hit instead of being skipped or hit twice.</p>
-     */
-    private void damageRiftFractureColumn(RiftFractureRuntimeState state,
-                                          RiftFractureEruptionPolicy.Stage stage,
-                                          List<Player> participants) {
-        if (state == null || state.world() == null || participants.isEmpty()) {
-            return;
+    private void updateGeyserCluster(List<Player> participants) {
+        if (lastSuperGeyserTick < 0L) lastSuperGeyserTick = eventTickCounter;
+        Set<UUID> pair = Set.of();
+        for (int a = 0; a < participants.size(); a++) {
+            Player first = participants.get(a);
+            for (int b = a + 1; b < participants.size(); b++) {
+                Player second = participants.get(b);
+                if (first.getWorld() != second.getWorld()
+                        || first.getLocation().distanceSquared(second.getLocation()) > 9D) continue;
+                var candidate = Set.of(first.getUniqueId(), second.getUniqueId());
+                if (candidate.equals(riftClusterPair)) return;
+                if (pair.isEmpty()) pair = candidate;
+            }
         }
-        double radius = RiftFractureEruptionPolicy.GEYSER_RADIUS_BLOCKS;
-        double height = Math.max(RiftFractureEruptionPolicy.MIN_GEYSER_HEIGHT,
-                Math.min(RiftFractureEruptionPolicy.MAX_GEYSER_HEIGHT,
-                        stage.geyserHeight(eventTickCounter)));
-        long eruptionTick = stage.eruptionTick();
+        riftClusterPair = pair;
+        riftClusterSinceTick = pair.isEmpty() ? -1L : eventTickCounter;
+    }
+
+    private void damageRiftFractureColumn(RiftFractureRuntimeState state, List<Player> participants) {
+        LivingEntity attacker = liveBoss();
         double damage = RiftFractureEruptionPolicy.eruptionDamage(participants.size());
-        for (Location center : state.centers()) {
+        for (RiftGeyser geyser : state.geysers) {
+            if (geyser.stage.phase(eventTickCounter) != RiftFractureEruptionPolicy.Phase.ERUPTION) continue;
+            Location center = geyser.center;
+            double height = geyser.stage.geyserHeight(eventTickCounter);
             for (Player player : participants) {
-                if (!player.getWorld().equals(center.getWorld())) {
-                    continue;
-                }
+                if (!player.getWorld().equals(center.getWorld()) || geyser.damaged.contains(player.getUniqueId())) continue;
                 Location at = player.getLocation();
+                if (!isArenaLocation(at) || !hasProjectileBlockLineOfSight(center, at.clone().add(0, .6D, 0))) continue;
                 double dy = at.getY() - center.getY();
-                if (dy < -1.0D || dy > height) {
-                    continue;
-                }
-                double dx = at.getX() - center.getX();
-                double dz = at.getZ() - center.getZ();
-                if (dx * dx + dz * dz > radius * radius) {
-                    continue;
-                }
-                String playerKey = player.getUniqueId().toString();
-                if (!RiftFractureEruptionPolicy.mayDamagePlayer(playerKey,
-                        state.damagedPlayers(), eruptionTick)) {
-                    continue;
-                }
-                state.damagedPlayers().add(RiftFractureEruptionPolicy.scopedKey(
-                        eruptionTick, playerKey));
-                LivingEntity attacker = liveBoss();
+                if (dy < -1D || dy > height || !geyser.shape.contains(
+                        at.getX() - center.getX(), at.getZ() - center.getZ(), geyser.radius)) continue;
+                UUID contact = player.getUniqueId();
+                if (!geyser.damaged.add(contact)) continue;
                 if (!applyBossAbilityDamage(attacker, player, damage)) {
-                    state.damagedPlayers().remove(RiftFractureEruptionPolicy.scopedKey(eruptionTick, playerKey));
+                    geyser.damaged.remove(contact);
                     continue;
                 }
-                Vector launch = player.getLocation().toVector().subtract(center.toVector());
-                launch.setY(0.0D);
-                if (launch.lengthSquared() < 0.01D) {
-                    launch = new Vector(0.0D, 0.0D, 1.0D);
-                }
-                launch = launch.normalize()
-                        .multiply(RiftFractureEruptionPolicy.eruptionLaunchVelocity());
-                player.setVelocity(launch.setY(0.7D));
-                getLogger().info("RIFT_FRACTURE_HIT event=" + eventId
-                        + " fracture=" + state.id() + " player=" + player.getUniqueId()
-                        + " damage=" + damage + " eruption_tick=" + eruptionTick
-                        + " geyser_height=" + (int) height
-                        + " radius=" + radius);
+                Vector launch = at.toVector().subtract(center.toVector()).setY(0D);
+                if (launch.lengthSquared() < .01D) launch = new Vector(0, 0, 1);
+                launch.normalize().multiply(RiftFractureEruptionPolicy.eruptionLaunchVelocity());
+                player.setVelocity(launch.setY(.7D));
+                getLogger().info("RIFT_FRACTURE_HIT event=" + eventId + " fracture=" + state.id()
+                        + " player=" + player.getUniqueId() + " damage=" + damage
+                        + " eruption_tick=" + geyser.stage.eruptionTick() + " geyser_height=" + height
+                        + " radius=" + geyser.radius + " shape=" + geyser.shape);
             }
         }
     }
-
 
     private void renderCurrentRiftFracture(RiftFractureRuntimeState state) {
         if (state == null || state.center() == null || state.center().getWorld() == null) {
             return;
         }
-        RiftFractureEruptionPolicy.Stage stage = state.stage();
-        if (eventTickCounter % 3L != 0L && eventTickCounter != stage.preparedAt()
-                && eventTickCounter != stage.eruptionTick() && eventTickCounter != stage.collapseStart()) {
-            return;
-        }
-        RiftFractureEruptionPolicy.Phase phase = stage.phase(eventTickCounter);
-        double height = stage.geyserHeight(eventTickCounter);
-        double radius = RiftFractureEruptionPolicy.GEYSER_RADIUS_BLOCKS;
-        List<Location> centers = state.centers();
         List<Player> audience = eventAudience();
-        for (int root = 0; root < centers.size(); root++) {
-            Location center = centers.get(root);
-            if (center == null || center.getWorld() == null) continue;
+        for (int root = 0; root < state.geysers.size(); root++) {
+            RiftGeyser geyser = state.geysers.get(root);
+            var stage = geyser.stage;
+            if (eventTickCounter < stage.preparedAt()
+                    || eventTickCounter % 3L != 0L && eventTickCounter != stage.preparedAt()
+                    && eventTickCounter != stage.eruptionTick() && eventTickCounter != stage.collapseStart()) continue;
+            var phase = stage.phase(eventTickCounter);
+            double height = stage.geyserHeight(eventTickCounter);
+            double radius = geyser.radius;
+            Location center = geyser.center;
             int visualStage = switch (phase) {
                 case PREPARE, WARNING -> 0;
                 case ERUPTION -> 1;
@@ -61971,13 +61937,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (visualStage >= 0) {
                 var lane = spellLane(center, new Vector(0, 1, 0), (float) radius, (float) height);
                 List<Player> viewers = audience.stream().filter(viewer -> isEventParticleViewer(viewer, center)).toList();
-                spellCasts.publish(new me.copimine.endevent.runtime.SpellCastRuntime.CastKey("geyser", seed, null),
+                spellCasts.publish(new me.copimine.endevent.runtime.SpellCastRuntime.CastKey(geyser.shape.cue(), seed, null),
                         eventId, generation, worldVfxDimension(center), center, List.of(lane), eventTickCounter,
                         16, visualStage, true, viewers, this::sendSpellCast);
                 if (eventTickCounter == stage.preparedAt()) {
                     center.getWorld().playSound(center, Sound.BLOCK_DEEPSLATE_HIT, SoundCategory.HOSTILE, .85F, .53F);
                 } else if (eventTickCounter == stage.eruptionTick()) {
-                    center.getWorld().playSound(center, Sound.ENTITY_GENERIC_EXPLODE, SoundCategory.HOSTILE, 1.1F, .72F);
+                    boolean large = geyser.shape == RiftFractureEruptionPolicy.Footprint.SUPER;
+                    center.getWorld().playSound(center, Sound.ENTITY_GENERIC_EXPLODE, SoundCategory.HOSTILE,
+                            large ? 1.85F : 1.1F, large ? .48F : .72F);
                 } else if (eventTickCounter == stage.collapseStart()) {
                     center.getWorld().playSound(center, Sound.BLOCK_FIRE_EXTINGUISH, SoundCategory.HOSTILE, .85F, .62F);
                 }
@@ -61993,6 +61961,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         double y = height * level / 8.0D;
                         double angle = eventTickCounter * .23D + level * .82D;
                         double x = radius * Math.cos(angle), z = radius * Math.sin(angle);
+                        if (geyser.shape == RiftFractureEruptionPolicy.Footprint.SQUARE) {
+                            double scale = radius / Math.max(Math.abs(x), Math.abs(z));
+                            x *= scale;
+                            z *= scale;
+                        }
                         viewer.spawnParticle(Particle.FLAME, center.clone().add(x, y, z),
                                 1, 0.08D, 0.16D, 0.08D, 0.01D);
                         viewer.spawnParticle(Particle.SOUL_FIRE_FLAME, center.clone().add(-x, y, -z),
@@ -62017,8 +61990,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         progress * 1.4D, 0.03D, progress * 1.4D, 0.0D, dust);
                 for (int edge = 0; edge < 12; edge++) {
                     double angle = Math.PI * edge / 6.0D;
-                    viewer.spawnParticle(Particle.DUST, center.clone().add(
-                            radius * Math.cos(angle), .12D, radius * Math.sin(angle)), 1,
+                    double x = Math.cos(angle), z = Math.sin(angle);
+                    double extent = geyser.shape == RiftFractureEruptionPolicy.Footprint.SQUARE
+                            ? radius / Math.max(Math.abs(x), Math.abs(z)) : radius;
+                    viewer.spawnParticle(Particle.DUST, center.clone().add(x * extent, .12D, z * extent), 1,
                             0.0D, 0.0D, 0.0D, 0.0D, dust);
                 }
             }
@@ -62034,8 +62009,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (state == null || !activeCurrentRiftFractures.remove(state.id(), state)) {
             return;
         }
-        for (int root = 0; root < state.centers().size(); root++)
-            clearSpellVisualCue("geyser", geyserCueSeed(state.id(), root));
+        for (int root = 0; root < state.geysers.size(); root++)
+            clearSpellVisualCue(state.geysers.get(root).shape.cue(), geyserCueSeed(state.id(), root));
         for (BlockCellKey cell : state.cells()) {
             currentRiftFractureCells.remove(cell, state.id());
         }
@@ -62061,6 +62036,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (activeCurrentRiftFractures.isEmpty()) {
             currentRiftFractureCells.clear();
             nextCurrentRiftFractureBatchTick = 0L;
+            lastSuperGeyserTick = -1L;
+            riftClusterSinceTick = -1L;
+            riftClusterPair = Set.of();
             currentRiftFractureCursor = 0;
         }
         if (count > 0) {
@@ -64374,93 +64352,63 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * One live fracture: the real cells it owns, their exact originals and the
      * contract window it is walking through.
      */
+    private static final class RiftGeyser {
+        final Location center;
+        final RiftFractureEruptionPolicy.Stage stage;
+        final RiftFractureEruptionPolicy.Footprint shape;
+        final double radius;
+        final Set<UUID> damaged = new HashSet<>();
+
+        RiftGeyser(Location center, RiftFractureEruptionPolicy.Stage stage,
+                   RiftFractureEruptionPolicy.Footprint shape, double radius) {
+            this.center = center;
+            this.stage = stage;
+            this.shape = shape;
+            this.radius = radius;
+        }
+    }
+
     private static final class RiftFractureRuntimeState {
         private final UUID id;
-        private final Location center;
         private final List<BlockCellKey> cells;
         private final Map<BlockCellKey, String> originals;
-        private final RiftFractureEruptionPolicy.Stage stage;
-        private final int batchGapTicks;
-        private final Set<String> damagedPlayers = new LinkedHashSet<>();
-        private boolean erupted;
+        private final List<RiftGeyser> geysers;
+        private final long restoreAt;
         private boolean restorationPending;
         private final Map<BlockCellKey, String> appliedSurfaces = new HashMap<>();
         private long nextRestoreAttemptTick;
-        private double surfaceProgress = -1.0D;
 
-        private RiftFractureRuntimeState(UUID id, Location center,
-                                         List<RiftFractureEruptionPolicy.Cell> cells,
-                                         Map<BlockCellKey, String> originals,
-                                         RiftFractureEruptionPolicy.Stage stage,
-                                         int batchGapTicks) {
+        private RiftFractureRuntimeState(UUID id, Location anchor,
+                                         List<RiftFractureEruptionPolicy.Cell> selected,
+                                         Map<BlockCellKey, String> originals, long tick, long seed, boolean superGeyser) {
             this.id = id;
-            World world = center == null ? null : center.getWorld();
-            if (world == null || cells == null || cells.isEmpty() || originals == null)
-                throw new IllegalArgumentException("missing-fracture-geometry");
-            List<BlockCellKey> keys = new ArrayList<>();
-            for (RiftFractureEruptionPolicy.Cell cell : cells) {
+            World world = anchor.getWorld();
+            List<BlockCellKey> keys = new ArrayList<>(selected.size());
+            List<RiftGeyser> roots = new ArrayList<>(selected.size());
+            for (var cell : selected) {
                 BlockCellKey key = originals.keySet().stream()
                         .filter(candidate -> world.getUID().equals(candidate.worldId())
                                 && candidate.x() == cell.x() && candidate.z() == cell.z())
                         .findFirst().orElseThrow(() -> new IllegalArgumentException("unjournaled-fracture-cell"));
+                long cue = seed + roots.size() * 53L;
+                var shape = superGeyser ? RiftFractureEruptionPolicy.Footprint.SUPER
+                        : (cue & 1L) == 0L ? RiftFractureEruptionPolicy.Footprint.ROUND
+                        : RiftFractureEruptionPolicy.Footprint.SQUARE;
+                roots.add(new RiftGeyser(new Location(world, key.x() + .5D, key.y() + 1D, key.z() + .5D),
+                        RiftFractureEruptionPolicy.Stage.rapid(tick, cue, roots.size(), shape), shape, shape.radius(cue)));
                 keys.add(key);
             }
             this.cells = List.copyOf(keys);
-            BlockCellKey first = keys.getFirst();
-            this.center = new Location(world, first.x() + .5D, first.y() + 1.0D, first.z() + .5D);
             this.originals = Map.copyOf(originals);
-            this.stage = stage;
-            this.batchGapTicks = Math.max(1, batchGapTicks);
+            this.geysers = List.copyOf(roots);
+            this.restoreAt = roots.stream().mapToLong(root -> root.stage.restoreStart()).max().orElse(tick);
         }
 
-        private UUID id() {
-            return id;
-        }
-
-        private Location center() {
-            return center == null ? null : center.clone();
-        }
-
-        /** Each journaled floor cell owns one visible, collidable geyser. */
-        private List<Location> centers() {
-            List<Location> result = new ArrayList<>(cells.size());
-            for (BlockCellKey cell : cells) {
-                result.add(new Location(world(), cell.x() + .5D, cell.y() + 1.0D, cell.z() + .5D));
-            }
-            return List.copyOf(result);
-        }
-
-        private World world() {
-            return center == null ? null : center.getWorld();
-        }
-
-        private List<BlockCellKey> cells() {
-            return cells;
-        }
-
-        private Map<BlockCellKey, String> originals() {
-            return originals;
-        }
-
-        private RiftFractureEruptionPolicy.Stage stage() {
-            return stage;
-        }
-
-        private int batchGapTicks() {
-            return batchGapTicks;
-        }
-
-        private Set<String> damagedPlayers() {
-            return damagedPlayers;
-        }
-
-        private boolean erupted() {
-            return erupted;
-        }
-
-        private void markErupted() {
-            erupted = true;
-        }
+        private UUID id() { return id; }
+        private Location center() { return geysers.getFirst().center.clone(); }
+        private World world() { return geysers.getFirst().center.getWorld(); }
+        private List<BlockCellKey> cells() { return cells; }
+        private Map<BlockCellKey, String> originals() { return originals; }
     }
 
     /**
@@ -65116,17 +65064,27 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         echoDecoyFocus.keySet().retainAll(echoDecoyIds);
         if (eventTickCounter % 10L != 0L) return;
         List<Player> players = activeBossParticipants();
+        Map<UUID, Integer> pressure = new HashMap<>();
+        for (EchoFocus focus : echoDecoyFocus.values()) {
+            if (eventTickCounter < focus.untilTick()) pressure.merge(focus.target(), 1, Integer::sum);
+        }
         for (UUID id : new ArrayList<>(echoDecoyIds)) {
             Entity raw = ownedEntities.get(id); if (!(raw instanceof Mob actor) || actor.isDead() || !actor.isValid()) continue;
             EchoFocus held = echoDecoyFocus.get(id);
             Player focus = held == null ? null : Bukkit.getPlayer(held.target());
             if (focus == null || !isActiveBossParticipant(focus) || !focus.getWorld().equals(actor.getWorld())
                     || eventTickCounter >= held.untilTick()) {
+                Location origin = actor.getLocation();
                 focus = players.stream().filter(player -> player.getWorld().equals(actor.getWorld()))
-                        .min(Comparator.comparingDouble(player -> player.getLocation().distanceSquared(actor.getLocation())))
+                        .filter(player -> isArenaLocation(player.getLocation()) && !protectedLastSealCell(player.getLocation()))
+                        .min(Comparator.<Player>comparingInt(player -> pressure.getOrDefault(player.getUniqueId(), 0))
+                                .thenComparingDouble(player -> origin.distanceSquared(player.getLocation()))
+                                .thenComparing(Player::getUniqueId))
                         .orElse(null);
-                if (focus != null) echoDecoyFocus.put(id, new EchoFocus(focus.getUniqueId(), eventTickCounter+60L));
-                else echoDecoyFocus.remove(id);
+                if (focus != null) {
+                    echoDecoyFocus.put(id, new EchoFocus(focus.getUniqueId(), eventTickCounter + 60L));
+                    pressure.merge(focus.getUniqueId(), 1, Integer::sum);
+                } else echoDecoyFocus.remove(id);
             }
             actor.setTarget(focus);
             if (focus != null && (!actor.hasLineOfSight(focus)

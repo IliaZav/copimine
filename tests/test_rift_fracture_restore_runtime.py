@@ -28,6 +28,8 @@ public class FractureRestoreProbe {
   Map<BlockCellKey,String> originals(){return Map.of(key,"original[axis=x]");}
   List<BlockCellKey> cells(){return List.of(key);}}
  Journal hazardJournal=new Journal();String eventId="test";long generation=8,nextCurrentRiftFractureBatchTick=90;
+ long lastSuperGeyserTick=-1,riftClusterSinceTick=-1;
+ Set<UUID> riftClusterPair=Set.of();
  int currentRiftFractureCursor=2;Map<UUID,RiftFractureRuntimeState> activeCurrentRiftFractures=new HashMap<>();
  Map<BlockCellKey,UUID> currentRiftFractureCells=new HashMap<>();
  java.util.logging.Logger getLogger(){return java.util.logging.Logger.getAnonymousLogger();}

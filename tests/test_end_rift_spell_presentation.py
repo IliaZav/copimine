@@ -694,6 +694,14 @@ def test_the_server_emits_exactly_the_client_authored_cue_tokens() -> None:
     assert len(client) == 12, client
     signed = set(re.findall(r'CastKey\("([a-z_]+)"', server_text))
     signed.update(re.findall(r'publishTrialFangCast\([^,]+,[^,]+,\s*"([a-z_]+)"', server_text))
+    geysers = (server.parent / "domain" / "RiftFractureEruptionPolicy.java").read_text(encoding="utf-8")
+    geyser_tokens = set(re.findall(r'case [A-Z]+ -> "([a-z_]+)"', geysers))
+    assert geyser_tokens == {"geyser", "geyser_square", "geyser_super"}
+    assert "CastKey(geyser.shape.cue()," in server_text
+    renderer = (CLIENT_SRC / "me/copimine/client/SpellVisualRenderer.java").read_text(encoding="utf-8")
+    for variant in geyser_tokens - {"geyser"}:
+        assert f'"{variant}".equals(cast.spellId())' in renderer
+    signed.add("geyser")
     # Contact cues are published through the same CastKey transport but are a
     # different family: they are pinned against SpellContactMesh below. Leaving
     # them in the cast roster would let a contact token masquerade as a spell.

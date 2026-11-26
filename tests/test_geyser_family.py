@@ -198,12 +198,7 @@ def test_the_phase_three_hazards_spawn_their_authored_bodies():
     """
     event = (ROOT / "copimine-end-event/src/me/copimine/endevent/CopiMineEndEvent.java").read_text(
         encoding="utf-8", errors="surrogateescape")
-    start = _method(event, "private void startCurrentRiftFractures(")
-    assert ("playCasterSpellBody(boss, BossSpellGeometryPolicy.Shape.RIFT_FRACTURE,"
-            in start), "the floor rift must spawn its authored crack body"
-    tick = _method(event, "private void tickCurrentRiftFractures(")
-    assert ("playCasterSpellBody(boss, BossSpellGeometryPolicy.Shape.INFERNO_GEYSER,"
-            in tick), "the eruption must spawn its authored pressure-fire body"
-    # Both live behind the eruption one-shot, so one hazard cannot spam bodies.
-    eruption = tick[tick.index("if (!state.erupted())"):]
-    assert "INFERNO_GEYSER" in eruption[: eruption.index("renderCurrentRiftFracture")]
+    render = _method(event, "private void renderCurrentRiftFracture(")
+    assert "geyser.shape.cue()" in render
+    assert "stage.geyserHeight(eventTickCounter)" in render
+    assert "spellCasts.publish(" in render

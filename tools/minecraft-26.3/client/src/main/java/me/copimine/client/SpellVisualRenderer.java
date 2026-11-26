@@ -91,6 +91,9 @@ public final class SpellVisualRenderer {
             return impact.draw(matrices.last(), buffer, cast, (now - start) / (double) (expires - start),
                     tier, reducedMotion, budget);
         }
+        if (("geyser_square".equals(cast.spellId()) || "geyser_super".equals(cast.spellId()))
+                && cast.lanes().size() == 1)
+            return drawGeyser(matrices.last(), buffer, cast, now - start, expires - now, tier, budget);
         SpellVisualGeometry.Spell spell = SpellVisualGeometry.Spell.fromToken(cast.spellId());
         if (spell == null) return 0;
         if (spell == SpellVisualGeometry.Spell.BEAM && cast.lanes().size() == 1) {
@@ -203,8 +206,22 @@ public final class SpellVisualRenderer {
         double[][] section = profile(tier, true);
         boolean warning = cast.stage() == 0;
         boolean collapsing = cast.stage() == 2;
-        int emitted = drawCollar(pose, buffer, root, new Vec3(1, 0, 0), new Vec3(0, 0, 1),
-                radius, .045F, warning ? 0xeaff7d3b : 0xd5ffb26b, section, budget);
+        boolean square = "geyser_square".equals(cast.spellId());
+        boolean superGeyser = "geyser_super".equals(cast.spellId());
+        int edge = superGeyser ? 0xf3ffd279 : warning ? 0xeaff7d3b : 0xd5ffb26b;
+        int emitted = 0;
+        if (square && budget >= 32) {
+            Vec3[] corners = {root.add(-radius, 0, -radius), root.add(radius, 0, -radius),
+                    root.add(radius, 0, radius), root.add(-radius, 0, radius)};
+            for (int i = 0; i < 4; i++) {
+                Vec3 from = corners[i], to = corners[(i + 1) & 3];
+                ribbon(buffer, pose, from, to, to.subtract(from).cross(UP).normalize(), .05F, .05F, edge, edge);
+                emitted += 8;
+            }
+        } else if (!square) {
+            emitted = drawCollar(pose, buffer, root, new Vec3(1, 0, 0), new Vec3(0, 0, 1),
+                    radius, superGeyser ? .095F : .045F, edge, section, budget);
+        }
         int knots = tier.samples() + 2;
         int tubeCost = (knots + 1) * section.length * 4;
         int tongues = switch (tier) {
@@ -213,7 +230,8 @@ public final class SpellVisualRenderer {
             case REDUCED -> 3;
         };
         double phase = reducedMotion ? 0 : age * .009;
-        double pressure = Math.min(1D, age / 950D);
+        if (superGeyser && tier != SpellVisualGeometry.Quality.REDUCED) tongues += 2;
+        double pressure = Math.min(1D, age / (superGeyser ? 1050D : 660D));
         double height = warning ? .18 + 1.3 * Math.pow(pressure, 3) : lane.length();
         double fade = Math.min(1D, remaining / 100D) * (collapsing ? Math.max(.2D, 1 - age / 650D) : 1D);
         for (int strand = 0; strand < tongues && budget - emitted >= tubeCost; strand++) {
@@ -227,10 +245,13 @@ public final class SpellVisualRenderer {
                 double radial = warning ? radius * (.91 - .83 * t) :
                         strand == 0 ? radius * .09 * t : radius * (.48 + .25 * t);
                 double lift = warning ? height * Math.pow(t, 2.4) : height * t;
-                centers[n] = root.add(Math.cos(angle) * radial, lift, Math.sin(angle) * radial);
+                double x = Math.cos(angle), z = Math.sin(angle);
+                double boundary = square ? Math.max(Math.abs(x), Math.abs(z)) : 1D;
+                centers[n] = root.add(x * radial / boundary, lift, z * radial / boundary);
                 double taper = Math.pow(1 - t, .7);
                 radii.add((float) (.018 + radius * taper * (warning ? .045 : strand == 0 ? .38 : .105)));
-                int hue = warning ? 0xf58054 : strand == 0 ? (t < .65 ? 0xffedbb : 0xff7541)
+                int hue = warning ? (superGeyser ? 0xffc74a : 0xf58054)
+                        : strand == 0 ? (t < .65 ? 0xffedbb : 0xff7541)
                         : (strand & 1) == 0 ? 0x702451 : 0xff6d28;
                 int alpha = (int) ((warning ? 150 + 70 * pressure : strand == 0 ? 238 : 162) * fade * (.24 + .76 * taper));
                 colors[n] = alpha << 24 | hue;

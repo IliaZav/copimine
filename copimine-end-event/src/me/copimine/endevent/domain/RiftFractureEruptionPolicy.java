@@ -47,6 +47,42 @@ public final class RiftFractureEruptionPolicy {
     public static final double MINIMUM_SAFE_RATIO = 0.34D;
     /** The damage volume of the column. Matches the visible 8-12 block pillar. */
     public static final double GEYSER_RADIUS_BLOCKS = 1.9D;
+    public static final int SUPER_INTERVAL_TICKS = 1_200;
+    public static final int CLUSTER_HOLD_TICKS = 45;
+    public static final int CLUSTER_SUPER_MIN_INTERVAL_TICKS = 240;
+    private static final int MIN_RAPID_WARNING_TICKS = 14;
+
+    public enum Footprint {
+        ROUND, SQUARE, SUPER;
+
+        public double radius(long seed) {
+            if (this == SUPER) return 3.6D;
+            return 1.4D + Math.floorMod(seed >>> 7, 4) * .24D;
+        }
+
+        public boolean contains(double dx, double dz, double radius) {
+            return this == SQUARE ? Math.max(Math.abs(dx), Math.abs(dz)) <= radius
+                    : dx * dx + dz * dz <= radius * radius;
+        }
+
+        public String cue() {
+            return switch (this) {
+                case ROUND -> "geyser";
+                case SQUARE -> "geyser_square";
+                case SUPER -> "geyser_super";
+            };
+        }
+    }
+
+    public static int rapidBatchGap(int players) {
+        return 60 + 3 * batchSizeForPlayers(players);
+    }
+
+    public static boolean superDue(long tick, long lastSuper, long clusterSince) {
+        long elapsed = tick - lastSuper;
+        return elapsed >= SUPER_INTERVAL_TICKS || (clusterSince >= 0
+                && tick - clusterSince >= CLUSTER_HOLD_TICKS && elapsed >= CLUSTER_SUPER_MIN_INTERVAL_TICKS);
+    }
     public static final double ERUPTION_DAMAGE = 7.0D;
 
     /** Rift surface materials, darkest first: the crack visibly widens. */
@@ -144,7 +180,7 @@ public final class RiftFractureEruptionPolicy {
         public Stage {
             long prepare = Math.max(0L, preparedAt);
             long warning = Math.max(prepare, warningStart);
-            long band = Math.max(MIN_WARNING_TICKS,
+            long band = Math.max(MIN_RAPID_WARNING_TICKS,
                     Math.min(MAX_WARNING_TICKS, eruptionTick - warning));
             long erupt = warning + band;
             long collapse = Math.max(erupt + 1L,
@@ -169,6 +205,14 @@ public final class RiftFractureEruptionPolicy {
             long eruption = start + warningTicksStatic(seed);
             return new Stage(start, start, eruption,
                     eruption + ERUPT_TICKS, eruption + ERUPT_TICKS + COLLAPSE_TICKS);
+        }
+
+        public static Stage rapid(long batchStart, long seed, int order, Footprint footprint) {
+            long start = Math.max(0L, batchStart) + 3L * Math.max(0, order);
+            int warning = footprint == Footprint.SUPER ? 22 : MIN_RAPID_WARNING_TICKS + Math.floorMod(seed, 5);
+            int eruption = footprint == Footprint.SUPER ? 36 : 26;
+            return new Stage(start, start, start + warning, start + warning + eruption,
+                    start + warning + eruption + COLLAPSE_TICKS);
         }
 
         private static int warningTicksStatic(long seed) {

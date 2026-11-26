@@ -42,9 +42,10 @@ def test_phase4_signature_spells_gated_once_per_threshold():
     assert "OVERLOAD_FIRE_RING_THRESHOLDS" in source
     assert "OVERLOAD_INFERNAL_FORGE_THRESHOLDS" in source
     # Both spells really exist as server implementations.
-    assert "private void startRiftFireRing(" in source
+    assert "private boolean startRiftFireRing(" in source
     assert "private void startInfernalForge(" in source
-    assert "RiftFireRingPolicy.detonates(" in source
+    assert "resolveFireRingContact(boss, shell, centre, next)" in source
+    assert "fireRingCellBlocked" in source
     assert "InfernalForgePolicy.impulseConnects(" in source
     assert "InfernalForgePolicy.slamConnects(" in source
 

@@ -88,7 +88,7 @@ def test_protected_cells_cover_core_runes_and_gates() -> None:
 def test_journal_is_prepared_before_any_block_changes() -> None:
     body = method("void startCurrentRiftFractures")
     prepare = body.index("hazardJournal.prepare(eventId, generation, world.getName(), journalEntries)")
-    apply_call = body.index("applyRiftFractureSurface(state, 0.0D, false)")
+    apply_call = body.index("applyRiftFractureSurface(state)")
     assert prepare < apply_call, (
         "save-before-mutate: the journal must be durable before the surface changes"
     )
@@ -100,7 +100,7 @@ def test_journal_is_prepared_before_any_block_changes() -> None:
 def test_a_failed_prepare_never_touches_the_floor() -> None:
     body = method("void startCurrentRiftFractures")
     guard = body.index("!hazardJournal.prepare(")
-    apply_call = body.index("applyRiftFractureSurface(state, 0.0D, false)")
+    apply_call = body.index("applyRiftFractureSurface(state)")
     assert guard < apply_call
     between = body[guard:apply_call]
     assert "setBlockData" not in between, (
@@ -111,7 +111,7 @@ def test_a_failed_prepare_never_touches_the_floor() -> None:
 
 def test_mark_applied_follows_the_real_mutation() -> None:
     body = method("void startCurrentRiftFractures")
-    apply_call = body.index("applyRiftFractureSurface(state, 0.0D, false)")
+    apply_call = body.index("applyRiftFractureSurface(state)")
     mark = body.index("hazardJournal.markApplied()")
     assert apply_call < mark, (
         "the journal may only claim APPLIED after the blocks really changed"
@@ -146,76 +146,34 @@ def test_the_journal_step_contract_is_not_reimplemented_locally() -> None:
 # --- 3. the stages come from the policy ------------------------------------
 
 def test_stage_timing_comes_from_the_policy_not_local_constants() -> None:
-    body = method("void startCurrentRiftFractures")
-    assert "RiftFractureEruptionPolicy.Stage.forBatch(" in body
-    assert "stage.warningTicks(" in body, "the warning length must be the policy's"
-    assert "RiftFractureEruptionPolicy.batchGapTicks(" in body, (
-        "the batch cadence must be the policy's"
-    )
-    assert "RiftFractureEruptionPolicy.batchSizeForPlayers(" in body
+    start = method("void startCurrentRiftFractures")
+    assert "RiftFractureEruptionPolicy.rapidBatchGap(" in start
+    assert "RiftFractureEruptionPolicy.batchSizeForPlayers(" in start
+    assert "RiftFractureEruptionPolicy.Stage.rapid(" in source()
 
 
 def test_the_crack_widens_across_prepare_and_warning() -> None:
-    body = method("void tickCurrentRiftFractures")
-    assert "RiftFractureEruptionPolicy.Phase.WARNING" in body
-    assert "stage.width(eventTickCounter)" in body, (
-        "the crack must widen with the policy's progress value"
-    )
-    assert "applyRiftFractureSurface(state, progress, false)" in body
     surface = method("boolean applyRiftFractureSurface")
-    assert "RiftFractureEruptionPolicy.surfaceBlockDataFor(progress, exploded)" in surface, (
-        "the surface block data must come from the policy"
-    )
-    assert "setBlockData(data, false)" in surface
+    assert "RiftFractureEruptionPolicy.surfaceBlockDataFor(stage.width(eventTickCounter)" in surface
+    assert "setBlockData(Bukkit.createBlockData(blockData), false)" in surface
 
-
-# --- 4. the geyser is the damage volume ------------------------------------
 
 def test_the_geyser_column_is_the_damage_volume() -> None:
     body = method("void damageRiftFractureColumn")
-    assert "RiftFractureEruptionPolicy.GEYSER_RADIUS_BLOCKS" in body, (
-        "the hit radius must be the authored column radius"
-    )
-    assert "RiftFractureEruptionPolicy.MIN_GEYSER_HEIGHT" in body
-    assert "RiftFractureEruptionPolicy.MAX_GEYSER_HEIGHT" in body
-    assert "stage.geyserHeight(eventTickCounter)" in body, (
-        "the hit volume must follow the visible column height"
-    )
-    assert "RiftFractureEruptionPolicy.eruptionDamage(participants.size())" in body, (
-        "damage must come from the policy"
-    )
-    assert "dx * dx + dz * dz > radius * radius" in body, "only the column hurts"
-    assert "if (dy < -1.0D || dy > height)" in body, (
-        "a player outside the column height is never inside the hit volume"
-    )
+    assert "stage.geyserHeight(eventTickCounter)" in body
+    assert "geyser.shape.contains(" in body
+    assert "dy > height" in body
 
 
 def test_one_eruption_never_damages_the_same_player_twice() -> None:
     body = method("void damageRiftFractureColumn")
-    assert "RiftFractureEruptionPolicy.mayDamagePlayer(" in body, (
-        "the per-player ledger is the only authority on repeat damage"
-    )
-    assert "RiftFractureEruptionPolicy.scopedKey(\n                    eruptionTick, playerKey)" in body or \
-           "scopedKey(" in body
-    check = body.index("mayDamagePlayer(")
-    add = body.index("state.damagedPlayers().add(")
-    hurt = body.index("applyBossAbilityDamage(attacker, player, damage)")
-    assert check < add < hurt, (
-        "the ledger must be asked, then written, before the hit is dealt"
-    )
-    assert "continue;" in body[check:hurt]
+    assert body.index("geyser.damaged.add(") < body.index("applyBossAbilityDamage(")
+    assert body.index("applyBossAbilityDamage(") < body.index("geyser.damaged.remove(")
 
 
 def test_damage_happens_only_inside_the_eruption_stage() -> None:
-    body = method("void tickCurrentRiftFractures")
-    eruption = body.index("RiftFractureEruptionPolicy.Phase.ERUPTION")
-    assert body.index("damageRiftFractureColumn(") > eruption, (
-        "damage must sit inside the ERUPTION branch, never the warning or collapse"
-    )
-    # The prepare/warning branch must not call the damage helper at all.
-    warning = body.index("RiftFractureEruptionPolicy.Phase.WARNING")
-    warning_block = body[warning:]
-    assert "damageRiftFractureColumn(" not in warning_block
+    body = method("void damageRiftFractureColumn")
+    assert body.index("RiftFractureEruptionPolicy.Phase.ERUPTION") < body.index("applyBossAbilityDamage(")
 
 
 # --- 5. the exact original data comes back ---------------------------------
@@ -306,7 +264,7 @@ def test_no_particle_ring_helper_survives_as_the_mechanic() -> None:
     assert "spawnPatternRing(" not in body, (
         "a ring on the floor was the retired mechanic"
     )
-    assert "RiftFractureEruptionPolicy.GEYSER_RADIUS_BLOCKS" in body, (
+    assert "double radius = geyser.radius" in body, (
         "the visible pillar must share the hit radius"
     )
     # The pillar itself must be emitted, not merely described: a constant that

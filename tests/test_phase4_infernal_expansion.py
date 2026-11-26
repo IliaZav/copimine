@@ -146,13 +146,11 @@ public class FireRingProbe {
                     "each segment sits on the ring radius");
         }
 
-        // Detonation: a real floor contact or a real player contact, nothing else.
-        require(RiftFireRingPolicy.detonates(100.0D, true), "a floor hit detonates the ring");
-        require(RiftFireRingPolicy.detonates(1.0D, false), "a player hit detonates the ring");
-        require(!RiftFireRingPolicy.detonates(100.0D, false), "an untouched ring flies on");
-        require(!RiftFireRingPolicy.detonates(Double.NaN, false), "a non-finite distance never hits");
-        require(RiftFireRingPolicy.burstConnects(2.0D), "the burst is a real radius");
-        require(!RiftFireRingPolicy.burstConnects(99.0D), "the burst is bounded");
+        require(!RiftFireRingPolicy.mayReachRing(0.0D, 0.0D, .45D, .26D), "the ring has a safe centre");
+        require(RiftFireRingPolicy.mayReachRing(5.0D, 0.0D, .45D, .26D), "the visible shell enters the broad phase");
+        require(!RiftFireRingPolicy.mayReachRing(7.0D, 0.0D, .45D, .26D), "outside the ring stays outside");
+        require(RiftFireRingPolicy.planeHeight(5, 0, 1, 0) > 0.5D, "leading rim rises slightly");
+        require(RiftFireRingPolicy.planeHeight(0, 5, 1, 0) == 0D, "side rim stays level");
 
         // Once-per-threshold plus a real cooldown.
         require(RiftFireRingPolicy.mayCast(-1L, 500L), "a first ring may always fire");

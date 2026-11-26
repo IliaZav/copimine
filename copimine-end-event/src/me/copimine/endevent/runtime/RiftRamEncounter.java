@@ -278,10 +278,14 @@ public final class RiftRamEncounter {
         for (int x = -1; x <= 1; x++) {
             for (int z = -1; z <= 1; z++) {
                 Location column = at.clone().add(x, 0, z);
-                Location floor = at.clone().add(x, -1, z);
-                if (!host.inArena(column) || !floor.getBlock().getType().isSolid()) return false;
+                Location floor = column.clone().subtract(0, 1, 0);
+                if (!world.isChunkLoaded(column.getBlockX() >> 4, column.getBlockZ() >> 4)
+                        || !host.inArena(column) || !floor.getBlock().getType().isSolid()) return false;
                 for (int y = 0; y < 4; y++) {
-                    if (!at.clone().add(x, y, z).getBlock().isPassable()) return false;
+                    Location point = column.clone().add(0, y, 0);
+                    if (!host.inArena(point)) return false;
+                    Block block = point.getBlock();
+                    if (!block.isPassable() || block.isLiquid()) return false;
                 }
             }
         }
@@ -1214,6 +1218,15 @@ public final class RiftRamEncounter {
                 if (viewer.getWorld().equals(point.getWorld()) && viewer.getLocation().distanceSquared(point) < 48 * 48)
                     viewer.spawnParticle(lance ? Particle.ELECTRIC_SPARK : rain ? Particle.ASH : Particle.CRIT,
                             point, 1, .018D, .018D, .018D, .015D);
+            }
+        }
+        if (rain) {
+            Location above = center.clone().add(0, Math.min(3.5D, WaveSixPillarSkeletonPolicy.BONE_RAIN_HEIGHT), 0);
+            if (!host.inArena(above) || !above.getBlock().isPassable()) return;
+            for (Player viewer : players) {
+                if (viewer.getWorld().equals(above.getWorld()) && viewer.getLocation().distanceSquared(above) < 48 * 48) {
+                    viewer.spawnParticle(Particle.SOUL, above, 3, .53D, .18D, .53D, .016D);
+                }
             }
         }
     }

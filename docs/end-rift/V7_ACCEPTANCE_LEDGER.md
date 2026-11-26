@@ -49,6 +49,22 @@ never a pass without real Minecraft 26.3 evidence.
 | V7-27 | Load: 2/5/10/11/20 + dungeon 32+, MSPT/client/packets, no leaks | — | — | NOT_MEASURED (native profiling BLOCKED) |
 | V7-28 | Assets/release: active sources, real hashes, CI at final SHA, no old sphere/camera/Echo bar | build + CI | validators, `RunEndRiftEventChecks.ps1` | IMPLEMENTED_UNVERIFIED (CI P0 encoding resolved; native visual BLOCKED) |
 
+## Deployment (2026-11-27, commit `269506a9`)
+
+The V7-19/V7-21 build was promoted to both runtimes after a full green gate:
+
+| Target | Path | CopiMineEndEvent.jar SHA-256 | Service |
+|---|---|---|---|
+| Production | `/opt/copimine-game/minecraft/server/plugins/` | `deba588753f9c0992141f069e01896f6a182412af54e56092e12a4b0e9b33dce` | `copimine-game.service` active, phase `COLLECTING` |
+| Isolated site | `/opt/copimine-game/playtest-end-rift-site-20261125/plugins/` | `deba588753f9c0992141f069e01896f6a182412af54e56092e12a4b0e9b33dce` | `copimine-end-rift-site-paper-20261125.service` active, phase `UNCONFIGURED` |
+
+Rollback backup: `/opt/copimine-game/minecraft/server/plugins-backup-20261126T225937Z/`
+(previous EndEvent `37fea8ac…`, Dungeon `d400cf63…`). Resource pack
+`CopiMineResourcePack-26.3-c1246a657207a3eb.zip` serves HTTP 200,
+27,938,837 bytes. Both plugins enabled with no load errors; the deployed jar
+contains `BossCopyCooperationPolicy`, `RageEchoSummonPolicy` and
+`RageEchoSession`. Owner playtest is the native/visual acceptance path.
+
 ## Defects fixed this session (2026-11-26)
 
 ### E-04 — Rich weapon/cadence/sustain evidence was compiled away (`domain/wave7/EchoBehaviorStrategy`, `runtime/EventCombatProfileService`)

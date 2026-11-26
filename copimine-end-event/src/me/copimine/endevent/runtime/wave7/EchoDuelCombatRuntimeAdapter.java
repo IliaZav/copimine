@@ -223,6 +223,23 @@ public final class EchoDuelCombatRuntimeAdapter {
      */
     static MovementIntent movementIntent(EchoBehaviorStrategy strategy, Observation observation,
                                          boolean wounded, boolean canHeal, boolean rangedAvailable) {
+        return movementIntent(strategy, observation, wounded, canHeal, rangedAvailable, 0L);
+    }
+
+    /**
+     * @param phaseOffset E-03 actor-local phase in {@code [0, 100)}. Two copies of
+     *                the same profile used to share the global tick clock, so
+     *                they strafed, hopped and raised shields in perfect lockstep
+     *                and the owner could time a single counter around the whole
+     *                squad. The offset is derived from the persisted duel and
+     *                actor identity, so every decision stays a pure, replayable
+     *                function of durable state while each copy keeps its own
+     *                rhythm. It only shifts when a burst happens; it never adds
+     *                reach, range or a free action.
+     */
+    static MovementIntent movementIntent(EchoBehaviorStrategy strategy, Observation observation,
+                                         boolean wounded, boolean canHeal, boolean rangedAvailable,
+                                         long phaseOffset) {
         if (strategy == null || observation == null) return MovementIntent.HOLD;
         double distance = Math.sqrt(observation.distanceSquared());
         // Map 0..1000 onto a 1.5..12 block hold band inside the ranged envelope.
@@ -250,29 +267,55 @@ public final class EchoDuelCombatRuntimeAdapter {
             // and the 30-block envelope. Approaching the band is what a real
             // archer does when it is out of position.
             if (distance > preferred + HOLD_TOLERANCE_BLOCKS) return MovementIntent.APPROACH;
-            return lateralIntent(strategy, observation);
+            return lateralIntent(strategy, observation, phaseOffset);
         }
         if (distance > preferred + HOLD_TOLERANCE_BLOCKS) return MovementIntent.APPROACH;
-        return lateralIntent(strategy, observation);
+        return lateralIntent(strategy, observation, phaseOffset);
     }
 
     /**
      * BRAIN-011: weave sideways with the owner's recorded rhythm. The choice is a
-     * pure function of the tick and the profile, so it is reproducible on replay
-     * and needs no per-copy random source.
+     * pure function of the tick, the actor-local phase offset and the profile, so
+     * it is reproducible on replay and needs no per-copy random source.
+     *
+     * <p>E-03: the burst phase includes the actor-local offset. Without it every
+     * copy of the same profile shared the global tick clock and strafed in
+     * lockstep, which is the "predictable squad rhythm" the contract forbids.
+     * Each burst still commits for twelve ticks, so there is no per-tick
+     * oscillation; the side alternates every ten bursts for hysteresis.</p>
      */
-    private static MovementIntent lateralIntent(EchoBehaviorStrategy strategy, Observation observation) {
+    private static MovementIntent lateralIntent(EchoBehaviorStrategy strategy, Observation observation,
+                                                long phaseOffset) {
         int kite = strategy.kitePermille();
         int mobility = strategy.mobilityPermille();
         if (kite <= 0 || mobility <= 0) return MovementIntent.HOLD;
         // Weave in bursts: roughly every 12 ticks decide a side, weighted by how
         // often the owner strafed at all.
-        long phase = observation.tick() / 12L;
-        long window = phase % 10L;
+        long phase = Math.floorDiv(observation.tick() + phaseOffset, 12L);
+        long window = Math.floorMod(phase, 10L);
         long threshold = Math.max(1L, 10L * kite / 1_000L);
         if (window >= threshold) return MovementIntent.HOLD;
-        boolean left = (phase / 10L) % 2L == 0L;
+        boolean left = Math.floorDiv(phase, 10L) % 2L == 0L;
         return left ? MovementIntent.STRAFE_LEFT : MovementIntent.STRAFE_RIGHT;
+    }
+
+    /**
+     * E-03: a stable, actor-local phase in {@code [0, 100)} derived from the
+     * persisted duel and actor identity. Two copies summoned from the same
+     * profile therefore decorate their global-tick windows differently, while a
+     * replay of the same durable record reproduces every decision exactly. The
+     * value is a pure hash; it never consults wall time or randomness.
+     */
+    static long actorPhase(UUID duelId, UUID actorUuid) {
+        if (duelId == null || actorUuid == null) return 0L;
+        long hash = duelId.getMostSignificantBits()
+                ^ Long.rotateLeft(duelId.getLeastSignificantBits(), 17)
+                ^ Long.rotateLeft(actorUuid.getMostSignificantBits(), 31)
+                ^ Long.rotateLeft(actorUuid.getLeastSignificantBits(), 47);
+        hash ^= hash >>> 33;
+        hash *= 0xff51afd7ed558ccdL;
+        hash ^= hash >>> 33;
+        return Math.floorMod(hash, 100L);
     }
 
     /**
@@ -286,10 +329,15 @@ public final class EchoDuelCombatRuntimeAdapter {
      * replays identically and needs no random source.</p>
      */
     static boolean swapsWeaponThisTick(EchoBehaviorStrategy strategy, Observation observation) {
+        return swapsWeaponThisTick(strategy, observation, 0L);
+    }
+
+    static boolean swapsWeaponThisTick(EchoBehaviorStrategy strategy, Observation observation,
+                                       long phaseOffset) {
         if (strategy == null || observation == null) return false;
         int weight = strategy.weaponSwitchPermille();
         if (weight < WEAPON_SWITCH_FLOOR_PERMILLE) return false;
-        return inProfileWindow(observation.tick(), weight);
+        return inProfileWindow(observation.tick(), weight, phaseOffset);
     }
 
     /**
@@ -356,8 +404,12 @@ public final class EchoDuelCombatRuntimeAdapter {
             // actually has a usable ranged weapon and ammunition; otherwise it
             // closes to melee reach instead of kiting from an unusable band.
             boolean rangedAvailable = rangedSlot >= 0 && ammoSlot >= 0;
+            // E-03: give this actor its own phase so two copies of the same
+            // profile do not strafe, hop and guard in lockstep off the shared
+            // global tick clock.
+            long actorPhase = actorPhase(duel.duelId(), duel.actor().actorUuid());
             MovementIntent intent = movementIntent(duel.behaviorStrategy(), observation, wounded,
-                    canHeal, rangedAvailable);
+                    canHeal, rangedAvailable, actorPhase);
             if (duel.actor().shieldActiveUntilTick() > observation.tick()) {
                 return Optional.of(new Decision(scope, Action.NONE, duel, duel, baselineReplica,
                         replica, -1, -1, null, intent));
@@ -406,7 +458,7 @@ public final class EchoDuelCombatRuntimeAdapter {
                     && observation.tick() >= duel.actor().nextActionTick()
                     && observation.tick() >= duel.actor().pendingUseUntilTick();
             boolean swapsToRanged = canShootNow
-                    && swapsWeaponThisTick(duel.behaviorStrategy(), observation);
+                    && swapsWeaponThisTick(duel.behaviorStrategy(), observation, actorPhase);
 
             // Potions: a copy drinks what its owner actually carried. The buff
             // window is derived from the actor's own pending-use deadline, so a
@@ -448,7 +500,8 @@ public final class EchoDuelCombatRuntimeAdapter {
             }
             if (shieldSlot >= 0 && observation.distanceSquared() <= RANGED_RANGE_BLOCKS * (double) RANGED_RANGE_BLOCKS
                     && !observation.incomingStrikeKnown()
-                    && inProfileWindow(observation.tick(), duel.behaviorStrategy().defensePermille())) {
+                    && inProfileWindow(observation.tick(), duel.behaviorStrategy().defensePermille(),
+                            actorPhase)) {
                 long holdTicks = 5L + 15L * duel.behaviorStrategy().defensePermille() / 1_000L;
                 Optional<ActorState> actor = EchoDuelCombatPolicy.tryStartShield(
                         duel.actor(), replica, shieldSlot, replica.revision(), observation.tick(),
@@ -532,7 +585,8 @@ public final class EchoDuelCombatRuntimeAdapter {
             if (observation.onGround() && !inMeleeRange && meleeSlot >= 0
                     && intent == MovementIntent.APPROACH
                     && duel.behaviorStrategy().jumpAttackPermille() > JUMP_ATTACK_BASELINE_PERMILLE
-                    && inProfileWindow(observation.tick(), duel.behaviorStrategy().jumpAttackPermille())) {
+                    && inProfileWindow(observation.tick(), duel.behaviorStrategy().jumpAttackPermille(),
+                            actorPhase)) {
                 Optional<ActorState> actor = EchoDuelCombatPolicy.tryStartJump(
                         duel.actor(), observation.tick(), COOLDOWNS);
                 if (actor.isPresent()) {
@@ -564,7 +618,7 @@ public final class EchoDuelCombatRuntimeAdapter {
             // jump-attack hop above is unchanged and still sets up the falling
             // critical.
             if (observation.onGround() && inProfileWindow(
-                    observation.tick(), duel.behaviorStrategy().mobilityPermille())) {
+                    observation.tick(), duel.behaviorStrategy().mobilityPermille(), actorPhase)) {
                 Optional<ActorState> actor = EchoDuelCombatPolicy.tryStartJump(
                         duel.actor(), observation.tick(), COOLDOWNS);
                 if (actor.isPresent()) {
@@ -737,9 +791,15 @@ public final class EchoDuelCombatRuntimeAdapter {
     }
 
     private static boolean inProfileWindow(long tick, int weightPermille) {
+        return inProfileWindow(tick, weightPermille, 0L);
+    }
+
+    private static boolean inProfileWindow(long tick, int weightPermille, long phaseOffset) {
         if (tick < 0L || weightPermille <= 0 || weightPermille > 1_000) return false;
+        long shifted = tick + phaseOffset;
+        if (shifted < 0L) return false;
         long window = Math.max(1L, (weightPermille + 9L) / 10L);
-        return tick % 100L < window;
+        return Math.floorMod(shifted, 100L) < window;
     }
 
     private static ActorState withHealth(ActorState actor, double health) {

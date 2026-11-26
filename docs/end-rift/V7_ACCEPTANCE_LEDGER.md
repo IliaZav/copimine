@@ -35,7 +35,7 @@ never a pass without real Minecraft 26.3 evidence.
 | V7-13 | Warden: real base, 5×4, 20t/60t, R6 through-wall, resonance counterplay | W5.1 Warden runtime | `test_warden_v5_runtime.py` | SRC+TEST (native BLOCKED) |
 | V7-14 | Archmage: frequent bounded Vexes, 3-block fang line, crown gap, staff | Archmage runtime | `test_wave7_archmage_*` | SRC+TEST (native BLOCKED; low-HP cadence pending owner approval) |
 | V7-15 | Distinct skeleton models/arrows, textured bars, no Echo bar | active 26.3 client | `SpellVisualGeometryTest`, `GuardianSpellMeshTest` | IMPLEMENTED_UNVERIFIED (Wave7 V4 ZIP content not extractable; native BLOCKED) |
-| V7-16 | Echo AI: 4 distinct + hybrid profiles, independent tactics, finite resources | `runtime/wave7/EchoDuelCombatRuntimeAdapter`, `domain/wave7/EchoBehaviorStrategy`, `EchoDuelCombatPolicy` | `EchoDuelCombatRuntimeAdapterTest` (91 assertions), `EchoDuelCapabilityPolicyTest` | IMPLEMENTED_UNVERIFIED (E-02 navigation dead zones fixed 2026-11-26; E-03/E-04/E-05 open; native BLOCKED) |
+| V7-16 | Echo AI: 4 distinct + hybrid profiles, independent tactics, finite resources | `runtime/wave7/EchoDuelCombatRuntimeAdapter`, `domain/wave7/EchoBehaviorStrategy`, `EchoDuelCombatPolicy` | `EchoDuelCombatRuntimeAdapterTest` (91 assertions), `EchoWoundedRetreatTest` (actor-phase lockstep divergence), `EchoDuelCapabilityPolicyTest` | IMPLEMENTED_UNVERIFIED (E-02 navigation dead zones + E-03 actor-local phase fixed 2026-11-26; E-04/E-05 open; native BLOCKED) |
 | V7-17 | Two Echo modes: Wave 7 duel + rare Phase 5 summon, no teleport-to-room | Wave 7 `EchoDuelCombatRuntimeAdapter`; Phase 5 `spawnEchoClone` | — | NOT_IMPLEMENTED (Phase 5 still uses simplified `spawnEchoClone`; E-01 call-graph replacement open) |
 | V7-18 | Guardian phases 1–5: real HP/damage/hurt, grounded, 4 physical attacks | EndEvent boss runtime | boss phase probes | SRC+TEST (native BLOCKED) |
 | V7-19 | Phases 3–4: geysers + temporary blocks, rare ring/forge, no spam | EndEvent hazard runtime | wave timing probes | IMPLEMENTED_UNVERIFIED (overlapping hazard batches remain open per V6 ledger) |
@@ -50,6 +50,23 @@ never a pass without real Minecraft 26.3 evidence.
 | V7-28 | Assets/release: active sources, real hashes, CI at final SHA, no old sphere/camera/Echo bar | build + CI | validators, `RunEndRiftEventChecks.ps1` | IMPLEMENTED_UNVERIFIED (CI P0 encoding resolved; native visual BLOCKED) |
 
 ## Defects fixed this session (2026-11-26)
+
+### E-03 — Shared global clock made every same-profile copy strafe in lockstep (`runtime/wave7/EchoDuelCombatRuntimeAdapter`)
+- Root cause: `lateralIntent` derived the strafe phase from `observation.tick() / 12`
+  and the profile windows (`inProfileWindow`) from `tick % 100` with no per-actor
+  offset. Two copies summoned from the same profile therefore strafed, hopped
+  and raised shields on exactly the same ticks, and the owner could time one
+  counter around the whole squad.
+- Fix: added `actorPhase(duelId, actorUuid)`, a pure 64-bit mix in `[0, 100)`
+  derived from persisted identity. `movementIntent`, `lateralIntent`,
+  `swapsWeaponThisTick` and every `inProfileWindow` call (shield, jump, mobility)
+  now shift by that phase while staying a deterministic function of durable
+  state, so replays reproduce every decision. Existing overloads delegate with
+  a zero offset; each burst still commits for twelve ticks, so there is no
+  per-tick oscillation.
+- Regression: `tests/harness/me/copimine/endevent/runtime/wave7/EchoWoundedRetreatTest.java`
+  (`actorPhaseIsBoundedAndDeterministic`, `sameProfileCopiesDoNotShareOneGlobalRhythm`).
+  Result: `EchoWoundedRetreatTest OK`.
 
 ### E-02 — Echo navigation dead zones (`runtime/wave7/EchoDuelCombatRuntimeAdapter`)
 - Root cause: `movementIntent` derived `wantsRange` from the profile alone and the

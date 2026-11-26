@@ -1,6 +1,7 @@
 package me.copimine.endevent.runtime.wave7;
 
 import java.util.Objects;
+import java.util.UUID;
 import me.copimine.endevent.domain.wave7.EchoBehaviorStrategy;
 import me.copimine.endevent.runtime.wave7.EchoDuelCombatRuntimeAdapter.MovementIntent;
 import me.copimine.endevent.runtime.wave7.EchoDuelCombatRuntimeAdapter.Observation;
@@ -22,6 +23,8 @@ public final class EchoWoundedRetreatTest {
         woundedWithoutHealingKeepsFighting();
         rangedCopyStillKites();
         retreatDoesNotBreakTheBand();
+        actorPhaseIsBoundedAndDeterministic();
+        sameProfileCopiesDoNotShareOneGlobalRhythm();
 
         if (failures > 0) {
             System.out.println(failures + " failure(s)");
@@ -104,6 +107,56 @@ public final class EchoWoundedRetreatTest {
         if (!condition) {
             failures++;
             System.out.println("FAIL: " + message);
+        }
+    }
+
+    /** E-03: two same-profile copies must not strafe, hop and guard in lockstep. */
+    private static void actorPhaseIsBoundedAndDeterministic() {
+        java.util.Set<Long> distinct = new java.util.HashSet<>();
+        for (long v = 1; v <= 32; v++) {
+            UUID duelId = new UUID(0, v);
+            UUID actorId = new UUID(0, v * 7);
+            long phase = EchoDuelCombatRuntimeAdapter.actorPhase(duelId, actorId);
+            check(phase >= 0L && phase < 100L,
+                    "actor phase " + phase + " out of [0,100)");
+            check(phase == EchoDuelCombatRuntimeAdapter.actorPhase(duelId, actorId),
+                    "actor phase must be deterministic");
+            distinct.add(phase);
+        }
+        check(distinct.size() > 1, "actor phases must vary across actors, saw " + distinct);
+    }
+
+    /** E-03: two copies of the same high-kite profile must not strafe together. */
+    private static void sameProfileCopiesDoNotShareOneGlobalRhythm() {
+        EchoBehaviorStrategy profile = archer();
+        long phaseA = EchoDuelCombatRuntimeAdapter.actorPhase(
+                new UUID(0, 1), new UUID(0, 701));
+        long phaseB = -1L;
+        for (long v = 2; v <= 64 && phaseB == phaseA; v++) {
+            phaseB = EchoDuelCombatRuntimeAdapter.actorPhase(
+                    new UUID(0, v), new UUID(0, 700 + v));
+        }
+        check(phaseA != phaseB,
+                "need two distinct actor phases for the lockstep divergence test");
+        boolean diverged = false;
+        for (long tick = 0; tick < 600 && !diverged; tick++) {
+            Observation at = new Observation(tick, 100.0D, true, true, false);
+            MovementIntent a = EchoDuelCombatRuntimeAdapter.movementIntent(
+                    profile, at, false, false, true, phaseA);
+            MovementIntent b = EchoDuelCombatRuntimeAdapter.movementIntent(
+                    profile, at, false, false, true, phaseB);
+            diverged = a != b;
+        }
+        check(diverged,
+                "two same-profile copies with different phases must not strafe in lockstep");
+        // Control: a zero offset is self-consistent every tick.
+        for (long tick = 0; tick < 200; tick++) {
+            Observation at = new Observation(tick, 100.0D, true, true, false);
+            check(EchoDuelCombatRuntimeAdapter.movementIntent(
+                    profile, at, false, false, true, 0L)
+                            == EchoDuelCombatRuntimeAdapter.movementIntent(
+                                    profile, at, false, false, true, 0L),
+                    "a zero offset is the identity rhythm");
         }
     }
 }

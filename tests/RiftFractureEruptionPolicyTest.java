@@ -47,6 +47,12 @@ public final class RiftFractureEruptionPolicyTest {
                     !section.contains(section.xAt(0, 1.7), section.zAt(0, 1.7)));
             check("the centre tile is included in terrain validation",
                     section.overlapsTile((int) Math.floor(section.x()), (int) Math.floor(section.z())));
+            double edgeX = section.xAt(0, 1.7), edgeZ = section.zAt(0, 1.7);
+            check("body intersecting the strip is hit beyond its centre point",
+                    section.overlaps(edgeX - .3, edgeZ - .3, edgeX + .3, edgeZ + .3));
+            double outsideX = section.xAt(0, 2.1), outsideZ = section.zAt(0, 2.1);
+            check("an entirely escaped body is clear",
+                    !section.overlaps(outsideX - .3, outsideZ - .3, outsideX + .3, outsideZ + .3));
         }
         check("distance bound rejects oversized casts", RiftGeyserWave.between(0, 0, 60, 0, 3, 42) == null);
     }

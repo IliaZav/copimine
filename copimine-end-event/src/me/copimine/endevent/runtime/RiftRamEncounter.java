@@ -32,6 +32,7 @@ public final class RiftRamEncounter {
         default void pose(Skeleton actor, String pose, int durationTicks) { }
         default void abilitySound(Ravager actor,String cue) { }
         List<Player> players();
+        default int scalePlayers() { return players().size(); }
         Location core();
         int floorY();
         boolean inArena(Location location);
@@ -107,7 +108,24 @@ public final class RiftRamEncounter {
     private int trampleBeats, trampleBeat = -1, trampleWarnedBeat = -1;
     private int trampleFootfallTick;
     private Location priorTrampleFootfall;
-    private final Set<Endermite> mites = new HashSet<>();
+    private final Set<UUID> activeSwarm = new HashSet<>();
+    private final Map<UUID, Endermite> mites = new HashMap<>();
+    private static final NamespacedKey SWARM_SLOT = new NamespacedKey("copimineendevent", "ram_swarm_slot");
+    private static final org.bukkit.persistence.PersistentDataType<String, String> SWARM_DATA =
+            org.bukkit.persistence.PersistentDataType.STRING;
+    private static final class SwarmRelease {
+        final Location site;
+        final int count;
+        int admitted;
+
+        SwarmRelease(Location site, int count, int admitted) {
+            this.site = site;
+            this.count = count;
+            this.admitted = admitted;
+        }
+    }
+    private final Map<Integer, SwarmRelease> swarmReleases = new TreeMap<>();
+    private int scalePlayers;
     /**
      * The elite marksman that holds the final pillar.
      *
@@ -138,7 +156,7 @@ public final class RiftRamEncounter {
     public boolean isSpireHarbinger(UUID actor) { return actor != null && actor.equals(pillarSkeletonId); }
     public int impacts() { return impacts; }
     public boolean complete() { return completed; }
-    public boolean ready() { return !closed && (ramDefeated ? skeletonAlive()
+    public boolean ready() { return !closed && (ramDefeated ? skeletonAlive() || hasPendingSwarms() || !activeSwarm.isEmpty()
             : ram != null && ram.isValid() && !ram.isDead()); }
     /** Live body health, or zero when the actor is gone. Presentation only. */
     public double health() {
@@ -152,6 +170,7 @@ public final class RiftRamEncounter {
 
     public void start(int players) {
         if (ram != null || closed) throw new IllegalStateException("Rift Ram already started");
+        scalePlayers = Math.max(1, players);
         Location core = host.core();
         if (core == null) { fail("no-core-anchor"); return; }
         Location site = findSite(0, null);
@@ -396,6 +415,9 @@ public final class RiftRamEncounter {
     private void advance() {
         tick++;
         if(tick%20==0 && ram!=null && ram.isValid()) publishPose();
+        List<Player> players = host.players();
+        tickSwarms(players);
+        if (closed || completed) return;
         if (ramDefeated) {
             if (!pillarSkeletonDefeated && !skeletonAlive()) {
                 fail("final-skeleton-lost-without-death-receipt"); return;
@@ -414,15 +436,6 @@ public final class RiftRamEncounter {
         if(pillarId!=null && (pillarDisplays.size()!=expectedPillarDisplays
                 || pillarDisplays.stream().anyMatch(display->!display.isValid()))) {
             fail("active-pillar-visual-missing"); return;
-        }
-        List<Player> players=host.players();
-        mites.removeIf(e->!e.isValid() || e.isDead());
-        for (Endermite mite : mites) {
-            LivingEntity current = mite.getTarget();
-            boolean eligible = current instanceof Player player && player.isOnline() && !player.isDead()
-                    && player.getWorld().equals(mite.getWorld())
-                    && players.stream().anyMatch(candidate -> candidate.getUniqueId().equals(player.getUniqueId()));
-            if (!eligible) mite.setTarget(nearest(mite.getLocation(), players));
         }
         tickPillarSkeleton(players);
         enforceHealthFloor();
@@ -690,7 +703,12 @@ public final class RiftRamEncounter {
         // always 1, and the final one counts 1, 2, 3 and then resets with it.
         pillarImpacts = spent ? 0 : pillarImpacts + 1;
         Location struck = pillar.clone();
-        if (spent) { pillarId=null; pillar=null; nextPillarTick=tick+35; }
+        if (spent) {
+            pillarId=null; pillar=null; nextPillarTick=tick+35;
+            int requested = 2 + impacts % 3 + RiftRamPolicy.releasePressureBonus(scalePlayers);
+            swarmReleases.putIfAbsent(pillarOrdinal, new SwarmRelease(struck,
+                    Math.clamp(requested, RiftRamPolicy.ENDERMITES_MIN, RiftRamPolicy.ENDERMITES_MAX), 0));
+        }
         begin(Action.STUN);
         if(!host.checkpoint()) { fail("impact-checkpoint-failed"); return; }
         if (spent) {
@@ -719,17 +737,6 @@ public final class RiftRamEncounter {
             Location start=ram.getLocation().clone().add(0,2,0);
             BlockDisplay shard=block(start,Material.NETHERITE_BLOCK,new Vector3f(.25f,.15f,.4f));
             debris.add(new Debris(shard,start,new Vector(Math.cos(angle)*.15,.22,Math.sin(angle)*.15),tick));
-        }
-        // The cap is on the WHOLE encounter, so a pillar that finds the room
-        // already full releases nothing. That is legal and must not fail the
-        // wave, otherwise the fifth pillar would look broken.
-        int requested = 2 + (impacts % 3) + RiftRamPolicy.releasePressureBonus(host.players().size());
-        int budget = impacts < RiftRamPolicy.REQUIRED_IMPACTS
-                ? RiftRamPolicy.endermitesToRelease(mites.size(), requested) : 0;
-        for(int i=0;i<budget;i++) {
-            Endermite mite=struck.getWorld().spawn(struck,Endermite.class);
-            host.own(mite,true); mite.setPersistent(true); mite.setRemoveWhenFarAway(false);
-            mite.setTarget(nearest(struck,host.players())); mites.add(mite);
         }
         // impact() already entered STUN before the durable checkpoint. Re-entering
         // here replayed its sound and presentation for the same accepted collision.
@@ -911,7 +918,55 @@ public final class RiftRamEncounter {
             d.display().setTransformation(new Transformation(t.getTranslation(),new Quaternionf().rotateXYZ(age*.18f,age*.12f,age*.09f),t.getScale(),t.getRightRotation()));
         }
     }
-    /** Only the real owned entity's death event can commit completion. */
+    private boolean hasPendingSwarms() {
+        return swarmReleases.values().stream().anyMatch(release -> release.admitted < release.count);
+    }
+
+    private String swarmSlot(int pillarOrdinal, int index) {
+        return persistentId + ":" + pillarOrdinal + ":" + index;
+    }
+
+    private void tickSwarms(List<Player> players) {
+        if (players.isEmpty()) return;
+        for (Endermite mite : List.copyOf(mites.values())) {
+            if (!mite.isValid()) continue;
+            LivingEntity current = mite.getTarget();
+            if (!(current instanceof Player player) || players.stream().noneMatch(player::equals)) {
+                mite.setTarget(nearest(mite.getLocation(), players));
+            }
+        }
+        if (!hasPendingSwarms() || tick % 5 != 0) return;
+        int room = RiftRamPolicy.ENDERMITES_CAP - activeSwarm.size();
+        if (room <= 0) return;
+        boolean changed = false;
+        for (var entry : swarmReleases.entrySet()) {
+            SwarmRelease release = entry.getValue();
+            Location site = release.site;
+            World world = site.getWorld();
+            while (room > 0 && release.admitted < release.count) {
+                if (!world.isChunkLoaded(site.getBlockX() >> 4, site.getBlockZ() >> 4)
+                        || !host.inArena(site) || !site.getBlock().isPassable()
+                        || !site.clone().add(0D, 1D, 0D).getBlock().isPassable()) break;
+                String slot = swarmSlot(entry.getKey(), release.admitted);
+                Endermite mite = world.spawn(site, Endermite.class, actor -> {
+                    actor.getPersistentDataContainer().set(SWARM_SLOT, SWARM_DATA, slot);
+                    actor.setPersistent(true);
+                    actor.setRemoveWhenFarAway(false);
+                    host.own(actor, true);
+                });
+                if (!mite.isValid() || mite.isDead()) break;
+                mites.put(mite.getUniqueId(), mite);
+                activeSwarm.add(mite.getUniqueId());
+                mite.setTarget(nearest(site, players));
+                release.admitted++;
+                room--;
+                changed = true;
+            }
+        }
+        if (changed) commitActorProgress("swarm-release-checkpoint-failed");
+    }
+
+    /** Only a real owned death or an admitted deferred swarm can advance completion. */
     public void died(UUID entity) {
         if (closed || completed || entity == null) return;
         if (Objects.equals(pillarSkeletonId, entity)) {
@@ -923,11 +978,18 @@ public final class RiftRamEncounter {
                 fail("premature-ravager-death"); return;
             }
             ramDefeated = true;
-        } else return;
-        completed = ramDefeated && pillarSkeletonDefeated;
+        } else {
+            if (!activeSwarm.remove(entity)) return;
+            mites.remove(entity);
+        }
         if (ramDefeated) action = Action.DEAD;
+        commitActorProgress("actor-death-checkpoint-failed");
+    }
+
+    private void commitActorProgress(String failure) {
+        completed = ramDefeated && pillarSkeletonDefeated && !hasPendingSwarms() && activeSwarm.isEmpty();
         if (!host.checkpoint()) {
-            completed = false; fail("actor-death-checkpoint-failed"); return;
+            completed = false; fail(failure); return;
         }
         // A surviving marksman remains a required combat actor after the Ram
         // dies. Neither its removal nor the Ram's corpse is a victory receipt.
@@ -1365,13 +1427,15 @@ public final class RiftRamEncounter {
         return restored;
     }
     private void cleanupDisplays() { cleanupDisplays(false); }
-    private void cleanupDisplays(boolean preserveSkeleton) {
+    private void cleanupDisplays(boolean preserveActors) {
         clearPillar();
         for(Piece p:armor) host.remove(p.display()); armor.clear();
         for(Debris d:debris) host.remove(d.display()); debris.clear();
-        for(Endermite e:mites) host.remove(e); mites.clear();
-        // The marksman is an owned event actor: it never survives the encounter.
-        if (!preserveSkeleton) {
+        // Suspend keeps persistent combat bodies available for restart adoption.
+        if (!preserveActors) {
+            for (Endermite mite : mites.values()) host.remove(mite);
+            mites.clear();
+            activeSwarm.clear();
             if (pillarSkeleton != null && pillarSkeleton.isValid()) host.remove(pillarSkeleton);
             // The actor is gone; its UUID remains the durable death identity.
             pillarSkeleton = null;
@@ -1406,6 +1470,11 @@ public final class RiftRamEncounter {
         data.put("ram.action-tick",Integer.toString(actionTick));
         data.put("ram.next-pillar",Integer.toString(nextPillarTick));
         data.put("ram.pillar-impacts",Integer.toString(pillarImpacts));
+        if (!activeSwarm.isEmpty()) data.put("ram.active-swarm", activeSwarm.stream()
+                .map(UUID::toString).sorted().collect(java.util.stream.Collectors.joining(",")));
+        swarmReleases.forEach((ordinal, release) -> data.put("ram.swarm." + ordinal,
+                release.site.getX() + "," + release.site.getY() + "," + release.site.getZ()
+                        + "," + release.count + "," + release.admitted));
         if (pillarSkeletonId != null) data.put("ram.skeleton",pillarSkeletonId.toString());
         data.put("ram.complete",Boolean.toString(completed));
         data.put("ram.target",target==null?"":target.toString());
@@ -1460,6 +1529,8 @@ public final class RiftRamEncounter {
             Location core = host.core();
             World actorWorld = ram != null ? ram.getWorld() : core == null ? null : core.getWorld();
             if (actorWorld == null) throw new IllegalArgumentException("missing-encounter-world");
+            scalePlayers = Math.max(1, host.scalePlayers());
+            restoreSwarmReleases(data, actorWorld);
             // In-flight actions never replay after restart. Require fresh warning after recovery.
             action=ramDefeated ? Action.DEAD : Action.RECOVER;
             actionTick=tick; lastCharge=tick; lastStomp=tick;
@@ -1521,6 +1592,99 @@ public final class RiftRamEncounter {
             host.visualsChanged();
         } catch(RuntimeException failure) { fail("restore-refused:"+failure.getMessage()); }
     }
+    public static boolean isPersistedSwarm(Entity entity, Map<String, String> data) {
+        if (!(entity instanceof Endermite)) return false;
+        String slot = entity.getPersistentDataContainer().get(SWARM_SLOT, SWARM_DATA);
+        String owner = data.get("ram.uuid");
+        if (slot == null || owner == null || !slot.startsWith(owner + ":")) return false;
+        String[] parts = slot.split(":", -1);
+        if (parts.length != 3) return false;
+        String record = data.get("ram.swarm." + parts[1]);
+        if (record == null) return false;
+        String[] fields = record.split(",", -1);
+        if (fields.length != 5) return false;
+        try {
+            int index = Integer.parseInt(parts[2]);
+            if (index < 0 || index >= Integer.parseInt(fields[3])) return false;
+            if (index >= Integer.parseInt(fields[4])) return true;
+            String active = data.get("ram.active-swarm");
+            return active != null && Arrays.asList(active.split(",")).contains(entity.getUniqueId().toString());
+        } catch (NumberFormatException invalid) {
+            return false;
+        }
+    }
+
+    private void restoreSwarmReleases(Map<String, String> data, World world) {
+        for (int ordinal = 1; ordinal <= RiftRamPolicy.PILLAR_COUNT; ordinal++) {
+            String stored = data.get("ram.swarm." + ordinal);
+            if (stored == null) continue;
+            String[] fields = stored.split(",", -1);
+            int destroyed = impacts == RiftRamPolicy.REQUIRED_IMPACTS
+                    ? RiftRamPolicy.PILLAR_COUNT : Math.min(impacts, RiftRamPolicy.PILLAR_COUNT - 1);
+            if (ordinal > destroyed || fields.length != 5) throw new IllegalArgumentException("invalid-swarm-receipt");
+            double x = Double.parseDouble(fields[0]), y = Double.parseDouble(fields[1]), z = Double.parseDouble(fields[2]);
+            int count = Integer.parseInt(fields[3]), admitted = Integer.parseInt(fields[4]);
+            Location site = new Location(world, x, y, z);
+            if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z) || !host.inArena(site)
+                    || count < RiftRamPolicy.ENDERMITES_MIN || count > RiftRamPolicy.ENDERMITES_MAX
+                    || admitted < 0 || admitted > count) throw new IllegalArgumentException("invalid-swarm-receipt");
+            swarmReleases.put(ordinal, new SwarmRelease(site, count, admitted));
+        }
+        String active = data.get("ram.active-swarm");
+        if (active != null) {
+            String[] identities = active.split(",", -1);
+            if (identities.length > RiftRamPolicy.ENDERMITES_CAP)
+                throw new IllegalArgumentException("swarm-cap-exceeded");
+            for (String identity : identities) {
+                if (!activeSwarm.add(UUID.fromString(identity))) throw new IllegalArgumentException("duplicate-swarm-id");
+            }
+        }
+        Map<String, Endermite> found = new HashMap<>();
+        for (Endermite mite : world.getEntitiesByClass(Endermite.class)) {
+            if (!mite.isValid() || mite.isDead() || !isPersistedSwarm(mite, data) || !host.owns(mite)) continue;
+            mites.put(mite.getUniqueId(), mite);
+            activeSwarm.add(mite.getUniqueId());
+            String slot = mite.getPersistentDataContainer().get(SWARM_SLOT, SWARM_DATA);
+            if (slot != null && found.putIfAbsent(slot, mite) != null) {
+                throw new IllegalArgumentException("duplicate-swarm-slot");
+            }
+        }
+        // Adopt any physical actor saved between its spawn and the next checkpoint.
+        for (var entry : swarmReleases.entrySet()) {
+            SwarmRelease release = entry.getValue();
+            while (release.admitted < release.count && found.containsKey(swarmSlot(entry.getKey(), release.admitted))) {
+                release.admitted++;
+            }
+        }
+        if (activeSwarm.size() > RiftRamPolicy.ENDERMITES_CAP)
+            throw new IllegalArgumentException("swarm-cap-exceeded");
+        completed = ramDefeated && pillarSkeletonDefeated && !hasPendingSwarms() && activeSwarm.isEmpty();
+    }
+
+    public void adoptReloadedSwarm(Entity entity, Map<String, String> checkpoint) {
+        if (closed || completed || !(entity instanceof Endermite mite) || !host.owns(mite)
+                || !isPersistedSwarm(mite, checkpoint)) return;
+        UUID id = mite.getUniqueId();
+        if (activeSwarm.contains(id)) {
+            mites.put(id, mite);
+            return;
+        }
+        String slot = mite.getPersistentDataContainer().get(SWARM_SLOT, SWARM_DATA);
+        for (var entry : swarmReleases.entrySet()) {
+            SwarmRelease release = entry.getValue();
+            if (release.admitted >= release.count || !swarmSlot(entry.getKey(), release.admitted).equals(slot)) continue;
+            if (activeSwarm.size() >= RiftRamPolicy.ENDERMITES_CAP) {
+                fail("reloaded-swarm-cap-exceeded");
+                return;
+            }
+            activeSwarm.add(id);
+            mites.put(id, mite);
+            release.admitted++;
+            commitActorProgress("reloaded-swarm-checkpoint-failed");
+            return;
+        }
+    }
+
     private void fail(String reason) {
         // Preserve the last authoritative identity before presentation cleanup.
         if(ram!=null) host.checkpoint();

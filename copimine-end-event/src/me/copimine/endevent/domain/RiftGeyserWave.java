@@ -13,11 +13,17 @@ public record RiftGeyserWave(double alongX, double alongZ, double size, List<Sec
         }
 
         public boolean overlapsTile(int blockX, int blockZ) {
-            double dx = blockX + .5 - x, dz = blockZ + .5 - z;
-            double extent = Math.abs(alongX) + Math.abs(alongZ);
-            return Math.abs(dx) < half * extent + .5 && Math.abs(dz) < half * extent + .5
-                    && Math.abs(dx * alongX + dz * alongZ) < half + .5 * extent
-                    && Math.abs(dz * alongX - dx * alongZ) < half + .5 * extent;
+            return overlaps(blockX, blockZ, blockX + 1.0, blockZ + 1.0);
+        }
+
+        public boolean overlaps(double minX, double minZ, double maxX, double maxZ) {
+            double halfX = (maxX - minX) * .5, halfZ = (maxZ - minZ) * .5;
+            double dx = minX + halfX - x, dz = minZ + halfZ - z;
+            double absX = Math.abs(alongX), absZ = Math.abs(alongZ);
+            double extent = half * (absX + absZ);
+            return Math.abs(dx) < extent + halfX && Math.abs(dz) < extent + halfZ
+                    && Math.abs(dx * alongX + dz * alongZ) < half + halfX * absX + halfZ * absZ
+                    && Math.abs(dz * alongX - dx * alongZ) < half + halfZ * absX + halfX * absZ;
         }
 
         public double xAt(double forward, double side) { return x + forward * alongX - side * alongZ; }

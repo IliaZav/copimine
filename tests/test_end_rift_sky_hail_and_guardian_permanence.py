@@ -52,18 +52,25 @@ def test_sky_hail_requires_a_cooperating_squad_and_never_casts_alone():
         "the second wave must be fired by the third marksman")
 
 
-def test_sky_hail_releases_twelve_real_falling_arrows_per_wave():
+def test_sky_hail_releases_real_arrows_only_on_prevalidated_lanes():
     source = MONOLITH.read_text(encoding="utf-8")
+    planner = _method(source, "private List<MarksmanHailLane> planMarksmanHailLanes(")
+    assert "for (int i = 0; i < 12; i++)" in planner
+    assert "marksmanHailFloor(" in planner and "marksmanHailOrigin(" in planner
     release = _method(source, "private void releaseMarksmanHail(")
-    # Exactly twelve real arrows, spawned as real projectile entities.
-    assert "for (int i = 0; i < 12; i++)" in release
+    assert "cast.first() : cast.second()" in release
+    assert "legalMarksmanHailLane(lane)" in release
+    assert "setVisibleByDefault(true)" in release
     assert "spawnArrow(" in release, (
         "the hail must be real falling arrows, not damage rays or particles")
     assert "arrow.setShooter(shooter);" in release
     assert "MARKSMAN_SKY_HAIL" in release, (
         "each arrow must carry the named-trial attack identity so damage is attributed")
-    # The arrows are presentation/collision real but land at validated marks.
-    assert "isArenaLocation(impact)" in release
+    legality = _method(source, "private boolean legalMarksmanHailLane(")
+    assert "isArenaLocation(impact)" in legality and "isArenaLocation(origin)" in legality
+    assert "y <= origin.getBlockY()" in legality
+    assert "isArenaLocation(cell)" in legality and "block.isPassable()" in legality
+    assert "hasProjectileBlockLineOfSight(origin, impact)" in legality
     assert "setPickupStatus(AbstractArrow.PickupStatus.DISALLOWED)" in release
 
 

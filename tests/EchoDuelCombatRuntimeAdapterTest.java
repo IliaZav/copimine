@@ -37,6 +37,7 @@ public final class EchoDuelCombatRuntimeAdapterTest {
         rejectedNativeEffectsRestoreSuppliesAndCooldowns();
         rejectForeignOrIncompleteRuntimeContexts();
         carriedCapabilitiesAreActuallyUsed();
+        maceLiftSpendsOnlyTheAcceptedCarrierCharge();
         shieldParriesTheMeasuredStrike();
         meleeCopiesCloseIntoMeleeReach();
         rangedCopiesCloseIntoTheirOwnHoldBand();
@@ -432,6 +433,25 @@ public final class EchoDuelCombatRuntimeAdapterTest {
      * permanent wall. The guard comes up for an imminent strike and stays down
      * while the next strike is still far away.
      */
+    private static void maceLiftSpendsOnlyTheAcceptedCarrierCharge() {
+        Fixture fixture = activeFixture(18D, meleeStrategy(), Map.of(
+                0, new EchoLoadoutState.Item("MACE", 1, 500, 0, Map.of(), "", false),
+                6, new EchoLoadoutState.Item("WIND_CHARGE", 2, 0, 0, Map.of(), "", false)));
+        var duel = fixture.duel();
+        var scope = scope(duel, true, true, true, true);
+        var clear = new Observation(100, 10D, true, true, false, -1, -1,
+                false, false, false, true, true);
+        var blocked = new Observation(100, 10D, true, true, false, -1, -1,
+                false, false, false, true, false);
+        var lift = EchoDuelCombatRuntimeAdapter.tick(duel, restore(duel), scope, clear).orElseThrow();
+        check(lift.action() == Action.MACE_LIFT, "a mace carrier with headroom uses its wind charge");
+        check(lift.previousReplica().remaining(6) == 2 && lift.replica().remaining(6) == 1,
+                "the accepted lift spends a single charge in the proposal only");
+        var refusal = EchoDuelCombatRuntimeAdapter.tick(duel, restore(duel), scope, blocked).orElseThrow();
+        check(refusal.action() != Action.MACE_LIFT && refusal.replica().remaining(6) == 2,
+                "a blocked launch cannot consume a charge");
+    }
+
     private static void shieldParriesTheMeasuredStrike() {
         Fixture fixture = activeFixture(18.0D, meleeStrategy());
         EchoLoadoutState imminentReplica = restore(fixture.duel());

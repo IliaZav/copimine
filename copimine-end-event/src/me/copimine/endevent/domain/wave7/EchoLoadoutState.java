@@ -197,6 +197,13 @@ public final class EchoLoadoutState {
         }
         return fallback;
     }
+    public int findMace() {
+        for (int slot = 0; slot < remaining.length; slot++) {
+            if (remaining[slot] > 0 && frozen.get(slot).material().equals("MACE")) return slot;
+        }
+        return -1;
+    }
+
     public boolean consume(int slot, int amount, long expectedRevision) {
         if (slot<0 || slot>=42 || amount<=0 || remaining[slot]<amount || revision!=expectedRevision
                 || revision>=Long.MAX_VALUE-1) return false;

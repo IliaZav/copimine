@@ -1,5 +1,6 @@
 """Execute production boss attacks, including the final MONITOR damage outcome."""
 from pathlib import Path
+import os
 import subprocess
 
 import pytest
@@ -153,7 +154,7 @@ public class BossAttackAdmissionProbe {
     BossAbilityState bossAbilityState=BossAbilityState.NONE;
     long bossCastDeadlineMillis,bossSpellPauseUntilMillis,bossChestStrikeSequence,bossCastSequence,bossChestBeamSequence;
     boolean bossChestStrikeActive,bossEdgeVolleyActive,bossChestBeamActive;
-    BukkitTask bossCastTask;
+    BukkitTask bossCastTask, overloadFireRingTask;
     int bossCastStaleReconcileTicks;
     void cancelBossCastTask(){}
     void cancelBossFinalStrike(){}
@@ -318,7 +319,8 @@ public class BossAttackAdmissionProbe {
     }
 }
 ''', encoding="utf-8")
-    result = subprocess.run(["javac", "-encoding", "UTF-8", "-sourcepath", str(ROOT / "copimine-end-event/src"), "-d", str(out), str(java),
+    result = subprocess.run(["javac", "-encoding", "UTF-8", "-sourcepath", os.pathsep.join((str(ROOT / "copimine-end-event/src"),
+        str(ROOT / "tools/minecraft-26.3/protocol/src/main/java"))), "-d", str(out), str(java),
         str(ROOT / "tools/minecraft-26.3/protocol/src/main/java/me/copimine/protocol/BossAnimationPlayback.java")], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
     return out

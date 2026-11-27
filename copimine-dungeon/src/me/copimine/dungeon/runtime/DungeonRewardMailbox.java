@@ -117,7 +117,7 @@ final class DungeonRewardMailbox implements Listener {
                 }
                 if (checkpoint.getString("room") == null) throw new IOException("Reward checkpoint has no room");
                 clearedRooms.add(checkpoint.getString("room"));
-                if (ready) index(path, checkpoint);
+                if (ready) index(readReady(path, checkpoint));
                 latest = Math.max(latest, generation);
             }
         }
@@ -183,10 +183,11 @@ final class DungeonRewardMailbox implements Listener {
         if (!roomId.equals(data.getString("room")) || data.getLong("generation") != generation) {
             throw new IOException("Reward checkpoint does not match room and generation");
         }
+        Map<UUID, Ready> validated = readReady(ready, data);
         if (!Files.exists(ready)) {
             DungeonDefinitionStore.atomicWrite(ready, data.saveToString());
         }
-        index(ready, data);
+        index(validated);
         Files.deleteIfExists(pending);
     }
 
@@ -419,9 +420,11 @@ final class DungeonRewardMailbox implements Listener {
         return true;
     }
 
-    private void index(Path file, YamlConfiguration data) throws IOException {
+    private Map<UUID, Ready> readReady(Path file, YamlConfiguration data) throws IOException {
+        Map<UUID, Ready> validated = new java.util.LinkedHashMap<>();
         var players = data.getConfigurationSection("players");
-        if (players == null || data.getLong("generation") <= 0 || data.getString("room") == null) {
+        if (players == null || players.getKeys(false).isEmpty()
+                || data.getLong("generation") <= 0 || data.getString("room") == null) {
             throw new IOException("Invalid dungeon reward checkpoint " + file);
         }
         RewardMode mode = RewardMode.fromToken(data.getString("mode", "personal"));
@@ -450,12 +453,22 @@ final class DungeonRewardMailbox implements Listener {
             }
             ItemStack icon = loot.isEmpty() ? null : ((ItemStack) loot.getFirst()).clone();
             if (icon != null) icon.setAmount(1);
-            List<Ready> inbox = available.computeIfAbsent(player, ignored -> new ArrayList<>());
-            if (inbox.stream().noneMatch(reward -> reward.path().equals(file))) {
-                inbox.add(new Ready(file, data.getLong("generation"), mode, site, icon));
-                inbox.sort(java.util.Comparator.comparingLong(Ready::generation));
+            Ready reward = new Ready(file, data.getLong("generation"), mode, site, icon);
+            if (validated.putIfAbsent(player, reward) != null) {
+                throw new IOException("Duplicate player in reward checkpoint " + file);
             }
         }
+        return validated;
+    }
+
+    private void index(Map<UUID, Ready> validated) {
+        validated.forEach((player, entry) -> {
+            List<Ready> inbox = available.computeIfAbsent(player, ignored -> new ArrayList<>());
+            if (inbox.stream().noneMatch(reward -> reward.path().equals(entry.path()))) {
+                inbox.add(entry);
+                inbox.sort(java.util.Comparator.comparingLong(Ready::generation));
+            }
+        });
     }
 
     private Path file(long generation, String suffix) {

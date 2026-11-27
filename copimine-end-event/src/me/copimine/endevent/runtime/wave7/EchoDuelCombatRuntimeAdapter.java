@@ -89,7 +89,7 @@ public final class EchoDuelCombatRuntimeAdapter {
     private EchoDuelCombatRuntimeAdapter() {
     }
 
-    public enum Action { NONE, MELEE, CRITICAL, RANGED, RANGED_DRAW, CONSUMABLE, SHIELD, JUMP, WIND_CHARGE, SPLASH }
+    public enum Action { NONE, MELEE, CRITICAL, RANGED, RANGED_DRAW, CONSUMABLE, SHIELD, JUMP, MACE_LIFT, WIND_CHARGE, SPLASH }
 
     /**
      * E-06: structured observability seam for the per-tick adapter.
@@ -161,7 +161,15 @@ public final class EchoDuelCombatRuntimeAdapter {
     public record Observation(long tick, double distanceSquared, boolean lineOfSight,
                               boolean onGround, boolean criticalWindow,
                               long ownerStrikeIntervalTicks, long ticksSinceOwnerStrike,
-                              boolean ownerBlocking, boolean allowWindCharge, boolean allowSplash, boolean pendingFoodHeal) {
+                              boolean ownerBlocking, boolean allowWindCharge, boolean allowSplash, boolean pendingFoodHeal,
+                              boolean maceLiftAvailable) {
+        public Observation(long tick, double distanceSquared, boolean lineOfSight,
+                           boolean onGround, boolean criticalWindow, long ownerStrikeIntervalTicks,
+                           long ticksSinceOwnerStrike, boolean ownerBlocking, boolean allowWindCharge,
+                           boolean allowSplash, boolean pendingFoodHeal) {
+            this(tick, distanceSquared, lineOfSight, onGround, criticalWindow, ownerStrikeIntervalTicks,
+                    ticksSinceOwnerStrike, ownerBlocking, allowWindCharge, allowSplash, pendingFoodHeal, false);
+        }
         public Observation(long tick, double distanceSquared, boolean lineOfSight,
                            boolean onGround, boolean criticalWindow, long ownerStrikeIntervalTicks,
                            long ticksSinceOwnerStrike) {
@@ -222,7 +230,7 @@ public final class EchoDuelCombatRuntimeAdapter {
                     || action == Action.RANGED_DRAW && (itemSlot < 0 || ammoSlot < 0 || actionItem == null)
                     || action == Action.CONSUMABLE && (itemSlot < 0 || ammoSlot != -1 || actionItem == null)
                     || action == Action.SHIELD && (itemSlot < 0 || ammoSlot != -1 || actionItem == null)
-                    || (action == Action.WIND_CHARGE || action == Action.SPLASH)
+                    || (action == Action.WIND_CHARGE || action == Action.MACE_LIFT || action == Action.SPLASH)
                         && (itemSlot < 0 || ammoSlot != -1 || actionItem == null)
                     || action == Action.JUMP && (itemSlot != -1 || ammoSlot != -1 || actionItem != null)) {
                 throw new IllegalArgumentException("invalid Echo combat decision");
@@ -486,6 +494,8 @@ public final class EchoDuelCombatRuntimeAdapter {
                     duel.eventId(), duel.attemptGeneration(), duel.duelId(), duel.ownerUuid(), replica.revision());
             int meleeSlot = observation.ownerBlocking()
                     ? replica.findPreferredMelee(true) : meleeSlotFor(duel.behaviorStrategy(), replica);
+            int maceSlot = observation.maceLiftAvailable() || observation.criticalWindow()
+                    ? replica.findMace() : -1;
             int bowSlot = replica.find(EchoLoadoutState.Kind.BOW);
             int crossbowSlot = replica.find(EchoLoadoutState.Kind.CROSSBOW);
             int rangedSlot = duel.behaviorStrategy().rangedPermille() >= duel.behaviorStrategy().meleePermille()
@@ -681,14 +691,29 @@ public final class EchoDuelCombatRuntimeAdapter {
                 }
             }
 
+            if (maceSlot >= 0 && observation.maceLiftAvailable() && observation.onGround()
+                    && observation.lineOfSight() && observation.distanceSquared() >= 6.25D
+                    && observation.distanceSquared() <= 16D) {
+                int charge = replica.find(EchoLoadoutState.Kind.WIND_CHARGE);
+                if (charge >= 0) {
+                    EchoLoadoutState.Item burst = replica.item(charge);
+                    var lifted = EchoDuelCombatPolicy.tryStartWindCharge(
+                            duel.actor(), replica, charge, replica.revision(), observation.tick(), cooldowns);
+                    if (lifted.isPresent()) {
+                        return decision(duel, baselineReplica, replica, scope, Action.MACE_LIFT,
+                                lifted.get(), charge, -1, burst, MovementIntent.HOLD);
+                    }
+                }
+            }
             if (inMeleeRange && !observation.onGround() && observation.criticalWindow() && meleeSlot >= 0) {
-                EchoLoadoutState.Item item = replica.item(meleeSlot);
+                int strikeSlot = maceSlot >= 0 ? maceSlot : meleeSlot;
+                EchoLoadoutState.Item item = replica.item(strikeSlot);
                 Optional<ActorState> actor = EchoDuelCombatPolicy.tryStartCriticalMelee(
                         duel.actor(), observation.tick(), cooldowns);
                 if (actor.isPresent() && EchoDuelCombatPolicy.tryApplyGearWear(
-                        replica, meleeSlot, 1, replica.revision())) {
+                        replica, strikeSlot, 1, replica.revision())) {
                     return decision(duel, baselineReplica, replica, scope, Action.CRITICAL, actor.get(),
-                            meleeSlot, -1, item, intent);
+                            strikeSlot, -1, item, intent);
                 }
             }
             if (inMeleeRange && meleeSlot >= 0 && !swapsToRanged

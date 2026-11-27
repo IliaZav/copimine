@@ -877,8 +877,14 @@ public final class DungeonRuntime implements Listener {
         public boolean grantReward() {
             if (playtestRooms.contains(room.id())) return true;
             long attempt = life.generation();
-            return ledger.claim(room.id(), attempt, "mailbox", room.reward().mode(),
-                    () -> release(attempt)) != DungeonRewardLedger.Decision.DELIVERY_PENDING;
+            return switch (ledger.claim(room.id(), attempt, "mailbox", room.reward().mode(), () -> release(attempt))) {
+                case GRANTED, ALREADY_CLAIMED -> true;
+                case DELIVERY_PENDING -> false;
+                case STALE_GENERATION, INVALID -> {
+                    report("Dungeon reward refused for " + room.id() + " generation " + attempt);
+                    yield false;
+                }
+            };
         }
 
         private boolean release(long attempt) {

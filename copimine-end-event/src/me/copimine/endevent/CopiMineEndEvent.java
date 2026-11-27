@@ -1295,6 +1295,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private int waveTickDiagnosticWave = -1;
     private boolean fogSafeZoneTelegraphActive;
     private long blackFogPhaseDeadlineMillis;
+    private long blackFogPhaseDeadlineTick;
     private int currentFogZoneCount;
     private int currentFogZoneSide;
     private int currentFogZoneSetupAttempts;
@@ -10780,7 +10781,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                             carrier.hasLineOfSight(owner), carrier.isOnGround(),
                             isNamedEchoCriticalWindow(carrier), listener.ownerStrikeIntervalTicks(),
                             listener.ticksSinceOwnerStrike(eventTickCounter), owner.isBlocking(), false, true,
-                            echoPendingFoodHeal(carrier, session.duel())),
+                            echoPendingFoodHeal(carrier, session.duel()),
+                            echoMaceLiftVelocity(carrier, owner, true) != null),
                     this::emitNamedEchoCombatDiagnostic);
         } catch (RuntimeException unexpectedFailure) {
             return;
@@ -20458,8 +20460,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         int liveWaveMobs = countLiveWaveEntitiesForWave(3);
         int pressureCap = PressureBudgetController.profileForPlayers(currentWaveScalePlayers).activePressure();
+        // Once portal two is reachable, regular reinforcements cannot consume the giant's slot.
+        int reservedForGiant = !wave3PortalEliteSpawned && states.getFirst().completed() ? 1 : 0;
         int spawnCount = Wave3PortalSpawnPolicy.spawnCountWithinBudget(
-                livePortalMobs, liveWaveMobs, pressureCap, 1);
+                livePortalMobs, liveWaveMobs, Math.max(0, pressureCap - reservedForGiant), 1);
         if (spawnCount <= 0) return;
         Location portal = portals.get(active);
         World world = portal == null ? null : portal.getWorld();
@@ -29772,8 +29776,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 wave5ResurrectedEntities.clear();
                 blackFogPhase = BlackFogPhase.COMBAT;
                 fogSafeZoneTelegraphActive = false;
-                blackFogPhaseDeadlineMillis = waveObjectiveStartedMillis
-                        + BlackFogTimingPolicy.combatSeconds(currentFogCycle) * 1_000L;
+                armBlackFogPhase(waveObjectiveStartedMillis,
+                        BlackFogTimingPolicy.combatSeconds(currentFogCycle) * 1_000L);
                 currentFogZoneCount = 0;
                 currentFogZoneSide = 0;
                 currentFogZoneSetupAttempts = 0;
@@ -31795,7 +31799,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         int bit = 1 << currentFogCycle;
         if ((wave5FogEliteResolvedMask & bit) != 0 || core == null || core.getWorld() == null
                 || blackFogPhase != BlackFogPhase.FOG
-                || blackFogPhaseDeadlineMillis - now > BlackFogTimingPolicy.fogSeconds(
+                || blackFogPhaseRemainingMillis() > BlackFogTimingPolicy.fogSeconds(
                 currentFogCycle, currentFogTargetCycles) * 500L) return;
         wave5FogEliteResolvedMask |= bit;
         // A cold restart of this transient battle enters recovery rather than
@@ -31822,6 +31826,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             getLogger().info("END_RIFT_FOG_ELITE event=" + eventId + " generation=" + generation
                     + " cycle=" + currentFogCycle + " role=" + kind);
         }
+    }
+
+    private void armBlackFogPhase(long now, long durationMillis) {
+        long durationTicks = (durationMillis + 49L) / 50L;
+        blackFogPhaseDeadlineMillis = now + durationTicks * 50L;
+        blackFogPhaseDeadlineTick = eventTickCounter + durationTicks;
+    }
+
+    private long blackFogPhaseRemainingMillis() {
+        return Math.max(0L, blackFogPhaseDeadlineTick - eventTickCounter) * 50L;
     }
 
     private void tickBlackFogObjective(long now) {
@@ -31874,10 +31888,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             replenishWaveFiveCombatIfNeeded(now);
         }
         if (blackFogPhaseDeadlineMillis <= 0L) {
-            blackFogPhaseDeadlineMillis = now
-                    + BlackFogTimingPolicy.combatSeconds(currentFogCycle) * 1_000L;
+            armBlackFogPhase(now, BlackFogTimingPolicy.combatSeconds(currentFogCycle) * 1_000L);
         }
-        if (now >= blackFogPhaseDeadlineMillis) {
+        if (blackFogPhaseRemainingMillis() == 0L) {
             if (blackFogPhase == BlackFogPhase.COMBAT) {
                 if (fogSafeZoneTelegraphActive) {
                     BlackFogRefugeAccessPolicy.Admission access = planCurrentFogRefugeAccess(core.getWorld());
@@ -31888,9 +31901,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     currentFogRequiredTravelMillis = access.requiredLeadMillis();
                     fogSafeZoneTelegraphActive = false;
                     blackFogPhase = BlackFogPhase.SAFE;
-                    blackFogPhaseDeadlineMillis = now
-                            + Math.max(BlackFogTimingPolicy.safeZoneSeconds(currentFogCycle, currentFogTargetCycles) * 1_000L,
-                                    currentFogRequiredTravelMillis);
+                    armBlackFogPhase(now,
+                            Math.max(BlackFogTimingPolicy.safeZoneSeconds(currentFogCycle, currentFogTargetCycles) * 1_000L,
+                                    currentFogRequiredTravelMillis));
                     renderWaveMilestone(5, core,
                             "Зона безопасности активна.", Sound.BLOCK_BEACON_POWER_SELECT);
                     getLogger().info("END_RIFT_FOG_SAFE_START event=" + eventId
@@ -31948,7 +31961,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 currentFogZoneSetupAttempts = 0;
                 currentFogZoneSetupRetryAtMillis = 0L;
                 fogSafeZoneTelegraphActive = true;
-                blackFogPhaseDeadlineMillis = now + FOG_SAFE_ZONE_TELEGRAPH_MILLIS;
+                armBlackFogPhase(now, FOG_SAFE_ZONE_TELEGRAPH_MILLIS);
                 renderWaveMilestone(5, core, "Туман приближается",
                         Sound.BLOCK_BEACON_POWER_SELECT);
                 getLogger().info("END_RIFT_FOG_SAFE_TELEGRAPH event=" + eventId + " cycle="
@@ -31961,7 +31974,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             } else if (blackFogPhase == BlackFogPhase.SAFE) {
                 // A server-side inspection has no audience; the zone cap must
                 // not hold the cycle open forever. Same floor as the entry path.
-                int eligiblePlayerCount = Math.max(1, activeWaveParticipants().size());
+                int eligiblePlayerCount = Math.max(currentFogRosterPlayers, activeWaveParticipants().size());
                 if (!BlackFogSafeZoneCapacityPolicy.hasCapacity(eligiblePlayerCount, currentSafeZoneCells.size())
                         || currentSafeZoneCenters.isEmpty()) {
                     currentFogZoneSide = BlackFogSafeZonePolicy.sideForCycleAndPlayers(
@@ -31973,7 +31986,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         if (phase == EventPhase.RECOVERY_REQUIRED) return;
                         currentFogZoneSetupAttempts++;
                         currentFogZoneSetupRetryAtMillis = now + 2_000L;
-                        blackFogPhaseDeadlineMillis = currentFogZoneSetupRetryAtMillis;
+                        armBlackFogPhase(now, 2_000L);
                         getLogger().warning("END_RIFT_FOG_SAFE_CAPACITY_REFRESH_RETRY event=" + eventId
                                 + " cycle=" + (currentFogCycle + 1)
                                 + " attempt=" + currentFogZoneSetupAttempts
@@ -31988,9 +32001,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     }
                     currentFogZoneSetupAttempts = 0;
                     currentFogZoneSetupRetryAtMillis = 0L;
-                    blackFogPhaseDeadlineMillis = now
-                            + Math.max(BlackFogTimingPolicy.safeZoneSeconds(currentFogCycle, currentFogTargetCycles) * 1_000L,
-                                    currentFogRequiredTravelMillis);
+                    armBlackFogPhase(now,
+                            Math.max(BlackFogTimingPolicy.safeZoneSeconds(currentFogCycle, currentFogTargetCycles) * 1_000L,
+                                    currentFogRequiredTravelMillis));
                     renderWaveMilestone(5, core, "Туман приближается",
                             Sound.BLOCK_BEACON_POWER_SELECT);
                     getLogger().info("END_RIFT_FOG_SAFE_CAPACITY_REFRESHED event=" + eventId
@@ -32004,7 +32017,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 }
                 blackFogPhase = BlackFogPhase.FOG;
                 clearDragonBreathCloudsForFog();
-                blackFogPhaseDeadlineMillis = now + BlackFogTimingPolicy.fogSeconds(currentFogCycle, currentFogTargetCycles) * 1_000L;
+                armBlackFogPhase(now, BlackFogTimingPolicy.fogSeconds(currentFogCycle, currentFogTargetCycles) * 1_000L);
                 freezeWaveMobs(true);
                 getLogger().info("END_RIFT_FOG_START event=" + eventId + " cycle="
                         + (currentFogCycle + 1) + "/" + currentFogTargetCycles
@@ -32037,8 +32050,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     reinforceWaveFiveAfterFog(now);
                 } else {
                     blackFogPhase = BlackFogPhase.COMBAT;
-                    blackFogPhaseDeadlineMillis = now
-                            + BlackFogTimingPolicy.combatSeconds(currentFogCycle) * 1_000L;
+                    armBlackFogPhase(now, BlackFogTimingPolicy.combatSeconds(currentFogCycle) * 1_000L);
                     reinforceWaveFiveAfterFog(now);
                 }
                 wave5CycleCleared = false;
@@ -38951,7 +38963,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                             isNamedEchoCriticalWindow(carrier),
                             cadence == null ? -1L : cadence.ownerStrikeIntervalTicks(),
                             cadence == null ? -1L : cadence.ticksSinceOwnerStrike(eventTickCounter),
-                            owner.isBlocking(), true, true, echoPendingFoodHeal(carrier, current)),
+                            owner.isBlocking(), true, true, echoPendingFoodHeal(carrier, current),
+                            echoMaceLiftVelocity(carrier, owner, false) != null),
                     this::emitNamedEchoCombatDiagnostic);
         } catch (RuntimeException unexpectedAdapterFailure) {
             // E-06: the adapter already reported the structured reason. Restore
@@ -39058,6 +39071,26 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             view.begin(EchoPresentationProbeState.Action.IDLE, eventTickCounter);
         }
         return !carrier.hasActiveItem() || carrier.getActiveItemHand() != EquipmentSlot.OFF_HAND;
+    }
+
+    private Vector echoMaceLiftVelocity(Pillager carrier, Player owner, boolean rage) {
+        if (!carrier.isOnGround() || carrier.isInWater() || carrier.isClimbing()
+                || carrier.getVehicle() != null || owner.isDead() || !carrier.hasLineOfSight(owner)) return null;
+        Location origin = carrier.getLocation();
+        double distanceSquared = origin.distanceSquared(owner.getLocation());
+        if (distanceSquared < 6.25D || distanceSquared > 16D) return null;
+        Vector forward = horizontalDirection(origin, owner.getLocation());
+        // Sweep the whole carrier through the ascent and a short forward drift.
+        // A low ceiling or a combat-volume boundary refuses the action before supply is committed.
+        for (int step = 1; step <= 8; step++) {
+            Location stationary = origin.clone().add(0, step * .5D, 0);
+            Location advancing = stationary.clone().add(forward.clone().multiply(step * .22D));
+            if (!cooperationDestinationClear(carrier, stationary)
+                    || !cooperationDestinationClear(carrier, advancing)
+                    || !rage && !isRealitySplitDestinationAllowed(owner.getUniqueId(), advancing,
+                            realitySplitChamberController.assignment())) return null;
+        }
+        return forward.multiply(.11D).setY(.83D);
     }
 
     private boolean isNamedEchoCriticalWindow(Pillager carrier) {
@@ -39686,6 +39719,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             case RANGED_DRAW -> {
                 carrier.clearActiveItem();
                 carrier.startUsingItem(EquipmentSlot.HAND);
+                if (!carrier.hasActiveItem() || carrier.getActiveItemHand() != EquipmentSlot.HAND) return false;
             }
             case MELEE, CRITICAL -> {
                 boolean critical = decision.action() == EchoDuelCombatRuntimeAdapter.Action.CRITICAL;
@@ -39732,7 +39766,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 renderEchoDuelStrike(owner, contact, horizontalDirection(carrier.getLocation(), contact), critical || smash);
             }
             case RANGED -> {
-                carrier.clearActiveItem();
                 if (decision.actionItem().kind() != me.copimine.endevent.domain.wave7.EchoLoadoutState.Kind.BOW
                         && decision.actionItem().kind() != me.copimine.endevent.domain.wave7.EchoLoadoutState.Kind.CROSSBOW) {
                     return false;
@@ -39776,6 +39809,22 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     if (arrow != null) listener.discardServerLaunchedEchoArrow(arrow, carrier.getUniqueId());
                     return false;
                 }
+                carrier.clearActiveItem();
+            }
+            case MACE_LIFT -> {
+                Vector launch = echoMaceLiftVelocity(carrier, owner, rage);
+                if (decision.actionItem().kind()
+                        != me.copimine.endevent.domain.wave7.EchoLoadoutState.Kind.WIND_CHARGE
+                        || launch == null) return false;
+                // Resolve only the Echo's recoil. A normal wind-charge explosion can throw
+                // unrelated players or interact with blocks outside this private fight.
+                carrier.getPathfinder().stopPathfinding();
+                carrier.setFallDistance(0F);
+                carrier.setVelocity(launch);
+                if (carrier.getVelocity().getY() < .75D) return false;
+                carrier.getWorld().playSound(carrier.getLocation(), Sound.ENTITY_WIND_CHARGE_WIND_BURST,
+                        SoundCategory.HOSTILE, .65F, 1.18F);
+                spawnEventParticle(carrier.getLocation(), Particle.CLOUD, 9, .30D, .08D, .30D, .025D);
             }
             case WIND_CHARGE -> {
                 if (rage) return false;
@@ -39917,7 +39966,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 // Reusing it keeps the probe's frozen Action ordinals untouched.
                 case WIND_CHARGE, SPLASH -> EchoPresentationProbeState.Action.SWING;
                 case SHIELD -> EchoPresentationProbeState.Action.SHIELD;
-                case JUMP -> EchoPresentationProbeState.Action.JUMP;
+                case JUMP, MACE_LIFT -> EchoPresentationProbeState.Action.JUMP;
                 case NONE -> EchoPresentationProbeState.Action.IDLE;
             };
             // E-05: a draw is a real item use, so its pose must cover the whole
@@ -43241,9 +43290,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         float guideStrength = blackFogPhase == BlackFogPhase.FOG
-                ? BlackFogTimingPolicy.guideStrength(Math.max(0L, System.currentTimeMillis()
-                        - (blackFogPhaseDeadlineMillis - BlackFogTimingPolicy.fogSeconds(
-                                currentFogCycle, currentFogTargetCycles) * 1_000L))) : 1.0F;
+                ? BlackFogTimingPolicy.guideStrength(Math.max(0L, BlackFogTimingPolicy.fogSeconds(
+                        currentFogCycle, currentFogTargetCycles) * 1_000L - blackFogPhaseRemainingMillis())) : 1.0F;
         if (guideStrength <= 0.0F) {
             clearWorldVfxBeamsByPrefix("wave5-safe-zone-");
             return;
@@ -62478,6 +62526,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || !display.getWorld().equals(target.getWorld())) {
             return false;
         }
+        UUID playerId = target.getUniqueId();
+        UUID displayId = display.getUniqueId();
+        UUID heldByDisplay = tentacleHeldPlayers.get(displayId);
+        if (heldByDisplay != null && !heldByDisplay.equals(playerId)
+                || heldByDisplay == null && tentacleHeldPlayers.containsValue(playerId)) return false;
         Location socket = display.getLocation().clone().add(0.0D, TENTACLE_GRAB_SOCKET_HEIGHT, 0.0D);
         if (!isArenaLocation(socket) || !isSafeTentacleHoldLocation(socket, target)
                 || !target.teleport(socket)) return false;
@@ -62516,11 +62569,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private void releaseTentaclePlayer(ItemDisplay display, Player target) {
         // The normal throw owns its own landing lease, so the hold ledger must
         // stop tracking the body before any guard can early-return.
-        if (display != null) tentacleHeldPlayers.remove(display.getUniqueId());
+        UUID held = display == null ? null : tentacleHeldPlayers.remove(display.getUniqueId());
         TentacleThrowPolicy.Launch launch = display == null ? null
                 : tentacleThrowLaunches.remove(display.getUniqueId());
         if (display == null || target == null || !target.isOnline()
-                || !display.getWorld().equals(target.getWorld())) {
+                || !target.getUniqueId().equals(held) || !display.getWorld().equals(target.getWorld())) {
+            if (held != null) dropHeldTentaclePlayer(held, "throw-target-invalid");
             return;
         }
         // Release is a combat action, even when its target cannot take damage.
@@ -62544,8 +62598,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " entity=" + display.getUniqueId() + " target=" + target.getUniqueId()
                     + " reason=unsafe-landing launch=" + String.format(Locale.ROOT,
                     "%.3f,%.3f,%.3f", requestedLaunch.x(), requestedLaunch.y(), requestedLaunch.z()));
-            target.setVelocity(new Vector(0.0D, Math.min(0.40D, requestedLaunch.y()), 0.0D));
-            target.setFallDistance(0.0F);
+            dropHeldTentaclePlayer(held, "throw-landing-unsafe");
             return;
         }
         boolean localTestBossShowroom = config != null
@@ -62556,7 +62609,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 isBossCombatRuntimeActive(liveBoss()), localTestBossShowroom)) {
             double healthBefore = target.getHealth();
             if (!applyTentacleReleaseHit(display, target)) {
-                target.setFallDistance(0.0F);
+                if (releaseGeneration == generation && Objects.equals(releaseEvent, eventId)) {
+                    dropHeldTentaclePlayer(held, "throw-damage-rejected");
+                }
                 return;
             }
             double healthAfter = target.getHealth();
@@ -62678,25 +62733,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (display == null || target == null || launch == null || !launch.isFinite()) {
             return false;
         }
-        Location anchor = coreCombatAnchorLocation();
-        if (anchor == null) {
-            return false;
-        }
-        double horizontalSpeed = launch.horizontalLength();
-        Location projected = target.getLocation().clone();
-        if (horizontalSpeed > 0.0001D) {
-            double travel = TentacleThrowPolicy.estimatedHorizontalTravel(launch);
-            projected.add(launch.x() / horizontalSpeed * travel, 0.0D,
-                    launch.z() / horizontalSpeed * travel);
-        }
-        // The player is grabbed above the ground.  Landing clearance must be
-        // tested at arena-floor height, not at the elevated grab socket, or
-        // every otherwise-safe throw is rejected before horizontal motion.
-        projected.setY(anchor.getY());
-        Location safe = findSafeCombatLocation(anchor, projected,
-                boundedCombatRadius(config.bossRadius()), MIN_BOSS_CORE_DISTANCE_BLOCKS, -1, target);
-        return safe != null && isArenaLocation(projected)
-                && horizontalDistanceSquared(safe, projected) <= 2.25D;
+        Location origin = target.getLocation();
+        double floorOffset = combatFloorY() + 1D - origin.getY();
+        return TentacleThrowPolicy.hasSafeFlight(launch, floorOffset, (x, y, z, landing) -> {
+            Location at = origin.clone().add(x, y, z);
+            if (!isArenaLocation(at)
+                    || !at.getWorld().isChunkLoaded(at.getBlockX() >> 4, at.getBlockZ() >> 4)) return false;
+            return landing ? isSafeCombatParticipantLocation(at, target)
+                    : isSafeTentacleHoldLocation(at, target);
+        });
     }
 
     private void setTentacleState(ItemDisplay display, TentacleAnimationPolicy.State next,
@@ -62714,6 +62759,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || canonical == TentacleAnimationPolicy.State.RETRACT
                 || canonical == TentacleAnimationPolicy.State.DYING) {
             tentacleThrowLaunches.remove(display.getUniqueId());
+            releaseTentacleHolder(display.getUniqueId(), "animation-" + TentacleAnimationPolicy.wireName(canonical));
         }
         display.getPersistentDataContainer().set(keyTentacleState,
                 PersistentDataType.STRING, TentacleAnimationPolicy.wireName(canonical));
@@ -64012,10 +64058,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         EventConfig.RiftObeliskTuning tuning = config.riftObeliskTuning();
         ObeliskScalingPolicy.Profile profile = ObeliskScalingPolicy.profileForPlayers(
                 currentWaveScalePlayers);
-        // A scaled minimum reserves enough bounded in-flight slots for every
-        // active tower's 160-tick projectile lifetime and one pending warning.
-        int fireCap = Math.min(ObeliskScalingPolicy.MAX_FIREBALL_ADMISSION_SLOTS,
-                Math.max(profile.fireballCap(), tuning.maxActiveFireballs()));
+        int fireCap = Math.min(profile.fireballCap(), tuning.maxActiveFireballs());
         ObeliskFireDirectorPolicy.SpecialCandidate nextSpecial = selectWave4Special();
         boolean allActive = !activeWave4Obelisks.isEmpty()
                 && activeWave4Obelisks.values().stream()
@@ -67236,6 +67279,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
+    private CompletableFuture<RewardIssueResult> requestVictoryReward(
+            java.util.function.Supplier<CompletableFuture<RewardIssueResult>> request) {
+        try {
+            return Objects.requireNonNull(request.get(), "Missing reward response");
+        } catch (RuntimeException unavailable) {
+            return CompletableFuture.failedFuture(unavailable);
+        }
+    }
+
     private void issueVictoryRewards() {
         if (!retainVictoryMemorial() || rewardService == null) return;
         if (!VICTORY_COMPLETE.equals(victoryStep)
@@ -67260,7 +67312,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             rewardStatuses.put(playerUuid, "REQUESTED");
             String callbackEventId = eventId;
             long callbackGeneration = generation;
-            CompletableFuture<RewardIssueResult> future = rewardService.issueToPlayer(request);
+            CompletableFuture<RewardIssueResult> future = requestVictoryReward(() -> rewardService.issueToPlayer(request));
             future.whenComplete((result, error) -> Bukkit.getScheduler().runTask(this, () -> {
                 if (!VictorySagaRecoveryPolicy.callbackIsCurrent(
                         callbackEventId, callbackGeneration, eventId, generation)) {
@@ -67290,7 +67342,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 returnStoneStatus = "REQUESTED";
                 String callbackEventId = eventId;
                 long callbackGeneration = generation;
-                rewardService.issueWorldDrop(request, drop).whenComplete((result, error) -> Bukkit.getScheduler().runTask(this, () -> {
+                requestVictoryReward(() -> rewardService.issueWorldDrop(request, drop)).whenComplete((result, error) -> Bukkit.getScheduler().runTask(this, () -> {
                     if (!VictorySagaRecoveryPolicy.callbackIsCurrent(
                             callbackEventId, callbackGeneration, eventId, generation)) {
                         getLogger().info("RETURN_STONE_REWARD_STALE event=" + callbackEventId
@@ -67345,7 +67397,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 eventId, key, "night_cloak", playerUuid, offlineName(playerUuid));
         String callbackEventId = eventId;
         long callbackGeneration = generation;
-        rewardService.issueToPlayer(request).whenComplete((result, error) ->
+        requestVictoryReward(() -> rewardService.issueToPlayer(request)).whenComplete((result, error) ->
                 Bukkit.getScheduler().runTask(this, () -> {
                     if (!VictorySagaRecoveryPolicy.callbackIsCurrent(
                             callbackEventId, callbackGeneration, eventId, generation)) {

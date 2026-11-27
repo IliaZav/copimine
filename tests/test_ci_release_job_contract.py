@@ -223,37 +223,21 @@ def test_java_plugin_ci_builds_narcotics_before_end_event() -> None:
 
 
 def test_candidate_preparation_builds_the_end_event_pin_before_staging() -> None:
-    # The End Event candidate jar is gitignored and nothing else on the staging
-    # path produces it, so a clean runner can only ever fail the lock comparison
-    # unless the pin is rebuilt here first.
-    source = (ROOT / "scripts/minecraft/PrepareMigrationCandidates.ps1").read_text(encoding="utf-8")
-    build_index = source.index("copimine-end-event/build-plugin.ps1")
+    scripts = ROOT / "scripts/minecraft"
+    source = (scripts / "PrepareMigrationCandidates.ps1").read_text(encoding="utf-8")
+    builder = (scripts / "BuildMigrationPlugins.ps1").read_text(encoding="utf-8")
+    project = (ROOT / "tools/minecraft-26.3/build.gradle").read_text(encoding="utf-8")
+    build_index = source.index("& (Join-Path $PSScriptRoot 'BuildMigrationPlugins.ps1') -JavaHome $BuildJavaHome")
+    candidate_index = source.index("build/minecraft-26.3/plugins/jars/CopiMineEndEvent-26.3.jar")
     stage_index = source.index("install_migration_server_plugins.py")
 
-    assert build_index < stage_index
-    assert "$env:JAVA_HOME = $BuildJavaHome" in source[build_index:stage_index]
-    assert "build/minecraft-26.3/plugins/jars/CopiMineEndEvent-26.3.jar" in source[build_index:stage_index]
-
-
-def test_candidate_preparation_resolves_the_pinned_compile_classpath() -> None:
-    # Compiling the plugin against Paper 26.3 needs the pinned compile classpath
-    # on disk. That preparation must come from the one shared script, not from a
-    # second copy that can drift out of step with the plugin release gate.
-    source = (ROOT / "scripts/minecraft/PrepareMigrationCandidates.ps1").read_text(encoding="utf-8")
-    resolver = (ROOT / "scripts/minecraft/ResolveJavaPluginCompileDependencies.ps1").read_text(encoding="utf-8")
-    # Anchor on the invocation, not the earlier existence check.
-    resolve_index = source.index("& (Join-Path $PSScriptRoot 'ResolveJavaPluginCompileDependencies.ps1')")
-    build_index = source.index("& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $endEventBuild")
-
-    assert resolve_index < build_index
-    # The resolver exports the variables build-plugin.ps1 reads, so callers do
-    # not re-declare them (a second copy is what drifts).
-    for variable in ("COPIMINE_MAVEN_REPOSITORY", "PAPER_COMPILE_DEPS", "PAPER_API_JAR",
-                     "PAPER_VOICECHAT_API_JAR"):
-        assert f"$env:{variable}" in resolver, variable
-        assert f'$env:{variable} = ' in resolver, variable
-    # The lock's Paper 26.3 dependency list is what the resolver must consume.
-    assert "paper26_3Dependencies" in resolver
+    assert build_index < candidate_index < stage_index
+    assert "copimine-end-event/build-plugin.ps1" not in source
+    assert "$env:JAVA_HOME = (Resolve-Path -LiteralPath $JavaHome).Path" in builder
+    assert "-p $profileDirectory migrationPlugins" in builder
+    assert "endEvent: ['copimine-end-event', 'CopiMineEndEvent']" in project
+    assert 'dependsOn(modules.keySet().collect { "${it}Jar" })' in project
+    assert "dependsOn('verifyPaperApi', 'verifyMigrationPluginResources')" in project
 
 
 def test_client_artifact_size_documentation_matches_the_profile_lock() -> None:

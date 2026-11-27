@@ -106,11 +106,17 @@ public final class GuardianSpellMesh {
                 for (int i=0; i<4; i++) {
                     float[] point=rotate(faces[f][i], pivot, axis, angle);
                     vertices.add(new Vertex((point[0]-8)/16, (point[1]-8)/16, (point[2]-8)/16,
-                            coords[i][0]/16, coords[i][1]/16, normal[0],normal[1],normal[2]));
+                            atlasUv(coords[i][0]), atlasUv(coords[i][1]), normal[0],normal[1],normal[2]));
                 }
             }
         }
         return List.copyOf(vertices);
+    }
+
+    private static float atlasUv(float authoredUv) {
+        // Sample the centre of the first or last texel at the atlas boundary.
+        float halfTexel = .5F / 1254F;
+        return Math.clamp(authoredUv / 16F, halfTexel, 1F - halfTexel);
     }
 
     private static float[] vector(JsonArray values, int count, float min, float max) {

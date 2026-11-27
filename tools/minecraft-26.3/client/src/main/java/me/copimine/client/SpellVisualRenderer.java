@@ -210,9 +210,13 @@ public final class SpellVisualRenderer {
         boolean superGeyser = "geyser_super".equals(cast.spellId());
         int edge = superGeyser ? 0xf3ffd279 : warning ? 0xeaff7d3b : 0xd5ffb26b;
         int emitted = 0;
+        Vec3 axis = new Vec3(lane.dx(), 0, lane.dz());
+        axis = axis.lengthSqr() < 1.0E-6 ? new Vec3(1, 0, 0) : axis.normalize();
+        Vec3 side = new Vec3(-axis.z, 0, axis.x);
         if (square && budget >= 32) {
-            Vec3[] corners = {root.add(-radius, 0, -radius), root.add(radius, 0, -radius),
-                    root.add(radius, 0, radius), root.add(-radius, 0, radius)};
+            Vec3 forward = axis.scale(radius), across = side.scale(radius);
+            Vec3[] corners = {root.subtract(forward).subtract(across), root.add(forward).subtract(across),
+                    root.add(forward).add(across), root.subtract(forward).add(across)};
             for (int i = 0; i < 4; i++) {
                 Vec3 from = corners[i], to = corners[(i + 1) & 3];
                 ribbon(buffer, pose, from, to, to.subtract(from).cross(UP).normalize(), .05F, .05F, edge, edge);
@@ -247,7 +251,8 @@ public final class SpellVisualRenderer {
                 double lift = warning ? height * Math.pow(t, 2.4) : height * t;
                 double x = Math.cos(angle), z = Math.sin(angle);
                 double boundary = square ? Math.max(Math.abs(x), Math.abs(z)) : 1D;
-                centers[n] = root.add(x * radial / boundary, lift, z * radial / boundary);
+                centers[n] = root.add(axis.scale(x * radial / boundary))
+                        .add(side.scale(z * radial / boundary)).add(0, lift, 0);
                 double taper = Math.pow(1 - t, .7);
                 radii.add((float) (.018 + radius * taper * (warning ? .045 : strand == 0 ? .38 : .105)));
                 int hue = warning ? (superGeyser ? 0xffc74a : 0xf58054)

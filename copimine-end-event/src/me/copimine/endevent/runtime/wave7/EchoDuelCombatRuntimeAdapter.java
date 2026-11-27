@@ -161,12 +161,12 @@ public final class EchoDuelCombatRuntimeAdapter {
     public record Observation(long tick, double distanceSquared, boolean lineOfSight,
                               boolean onGround, boolean criticalWindow,
                               long ownerStrikeIntervalTicks, long ticksSinceOwnerStrike,
-                              boolean ownerBlocking, boolean allowSecondaryProjectiles, boolean pendingFoodHeal) {
+                              boolean ownerBlocking, boolean allowWindCharge, boolean allowSplash, boolean pendingFoodHeal) {
         public Observation(long tick, double distanceSquared, boolean lineOfSight,
                            boolean onGround, boolean criticalWindow, long ownerStrikeIntervalTicks,
                            long ticksSinceOwnerStrike) {
             this(tick, distanceSquared, lineOfSight, onGround, criticalWindow,
-                    ownerStrikeIntervalTicks, ticksSinceOwnerStrike, false, true, true);
+                    ownerStrikeIntervalTicks, ticksSinceOwnerStrike, false, true, true, true);
         }
 
         public Observation(long tick, double distanceSquared, boolean lineOfSight) {
@@ -720,7 +720,7 @@ public final class EchoDuelCombatRuntimeAdapter {
 
             // A wind charge burst is the copy's own knockback tool: it spends one
             // carried charge and keeps the fight at range the way its owner did.
-            int chargeSlot = observation.allowSecondaryProjectiles() ? replica.find(EchoLoadoutState.Kind.WIND_CHARGE) : -1;
+            int chargeSlot = observation.allowWindCharge() ? replica.find(EchoLoadoutState.Kind.WIND_CHARGE) : -1;
             if (chargeSlot >= 0 && observation.lineOfSight()
                     && observation.distanceSquared() <= RANGED_RANGE_BLOCKS * (double) RANGED_RANGE_BLOCKS) {
                 EchoLoadoutState.Item item = replica.item(chargeSlot);
@@ -734,7 +734,7 @@ public final class EchoDuelCombatRuntimeAdapter {
 
             // A thrown splash bottle is a weapon: the copy lobs one of the bottles
             // its owner carried, never a bottle it does not have.
-            int splashSlot = observation.allowSecondaryProjectiles() ? replica.find(EchoLoadoutState.Kind.SPLASH_POTION) : -1;
+            int splashSlot = observation.allowSplash() ? replica.find(EchoLoadoutState.Kind.SPLASH_POTION) : -1;
             if (splashSlot >= 0 && observation.lineOfSight()
                     && observation.distanceSquared() <= RANGED_RANGE_BLOCKS * (double) RANGED_RANGE_BLOCKS) {
                 EchoLoadoutState.Item item = replica.item(splashSlot);

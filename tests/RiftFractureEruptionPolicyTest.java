@@ -1,5 +1,6 @@
 import me.copimine.endevent.domain.RiftFractureEruptionPolicy;
 import me.copimine.endevent.domain.RiftFractureEruptionPolicy.*;
+import me.copimine.endevent.domain.RiftGeyserWave;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -27,8 +28,27 @@ public final class RiftFractureEruptionPolicyTest {
         journalLadder();
         cellSelection();
         targetedCells();
+        directionalSections();
         System.out.println(failures == 0 ? "OK" : "FAILURES " + failures);
         if (failures != 0) System.exit(1);
+    }
+
+    private static void directionalSections() {
+        var wave = RiftGeyserWave.between(0, 0, 9, 12, 3, 42);
+        check("diagonal lane has five whole sections", wave != null && wave.sections().size() == 5);
+        if (wave == null) return;
+        check("locked target is on the final section", wave.sections().getLast().contains(9, 12));
+        for (int i = 0; i < wave.sections().size() - 1; i++) {
+            var section = wave.sections().get(i);
+            var next = wave.sections().get(i + 1);
+            check("adjacent ends share a boundary", Math.hypot(section.xAt(1.5, 0) - next.xAt(-1.5, 0),
+                    section.zAt(1.5, 0) - next.zAt(-1.5, 0)) < 1.0E-8);
+            check("sideways escape lies outside the oriented footprint",
+                    !section.contains(section.xAt(0, 1.7), section.zAt(0, 1.7)));
+            check("the centre tile is included in terrain validation",
+                    section.overlapsTile((int) Math.floor(section.x()), (int) Math.floor(section.z())));
+        }
+        check("distance bound rejects oversized casts", RiftGeyserWave.between(0, 0, 60, 0, 3, 42) == null);
     }
 
     // --- 13.3 frequency and scaling ------------------------------------------

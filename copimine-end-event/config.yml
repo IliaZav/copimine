@@ -33,6 +33,11 @@ last-seal-reveal:
   protected-safe-zone: []
   approved-plan-sha256: ''
 
+official-site:
+  # Bound by the builder after checking the actual published dungeon and portal room.
+  dungeon-room: ""
+  portal-volume: []
+
 arena:
   world: CopiMine
   radius: 20.0
@@ -322,6 +327,13 @@ event-loot-rolls:
 
 boss:
   # V7 provisional techniques are opt-in. Durations are clamped by the cast policy.
+  geyser-wave:
+    warning-ticks: 14
+    section-interval-ticks: 5
+    section-duration-ticks: 10
+    section-size: 3.0
+    cooldown-ticks: 280
+    max-distance: 42.0
   copy-cooperation:
     mirror_substitution: {enabled: false, cooldown-ticks: 600}
     coordinated_salvo: {enabled: false, cooldown-ticks: 500}

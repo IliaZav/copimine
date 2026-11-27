@@ -221,6 +221,12 @@ public final class DungeonRuntime implements Listener {
         mailbox.stop();
     }
 
+    public boolean officialRoomReady(String roomId) {
+        RoomRuntime room = rooms.get(roomId);
+        return task != null && room != null && room.baselineReady && !playtestRooms.contains(roomId)
+                && room.pendingRewards.isEmpty() && room.life == null && room.playtestStarter == null;
+    }
+
     public int roomCount() {
         return rooms.size();
     }

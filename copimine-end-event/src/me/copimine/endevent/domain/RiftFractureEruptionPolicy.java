@@ -174,13 +174,18 @@ public final class RiftFractureEruptionPolicy {
      * so an out-of-order window can never erupt before its warning.</p>
      */
     public record Stage(long preparedAt, long warningStart, long eruptionTick,
-                        long collapseStart, long restoreStart) {
+                        long collapseStart, long restoreStart, boolean rapid) {
         public static final int COLLAPSE_TICKS = 10;
+
+        public Stage(long preparedAt, long warningStart, long eruptionTick,
+                long collapseStart, long restoreStart) {
+            this(preparedAt, warningStart, eruptionTick, collapseStart, restoreStart, false);
+        }
 
         public Stage {
             long prepare = Math.max(0L, preparedAt);
             long warning = Math.max(prepare, warningStart);
-            long band = Math.max(MIN_RAPID_WARNING_TICKS,
+            long band = Math.max(rapid ? MIN_RAPID_WARNING_TICKS : MIN_WARNING_TICKS,
                     Math.min(MAX_WARNING_TICKS, eruptionTick - warning));
             long erupt = warning + band;
             long collapse = Math.max(erupt + 1L,
@@ -212,7 +217,7 @@ public final class RiftFractureEruptionPolicy {
             int warning = footprint == Footprint.SUPER ? 22 : MIN_RAPID_WARNING_TICKS + Math.floorMod(seed, 5);
             int eruption = footprint == Footprint.SUPER ? 36 : 26;
             return new Stage(start, start, start + warning, start + warning + eruption,
-                    start + warning + eruption + COLLAPSE_TICKS);
+                    start + warning + eruption + COLLAPSE_TICKS, true);
         }
 
         private static int warningTicksStatic(long seed) {

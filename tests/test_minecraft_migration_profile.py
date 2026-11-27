@@ -337,10 +337,10 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # taken from two clean `clean build` runs of HEAD 85519c40 that agreed byte
     # for byte (30 769 867 B), and the same digits were written to
     # docs/minecraft-26.3/README.md in the same commit.
-    assert artifact['size'] == 30_704_780
+    assert artifact['size'] == 30_705_791
     assert artifact['sha512'] == (
-        '8931d362d368a7c4b72f71a60039e0211f96fab118894415528ed108f4e63597'
-        '5729cbb64bb43263cd4d112c4cf4180f177f5581c90d889b8ad42b75a0b25a2a'
+        '136bcdee73cc290b3903d467563b34bdd0684f6b5c47d72022764e20b0d806ca'
+        '8b5d117aae9e0fd161e13b7f1e1f69fff6966d68ecb3e2dc776310b8b5fe9418'
     )
 
 

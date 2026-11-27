@@ -7491,6 +7491,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (!"cmend".equalsIgnoreCase(command.getName())) {
             return false;
         }
+        if (!Bukkit.isPrimaryThread()) {
+            String[] commandArgs = args.clone();
+            Bukkit.getScheduler().runTask(this, () -> onCommand(sender, command, label, commandArgs));
+            return true;
+        }
         String[] normalizedArgs = BossCommandPolicy.normalize(args);
         if (normalizedArgs != args) return onCommand(sender, command, label, normalizedArgs);
         if (args.length == 0 || "status".equalsIgnoreCase(args[0])) {
@@ -8824,6 +8829,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             } else {
                 message(sender, "world-id=" + configured.getUID() + " world=" + configured.getName());
             }
+            return;
+        }
+        if ("arena".equals(group) && args.length > 1 && "admission".equalsIgnoreCase(args[1])) {
+            String problem = officialSiteBlocker();
+            message(sender, problem == null ? "&aПлощадка готова к официальной попытке."
+                    : "&cОфициальная попытка заблокирована: " + problem);
             return;
         }
         if ("arena".equals(group) && args.length > 1 && "reveal-preview".equalsIgnoreCase(args[1])) {
@@ -10757,7 +10768,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     new EchoDuelCombatRuntimeAdapter.Observation(eventTickCounter, distanceSquared,
                             carrier.hasLineOfSight(owner), carrier.isOnGround(),
                             isNamedEchoCriticalWindow(carrier), listener.ownerStrikeIntervalTicks(),
-                            listener.ticksSinceOwnerStrike(eventTickCounter), owner.isBlocking(), false,
+                            listener.ticksSinceOwnerStrike(eventTickCounter), owner.isBlocking(), false, true,
                             echoPendingFoodHeal(carrier, session.duel())),
                     this::emitNamedEchoCombatDiagnostic);
         } catch (RuntimeException unexpectedFailure) {
@@ -18734,10 +18745,85 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
+    private String lastOfficialSiteBlocker;
+    private long nextOfficialSiteCheck;
+
+    private String officialSiteBlocker() {
+        if (!isConfigured()) return "ядро не привязано";
+        if (lastSealArena == null || !lastSealArena.configured() || lastSealArena.needsRecovery()) {
+            return "маска Last Seal отсутствует или требует восстановления";
+        }
+        Location core = coreCombatAnchorLocation();
+        if (core == null || core.getWorld() == null) return "мир арены не загружен";
+        World world = core.getWorld();
+        var corridor = lastSealConfiguredVolume("concealed-corridor");
+        var safe = lastSealConfiguredVolume("protected-safe-zone");
+        if (corridor == null || safe == null) return "нет коридора или защищённой комнаты";
+        GateOpeningPlan gate = gateOpeningPlan(null);
+        if (gate == null || !world.getName().equals(gate.first().world()) || gateOpeningTask != null
+                || !layoutState.gateSnapshot().isEmpty() || "OPENED".equalsIgnoreCase(layoutState.gateStatus())) {
+            return "ворота отсутствуют или требуют восстановления";
+        }
+        for (var layer : gate.layersDescending()) {
+            for (var cell : layer.blocks()) {
+                if (!world.isChunkLoaded(cell.x() >> 4, cell.z() >> 4)
+                        || cell.y() < world.getMinHeight() || cell.y() >= world.getMaxHeight()) return "ворота не загружены";
+                Block block = world.getBlockAt(cell.x(), cell.y(), cell.z());
+                if (!block.getType().isSolid() || block.getState(false) instanceof org.bukkit.block.TileState) {
+                    return "геометрия закрытых ворот не совпадает с привязкой";
+                }
+            }
+        }
+        var portal = layoutState.portalRoom();
+        List<Integer> portalBox = getConfig().getIntegerList("official-site.portal-volume");
+        if (portal == null || !portal.configured() || portalBox.size() != 6
+                || !world.getName().equals(portal.world())) return "портальная комната не привязана";
+        Location exit = new Location(world, portal.x(), portal.y(), portal.z());
+        var portalVolume = new LastSealArenaReveal.Square(portalBox.get(0), portalBox.get(1), portalBox.get(2),
+                portalBox.get(3), portalBox.get(4), portalBox.get(5));
+        if (!portalVolume.contains(exit) || lastSealSquare().contains(exit) || safe.contains(exit)
+                || !world.isChunkLoaded(exit.getBlockX() >> 4, exit.getBlockZ() >> 4)
+                || !exit.getBlock().isPassable() || !exit.clone().add(0D, 1D, 0D).getBlock().isPassable()
+                || !exit.clone().subtract(0D, .5D, 0D).getBlock().getType().isSolid()) {
+            return "нет свободной площадки входа в портальную комнату";
+        }
+        String dungeon = getConfig().getString("official-site.dungeon-room", "").trim();
+        if (dungeon.isEmpty() || !officialDungeonReady(dungeon)) {
+            return "постоянная комната данжа не опубликована или восстанавливается";
+        }
+        String approved = getConfig().getString("last-seal-reveal.approved-plan-sha256", "");
+        try {
+            var plan = lastSealArena.preview(world, core, lastSealSquare(), corridor, safe, this::protectedLastSealCell);
+            if (!plan.digest().equalsIgnoreCase(approved)) return "маска Last Seal не утверждена для этой площадки";
+        } catch (java.io.IOException blocked) {
+            return "маска Last Seal не прошла проверку: " + blocked.getMessage();
+        }
+        return null;
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private boolean officialDungeonReady(String room) {
+        for (var registration : Bukkit.getServicesManager().getRegistrations(java.util.function.Predicate.class)) {
+            if (registration.getPlugin().isEnabled() && "CopiMineDungeon".equals(registration.getPlugin().getName())
+                    && registration.getProvider().test(room)) return true;
+        }
+        return false;
+    }
+
     private void beginStartRitualIfReady() {
-        if (phase != EventPhase.READY_FOR_PLAYERS || padOccupants.size() != requiredPlayers) {
+        if (phase != EventPhase.READY_FOR_PLAYERS || padOccupants.size() != requiredPlayers
+                || eventTickCounter < nextOfficialSiteCheck) return;
+        nextOfficialSiteCheck = eventTickCounter + 40L;
+        String problem = officialSiteBlocker();
+        if (problem != null) {
+            if (!Objects.equals(lastOfficialSiteBlocker, problem)) {
+                lastOfficialSiteBlocker = problem;
+                getLogger().warning("END_RIFT_OFFICIAL_SITE_BLOCKED event=" + eventId + " reason=" + problem);
+                announceEventTitle("§cПлощадка не готова", "§7" + problem, false);
+            }
             return;
         }
+        lastOfficialSiteBlocker = null;
         if (!clearEchoPresentationProbe()) return;
         phaseDeadlineMillis = System.currentTimeMillis() + config.startRitualTimeoutSeconds() * 1000L;
         transitionRuneController.reset();
@@ -18830,6 +18916,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (candidateRoster == null || candidateRoster.size() != requiredPlayers
                 || phase != EventPhase.START_RITUAL) {
             cancelRitual("start ritual roster changed");
+            return;
+        }
+        String siteProblem = officialSiteBlocker();
+        if (siteProblem != null) {
+            getLogger().warning("END_RIFT_OFFICIAL_SITE_BLOCKED event=" + eventId + " reason=" + siteProblem);
+            cancelRitual("official site no longer ready");
             return;
         }
         RewardRoster roster;
@@ -38800,7 +38892,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                             isNamedEchoCriticalWindow(carrier),
                             cadence == null ? -1L : cadence.ownerStrikeIntervalTicks(),
                             cadence == null ? -1L : cadence.ticksSinceOwnerStrike(eventTickCounter),
-                            owner.isBlocking(), true, echoPendingFoodHeal(carrier, current)),
+                            owner.isBlocking(), true, true, echoPendingFoodHeal(carrier, current)),
                     this::emitNamedEchoCombatDiagnostic);
         } catch (RuntimeException unexpectedAdapterFailure) {
             // E-06: the adapter already reported the structured reason. Restore
@@ -39553,21 +39645,32 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         : namedEchoCombatPairs.get(carrier.getUniqueId());
                 if (pair == null || listener == null
                         || !listener.beginOwnerCombatAction(pair, owner.getUniqueId())) return false;
+                boolean smash = actionItem.getType() == Material.MACE
+                        && isNamedEchoCriticalWindow(carrier) && carrier.getFallDistance() > 1.5F;
                 try {
-                    double amount = attack.getValue() * (critical ? 1.5D : 1.0D);
-                    // ECHO-012: the copy hits 1.25x harder, applied once here on
-                    // the already-established legitimate hit.
+                    double amount = attack.getValue() * (critical && !smash ? 1.5D : 1.0D);
+                    if (smash) {
+                        int density = decision.actionItem().enchantments().getOrDefault("minecraft:density", 0);
+                        amount += echoMaceSmashBonus(carrier.getFallDistance(), density);
+                    }
                     amount = rage ? RageEchoSummonPolicy.summonDamage(amount)
                             : me.copimine.endevent.domain.EchoScalingPolicy.copyDamage(amount);
-                    owner.damage(Math.min(150.0D, amount), carrier);
+                    if (smash) {
+                        var source = org.bukkit.damage.DamageSource.builder(org.bukkit.damage.DamageType.MACE_SMASH)
+                                .withDirectEntity(carrier).withCausingEntity(carrier).build();
+                        owner.damage(Math.min(150.0D, amount), source);
+                    } else {
+                        owner.damage(Math.min(150.0D, amount), carrier);
+                    }
                 } catch (RuntimeException rejectedDamage) {
                     // A monitor receipt distinguishes a partially delivered native hit from a failure.
                 }
                 if (!listener.consumeAcceptedOwnerCombatAction(pair, owner.getUniqueId(),
                         owner.getLastDamageCause())) return false;
+                if (smash) carrier.setFallDistance(0F);
                 carrier.swingMainHand();
                 Location contact = owner.getLocation().add(0, .9D, 0);
-                renderEchoDuelStrike(owner, contact, horizontalDirection(carrier.getLocation(), contact), critical);
+                renderEchoDuelStrike(owner, contact, horizontalDirection(carrier.getLocation(), contact), critical || smash);
             }
             case RANGED -> {
                 carrier.clearActiveItem();
@@ -39651,7 +39754,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 carrier.swingMainHand();
             }
             case SPLASH -> {
-                if (rage) return false;
                 if (decision.actionItem().kind()
                         != me.copimine.endevent.domain.wave7.EchoLoadoutState.Kind.SPLASH_POTION
                         || owner.isDead() || !owner.isValid() || carrier.isDead() || !carrier.isValid()
@@ -39770,6 +39872,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             else view.begin(pose, eventTickCounter, "MAIN", drawWindow);
         }
         return true;
+    }
+
+    private static double echoMaceSmashBonus(float fallDistance, int density) {
+        double distance = Math.clamp(fallDistance, 0F, 12F);
+        return 4D * Math.min(distance, 3D) + 2D * Math.clamp(distance - 3D, 0D, 5D)
+                + Math.max(distance - 8D, 0D) + .5D * Math.clamp(density, 0, 5) * distance;
     }
 
     private ItemStack materializeNamedEchoItem(
@@ -49795,6 +49903,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void spawnOfficialBoss(CommandSender sender) {
+        if (sender != null) {
+            String problem = officialSiteBlocker();
+            if (problem != null) {
+                message(sender, "&cОфициальный босс заблокирован: " + problem);
+                return;
+            }
+        }
         if (!isConfigured() || (!endUnlocked && phase != EventPhase.BOSS_ACTIVE
                 && phase != EventPhase.BOSS_CINEMATIC && phase != EventPhase.WAVE_5
                 && phase != EventPhase.WAVE_6 && phase != EventPhase.WAVE_7
@@ -63017,6 +63132,172 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || type == Material.MAGMA_BLOCK;
     }
 
+    private BukkitTask riftGeyserWaveTask;
+    private long riftGeyserWaveNextTick;
+    private long riftGeyserWaveGeneration = Long.MIN_VALUE;
+
+    private void tryStartRiftGeyserWave(LivingEntity boss, List<Player> participants) {
+        if (riftGeyserWaveGeneration != generation) {
+            if (riftGeyserWaveTask != null) {
+                riftGeyserWaveTask.cancel();
+                riftGeyserWaveTask = null;
+            }
+            riftGeyserWaveGeneration = generation;
+            riftGeyserWaveNextTick = eventTickCounter + 60L;
+        }
+        if (riftGeyserWaveTask != null || eventTickCounter < riftGeyserWaveNextTick
+                || bossAbilityState != BossAbilityState.NONE || guardianPhysicalMoveActive
+                || bossHazardReservationId != null || crushingGravityBounds != null) return;
+        var settings = getConfig().getConfigurationSection("boss.geyser-wave");
+        int warning = settings == null ? 14 : Math.clamp(settings.getInt("warning-ticks", 14), 10, 80);
+        int spacing = settings == null ? 5 : Math.clamp(settings.getInt("section-interval-ticks", 5), 3, 20);
+        int duration = settings == null ? 10 : Math.clamp(settings.getInt("section-duration-ticks", 10), 5, 30);
+        int cooldown = settings == null ? 280 : Math.clamp(settings.getInt("cooldown-ticks", 280), 160, 1200);
+        double size = settings == null ? 3.0D : Math.clamp(settings.getDouble("section-size", 3.0D), 1D, 5D);
+        double reach = settings == null ? 42D : Math.clamp(settings.getDouble("max-distance", 42D), 12D, 60D);
+        riftGeyserWaveNextTick = eventTickCounter + 20L;
+        Location from = boss.getLocation();
+        Player target = participants.stream()
+                .filter(player -> player.getWorld().equals(from.getWorld()))
+                .filter(player -> isArenaLocation(player.getLocation()) && boss.hasLineOfSight(player))
+                .filter(player -> {
+                    double distance = player.getLocation().distanceSquared(from);
+                    return distance >= 64D && distance <= reach * reach;
+                })
+                .max(Comparator.comparingDouble(player -> player.getLocation().distanceSquared(from)))
+                .orElse(null);
+        if (target == null) return;
+        Location locked = target.getLocation();
+        int floor = combatFloorY();
+        if (Math.abs(locked.getY() - (floor + 1D)) > 1.5D
+                || Math.abs(from.getY() - (floor + 1D)) > 1.5D) return;
+        double dx = locked.getX() - from.getX(), dz = locked.getZ() - from.getZ();
+        double distance = Math.hypot(dx, dz);
+        var lane = me.copimine.endevent.domain.RiftGeyserWave.between(
+                from.getX() + dx / distance * 1.5D, from.getZ() + dz / distance * 1.5D,
+                locked.getX(), locked.getZ(), size, reach);
+        if (lane == null) return;
+        World world = from.getWorld();
+        double eruptionHeight = 3.2D;
+        for (var section : lane.sections()) {
+            if (!legalRiftGeyserSection(world, floor, section)) return;
+        }
+
+        String castEvent = eventId;
+        long castGeneration = generation;
+        long startClock = eventTickCounter;
+        UUID castId = UUID.randomUUID();
+        Set<UUID> damaged = new HashSet<>();
+        Set<Integer> lit = new HashSet<>();
+        double damage = RiftFractureEruptionPolicy.eruptionDamage(participants.size());
+        int expiry = warning + (lane.sections().size() - 1) * spacing + duration;
+        riftGeyserWaveTask = new BukkitRunnable() {
+            private int age;
+
+            @Override public void run() {
+                if (age >= expiry || generation != castGeneration || !Objects.equals(eventId, castEvent)
+                        || bossPhase != BossPhase.RIFT || bossDefeatCinematicStarted
+                        || !isBossCombatRuntimeActive(boss) || riftGeyserWaveTask == null
+                        || riftGeyserWaveTask.getTaskId() != getTaskId()) {
+                    for (int index : lit) {
+                        spellCasts.cancel(riftWaveCue(castId, index), castGeneration, eventAudience(), CopiMineEndEvent.this::sendSpellCast);
+                    }
+                    if (riftGeyserWaveTask != null && riftGeyserWaveTask.getTaskId() == getTaskId()) riftGeyserWaveTask = null;
+                    cancel();
+                    return;
+                }
+                if (age == 0 || age == warning / 2) {
+                    List<Player> viewers = eventAudience();
+                    for (var section : lane.sections()) renderRiftGeyserSection(world, floor, section, 0D, viewers);
+                    if (age == 0) world.playSound(from, Sound.BLOCK_DEEPSLATE_HIT, SoundCategory.HOSTILE, 1.2F, .5F);
+                }
+                List<Player> targets = age >= warning ? activeBossParticipants() : List.of();
+                int first = Math.max(0, (age - warning - duration) / spacing);
+                int last = Math.min(lane.sections().size() - 1, (age - warning) / spacing);
+                for (int index = first; age >= warning && index <= last; index++) {
+                    int elapsed = age - warning - index * spacing;
+                    if (elapsed >= duration) continue;
+                    var section = lane.sections().get(index);
+                    if (!legalRiftGeyserSection(world, floor, section)) {
+                        age = expiry; // A newly obstructed section stops the remaining wave.
+                        break;
+                    }
+                    Location origin = new Location(world, section.x(), floor + 1.01D, section.z());
+                    if (elapsed == 0) {
+                        lit.add(index);
+                        Vector direction = new Vector(section.alongX(), 0D, section.alongZ());
+                        var packetLane = spellLane(origin, direction, (float) section.half(), (float) eruptionHeight);
+                        spellCasts.publish(riftWaveCue(castId, index), castEvent, castGeneration,
+                                worldVfxDimension(origin), origin, List.of(packetLane), startClock + age,
+                                duration, 1, true, eventAudience().stream()
+                                        .filter(viewer -> isEventParticleViewer(viewer, origin)).toList(),
+                                CopiMineEndEvent.this::sendSpellCast);
+                        world.playSound(origin, Sound.ENTITY_GENERIC_EXPLODE, SoundCategory.HOSTILE, .78F, .86F);
+                    }
+                    if (elapsed % 3 == 0) renderRiftGeyserSection(world, floor, section, eruptionHeight, eventAudience());
+                    for (Player player : targets) {
+                        if (damaged.contains(player.getUniqueId()) || !world.equals(player.getWorld())) continue;
+                        Location at = player.getLocation();
+                        double dy = at.getY() - floor - 1D;
+                        if (dy < -.1D || dy > eruptionHeight || !section.contains(at.getX(), at.getZ())
+                                || protectedLastSealCell(at) || !hasProjectileBlockLineOfSight(origin, at.clone().add(0D, .4D, 0D))) continue;
+                        if (applyBossAbilityDamage(boss, player, damage)) {
+                            damaged.add(player.getUniqueId());
+                            player.setVelocity(player.getVelocity().clone().setY(.7D));
+                        }
+                    }
+                }
+                age++;
+            }
+        }.runTaskTimer(this, 1L, 1L);
+        registerEncounterTask(riftGeyserWaveTask);
+        riftGeyserWaveNextTick = eventTickCounter + cooldown;
+        getLogger().info("RIFT_GEYSER_WAVE event=" + eventId + " generation=" + generation
+                + " cast=" + castId + " sections=" + lane.sections().size());
+    }
+
+    private me.copimine.endevent.runtime.SpellCastRuntime.CastKey riftWaveCue(UUID castId, int section) {
+        return new me.copimine.endevent.runtime.SpellCastRuntime.CastKey(
+                "geyser_square", geyserCueSeed(castId, section), null);
+    }
+
+    private boolean legalRiftGeyserSection(World world, int floor, me.copimine.endevent.domain.RiftGeyserWave.Section section) {
+        double extent = section.half() * (Math.abs(section.alongX()) + Math.abs(section.alongZ()));
+        for (int x = (int) Math.floor(section.x() - extent); x <= Math.floor(section.x() + extent); x++) {
+            for (int z = (int) Math.floor(section.z() - extent); z <= Math.floor(section.z() + extent); z++) {
+                if (!section.overlapsTile(x, z)) continue;
+                if (!world.isChunkLoaded(x >> 4, z >> 4) || !world.getBlockAt(x, floor, z).getType().isSolid()) return false;
+                for (int y = floor + 1; y <= floor + 4; y++) {
+                    Location cell = new Location(world, x + .5D, y, z + .5D);
+                    if (!isArenaLocation(cell) || protectedLastSealCell(cell)
+                            || !cell.getBlock().isPassable() || cell.getBlock().isLiquid()) return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    private void renderRiftGeyserSection(World world, int floor, me.copimine.endevent.domain.RiftGeyserWave.Section section,
+            double height, List<Player> viewers) {
+        double half = section.half();
+        boolean warning = height == 0D;
+        Location center = new Location(world, section.x(), floor + 1.08D, section.z());
+        Particle.DustOptions dust = new Particle.DustOptions(Color.fromRGB(184, 87, 255), .74F);
+        for (Player viewer : viewers) {
+            if (!isEventParticleViewer(viewer, center)) continue;
+            for (int point = 0; point < 12; point++) {
+                int edge = point / 3;
+                double span = -half + (point % 3) * 2D * half / 3;
+                double forward = edge == 0 ? -half : edge == 2 ? half : edge == 1 ? span : -span;
+                double side = edge == 0 ? -span : edge == 2 ? span : edge == 1 ? -half : half;
+                Location at = new Location(world, section.xAt(forward, side),
+                        center.getY() + (warning ? 0D : height * ((point % 5) + 1) / 5), section.zAt(forward, side));
+                if (warning) viewer.spawnParticle(Particle.DUST, at, 1, 0D, 0D, 0D, 0D, dust);
+                else viewer.spawnParticle(Particle.SOUL_FIRE_FLAME, at, 1, .06D, .08D, .06D, .018D);
+            }
+        }
+    }
+
     private void tickCurrentRiftFractures(LivingEntity boss) {
         if (bossPhase != BossPhase.RIFT) {
             // Generation- and phase-guarded: leaving RIFT can never leave a
@@ -63032,6 +63313,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         List<Player> participants = activeBossParticipants();
         updateGeyserCluster(participants);
+        tryStartRiftGeyserWave(boss, participants);
         if (activeCurrentRiftFractures.size() < RIFT_FRACTURE_JOURNAL_SLOTS
                 && (eventTickCounter >= nextCurrentRiftFractureBatchTick
                 || RiftFractureEruptionPolicy.superDue(eventTickCounter, lastSuperGeyserTick, riftClusterSinceTick)

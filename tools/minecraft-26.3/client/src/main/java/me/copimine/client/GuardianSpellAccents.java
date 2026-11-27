@@ -86,6 +86,14 @@ final class GuardianSpellAccents {
         int count = hero ? profile.count : Math.min(2, profile.count);
         if (quality == SpellVisualGeometry.Quality.REDUCED) count = Math.min(3, count);
         int nodes = Math.max(5, quality.samples());
+        int budget = switch (quality) {
+            case FULL -> 3_600;
+            case BALANCED -> 2_000;
+            case REDUCED -> 880;
+        };
+        // A tube has one quad per facet and interval plus two cap fans.
+        int verticesPerStrand = (nodes + 1) * ring.length * 4;
+        count = Math.min(count, budget / verticesPerStrand);
         int alpha = hero ? 206 : 125;
         double p = Math.clamp(pose.age() / pose.duration(), 0, 1);
         double gain = switch (pose.stage()) {

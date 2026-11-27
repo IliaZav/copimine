@@ -98,7 +98,7 @@ public final class CopiMineDungeon extends JavaPlugin {
 
         PluginCommand command = getCommand("cmdungeon");
         if (command != null) {
-            DungeonCommand executor = new DungeonCommand(dispatcher);
+            DungeonCommand executor = new DungeonCommand(this, dispatcher);
             command.setExecutor(executor);
             command.setTabCompleter(executor);
         } else {
@@ -109,6 +109,9 @@ public final class CopiMineDungeon extends JavaPlugin {
         getServer().getScheduler().runTaskTimer(this, editor::drawOverlays, 5L, 10L);
         runtime = new DungeonRuntime(this, getConfig().getBoolean("dungeons.runtime.enabled", false));
         runtime.start(published);
+        java.util.function.Predicate<String> roomReadiness = runtime::officialRoomReady;
+        getServer().getServicesManager().register(java.util.function.Predicate.class, roomReadiness,
+                this, org.bukkit.plugin.ServicePriority.Normal);
         dispatcher.setPlaytestGateway(runtime::requestPlaytest);
         getLogger().info("CopiMineDungeon enabled: schema v" + store.schemaVersion()
                 + ", " + store.catalog().totalDefinitions() + " definitions loaded.");

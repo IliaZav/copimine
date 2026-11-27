@@ -31,13 +31,43 @@ final class GuardianSpellAccents {
             entry("snare_chains", Shape.ROOT, 3, .78, .85, -1.2, .042, 0x6642b2, 0xe9cdff),
             entry("echo_bloom", Shape.ORBIT, 2, .77, .45, .2, .049, 0x077eab, 0xc7ffee),
             entry("euphoria_helix", Shape.ROOT, 2, .5, 1.05, 3.7, .046, 0xa0219f, 0xffbcf1),
-            entry("chest_beam", Shape.ARCH, 4, .80, .76, 1.55, .065, 0xb42ed8, 0xfff0f6),
-            entry("geyser", Shape.FRACTURE, 5, 1.02, 1.25, -.65, .08, 0xe04a19, 0xffd791),
+            // §9H CHEST BEAM — dramatic arch with core strands, hot cross-section
+            entry("chest_beam", Shape.ARCH, 5, .85, .82, 1.75, .07, 0xb42ed8, 0xfff0f6),
+            // §9D GEYSER — fracture eruption with rising tongues, lively ember scatter
+            entry("geyser", Shape.FRACTURE, 6, 1.10, 1.40, -.85, .09, 0xe04a19, 0xffd791),
             entry("rift_fracture", Shape.FRACTURE, 4, 1.21, .62, .52, .072, 0xae241b, 0xffa971),
             entry("inferno_geyser", Shape.ROOT, 4, .68, 1.96, 2.3, .085, 0xd42a11, 0xffcf72),
             entry("kagune_stab", Shape.BARB, 5, .57, 1.45, .6, .089, 0x6e139b, 0xffb2f2),
             entry("kagune_eruption", Shape.ROOT, 5, .94, 1.67, -.92, .098, 0x6b20aa, 0xafd6ff),
-            entry("kagune_small", Shape.ROOT, 3, .83, .70, .64, .061, 0x5e2a92, 0xf4bdff));
+            entry("kagune_small", Shape.ROOT, 3, .83, .70, .64, .061, 0x5e2a92, 0xf4bdff),
+            // V5.1 REMASTER — void_crush: ground-level expanding fracture ring
+            entry("void_crush", Shape.FRACTURE, 8, 1.25, .55, .35, .075, 0x442299, 0xd8b0ff),
+            // claw_chain: fast barb-like slash ribbons
+            entry("claw_chain", Shape.BARB, 4, .65, 1.80, 1.2, .055, 0x992255, 0xffc0e0),
+            // dimensional_carve: arch-like portal tear
+            entry("dimensional_carve", Shape.ARCH, 3, .95, 1.55, .45, .060, 0x226699, 0xa0d8ff),
+            // V7 — shoulder_slam: compact burst accent
+            entry("shoulder_slam", Shape.FRACTURE, 4, .75, .65, .50, .055, 0xcc6622, 0xffc8a0),
+            // V7 — hunt_dash: long wake trail
+            entry("hunt_dash", Shape.WAKE, 3, .45, 2.1, 2.5, .050, 0x5533aa, 0xc0a0ff),
+            // V7 — grab_shove: close barb burst
+            entry("grab_shove", Shape.BARB, 3, .50, .85, .60, .048, 0x992244, 0xff80a0),
+            // V7 — seal_lance: vertical arch volley
+            entry("seal_lance", Shape.ARCH, 4, .70, 2.0, .30, .062, 0x551188, 0xc080ff),
+            // V7 — ring_of_kagune: wide orbit ring
+            entry("ring_of_kagune", Shape.ORBIT, 6, 1.4, .60, .80, .065, 0x6600aa, 0xcc66ff),
+            // V7 — ambush_grab: root emergence
+            entry("ambush_grab", Shape.ROOT, 4, .72, 1.3, .90, .058, 0x881166, 0xcc44aa),
+            // V7 — infernal_surge: fracture wall
+            entry("infernal_surge", Shape.FRACTURE, 5, 1.3, .80, .40, .070, 0xcc3300, 0xff6633),
+            // V7 — mirror_carnage: wake shatter
+            entry("mirror_carnage", Shape.WAKE, 4, .60, 1.5, .70, .052, 0x334488, 0x88aaff),
+            // V7 — inferno_curtain: root fall
+            entry("inferno_curtain", Shape.ROOT, 5, .90, 1.8, -.60, .068, 0xaa2200, 0xff4400),
+            // V7 — earthquake_wave: fracture ground
+            entry("earthquake_wave", Shape.FRACTURE, 6, 1.5, .35, .30, .072, 0x886633, 0xcc9944),
+            // V7 — spire_harbinger: root tall
+            entry("spire_harbinger", Shape.ROOT, 3, .55, 2.2, .80, .055, 0x336633, 0x88cc88));
 
     private GuardianSpellAccents() { }
 

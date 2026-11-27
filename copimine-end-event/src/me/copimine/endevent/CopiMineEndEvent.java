@@ -10541,10 +10541,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         me.copimine.endevent.domain.wave7.EchoBehaviorStrategy strategy =
                 combatProfiles.echoBehaviorStrategy(owner.getUniqueId());
         if (strategy == null) return false;
+        UUID duelId = UUID.randomUUID();
         me.copimine.endevent.runtime.wave7.EchoReplicaInventory replica;
         try {
             replica = me.copimine.endevent.runtime.wave7.EchoReplicaInventory.capture(
-                    owner.getInventory(), UUID.randomUUID(), 1L, UUID.randomUUID(), owner.getUniqueId());
+                    owner.getInventory(), eventUuid, generation, duelId, owner.getUniqueId());
             for (int slot = 0; slot < 42; slot++) if (replica.state().item(slot).custom()) return false;
         } catch (RuntimeException invalidLoadout) {
             return false;
@@ -10569,7 +10570,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (carrier == null) return false;
         try {
             rageEchoEpoch = Math.max(generation, rageEchoEpoch + 1L);
-            UUID duelId = UUID.randomUUID();
             EchoPresentationProbeState view = new EchoPresentationProbeState(eventUuid, generation,
                     rageEchoEpoch, duelId, carrier.getUniqueId(), owner.getUniqueId(),
                     carrier.getWorld().getKey().toString(), eventTickCounter,

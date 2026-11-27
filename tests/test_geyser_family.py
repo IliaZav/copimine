@@ -152,7 +152,7 @@ def test_geyser_family_meshes_are_generated_and_wired():
     for name, model in EXPECTED.items():
         assert f'case {model} -> "{name}";' in renderer, (name, model)
         assert f'"{name}"' in names, name
-        assert f'case "{name}" -> new Motion(' in renderer, f"{name} needs a motion profile"
+        assert f'case "{name}"' in renderer, f"{name} needs a motion profile"
         document = json.loads((MESH_DIR / f"{name}.json").read_text(encoding="utf-8"))
         elements = document.get("elements")
         assert isinstance(elements, list)

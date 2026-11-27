@@ -410,6 +410,46 @@ log has no End Rift errors. This proves real block destruction **and** the rever
 square restoration on the production world, including that the safe zone, outer wall
 and far tiled wall are untouched.
 
+### Physical site structure (prod, measured)
+
+The site chunks away from the arena were not resident, so a first block probe returned
+"no match" for every id. They were loaded with
+`execute in minecraft:overworld run forceload add 1888 2000 2096 2128`, probed, and the
+forceload was removed again (the pre-existing 28 force-loaded chunks were left untouched).
+Measured live blocks:
+
+| Element | Probe | Block |
+|---|---|---|
+| Corridor floor | `(1992,71,2048)` | `polished_deepslate` |
+| Corridor light strip | `(1992,72,2048)` | `light` |
+| Corridor interior | `(1992,74,2048)` | `air` |
+| Corridor ceiling | `(1992,77,2048)` | `deepslate_tiles` |
+| Corridor walls | `(1992,74,2044)` / `(1992,74,2052)` | `deepslate_bricks` / `polished_basalt` |
+| Safe-zone floor | `(1980,71,2048)` | `spruce_planks` |
+| Safe-zone ceiling | `(1980,81,2048)` | `deepslate_tiles` |
+| Safe-zone interior | `(1980,73,2048)` | `air` |
+| Dungeon wall | `(1918,74,2060)` | `deepslate_bricks` |
+| Dungeon hall interior | `(1930,74,2060)` | `air` |
+| Arena core floor | `(2048,71,2048)` | `deepslate_tiles` |
+| Arena interior | `(2048,73,2048)` | `air` |
+
+Combined with `reveal-preview` validating all 16,690 authored plan cells (374 corridor +
+16,295 wall + 21 fissure) against live block data, this proves the arena, corridor,
+safe zone and dungeon shell are physically present on production as authored.
+
+The dungeon plugin itself reports a clean runtime site (`/cmdungeon status`):
+`Схема: v1`, `Комнат: 6, шлюзов: 1, секретов: 0, спавнов: 10`, `Проблем загрузки: 0`.
+The six authored halls are:
+
+| Room | Bounds (world `CopiMine`) | Size | Enabled |
+|---|---|---|---|
+| `arena_playtest_dungeon` | `[1933,71,2036]..[1957,84,2060]` | 25×14×25 | yes |
+| `rift_elite_hall` | `[1905,71,2036]..[1929,84,2060]` | 25×14×25 | yes |
+| `rift_group_hall` | `[1933,71,2012]..[1957,84,2034]` | 25×14×23 | yes |
+| `rift_final_hall` | `[1933,71,2062]..[1957,84,2086]` | 25×14×25 | yes |
+| `rift_admin_wing` | `[1901,71,2062]..[1929,84,2086]` | 29×14×25 | no (test wing) |
+| `rift_spell_range` | `[1901,71,2092]..[1929,84,2116]` | 29×14×25 | no (test range) |
+
 ### Portal room — BLOCKED-OWNER
 
 `/cmend portalroom info` = `CopiMine_the_end 0.5,80.0,0.5 (source=config)`. The world

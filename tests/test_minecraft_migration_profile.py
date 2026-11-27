@@ -16,6 +16,27 @@ LEGACY_PACK_SHA256 = 'a' * 64
 CLIENT_SHA1 = 'e877b6a07acd633fb3bb475002175cec036e7b87'
 PINNED_DOWNLOAD_HELPERS = ROOT / 'scripts/minecraft/DownloadPinnedArtifact.ps1'
 
+_ANSI_ESCAPE = re.compile(r'\x1b\[[0-9;]*[A-Za-z]')
+_CONCISE_VIEW_GUTTER = re.compile(r'[ \t]*\r?\n[ \t]*\|[ \t]?')
+
+
+def powershell_output(result: subprocess.CompletedProcess) -> str:
+    """Return captured PowerShell output safe for exact-substring assertions.
+
+    PowerShell 7's default ``ConciseView`` renders a thrown string as an
+    error record with ANSI color escapes and hard-wraps the message at the
+    console width, prefixing each continuation line with a ``| `` gutter.
+    On a narrow CI console a long message such as ``conflicts with locked
+    migration mod`` is therefore split as ``conflicts with locked\\n | migration
+    mod``, so a literal ``in`` check fails even though the script emitted the
+    expected diagnostic. Strip the escape codes, drop the gutter, and collapse
+    whitespace; the asserted wording itself is unchanged.
+    """
+    text = _ANSI_ESCAPE.sub('', (result.stdout or '') + (result.stderr or ''))
+    text = _CONCISE_VIEW_GUTTER.sub(' ', text)
+    return ' '.join(text.split())
+
+
 
 def test_migration_gradle_pin_is_compatible_with_java_25_and_security_patch():
     profile = json.loads((ROOT / 'tools/minecraft-26.3/profile.lock.json').read_text(encoding='utf-8'))
@@ -480,7 +501,7 @@ if ($leftovers.Count -ne 0) {{ throw 'Temporary options file was not cleaned up'
     result = subprocess.run([shell, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script],
                             capture_output=True, text=True, timeout=30)
 
-    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.returncode == 0, powershell_output(result)
 
 
 def write_migration_pack(root):
@@ -595,7 +616,7 @@ def test_bundled_fabric_api_is_not_installed_as_a_separate_required_mod(tmp_path
         shell, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(script),
         '-ProfileDirectory', str(profile), '-DependenciesOnly',
     ], capture_output=True, text=True, timeout=30)
-    assert dependency_setup.returncode == 0, dependency_setup.stdout + dependency_setup.stderr
+    assert dependency_setup.returncode == 0, powershell_output(dependency_setup)
     assert (mods / api_filename).read_bytes() == api_bytes
 
     result = subprocess.run([
@@ -603,7 +624,7 @@ def test_bundled_fabric_api_is_not_installed_as_a_separate_required_mod(tmp_path
         '-ProfileDirectory', str(profile),
     ], capture_output=True, text=True, timeout=30)
 
-    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.returncode == 0, powershell_output(result)
     assert (mods / client_jar.name).read_bytes() == client_jar.read_bytes()
     assert not any(
         json.loads(zipfile.ZipFile(path).read('fabric.mod.json')).get('id') == 'fabric-api'
@@ -616,9 +637,9 @@ def test_bundled_fabric_api_is_not_installed_as_a_separate_required_mod(tmp_path
         shell, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(script),
         '-ProfileDirectory', str(profile), '-DependenciesOnly',
     ], capture_output=True, text=True, timeout=30)
-    assert repeated_dependency_setup.returncode != 0, repeated_dependency_setup.stdout + repeated_dependency_setup.stderr
+    assert repeated_dependency_setup.returncode != 0, powershell_output(repeated_dependency_setup)
     assert 'DependenciesOnly cannot run when CopiMineClient is installed' in (
-        repeated_dependency_setup.stdout + repeated_dependency_setup.stderr)
+        powershell_output(repeated_dependency_setup))
     assert receipt_path.read_bytes() == complete_receipt
     assert (profile / 'options.txt').read_bytes() == complete_options
     assert (mods / client_jar.name).read_bytes() == client_jar.read_bytes()
@@ -639,7 +660,7 @@ def test_bundled_fabric_api_is_not_installed_as_a_separate_required_mod(tmp_path
         '-ProfileDirectory', str(profile), '-ValidateOnly',
     ], capture_output=True, text=True, timeout=30)
     assert validation.returncode != 0
-    assert 'bundled Fabric API' in validation.stdout + validation.stderr
+    assert 'bundled Fabric API' in powershell_output(validation)
 
 @pytest.mark.parametrize('sha1,loader,accepted', [
     ('wrong', '0.19.5', False),
@@ -662,7 +683,7 @@ def test_installation_is_bound_to_exact_client_and_loader(tmp_path, sha1, loader
     result = subprocess.run([shell, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(SCRIPT),
                              '-ProfileDirectory', str(profile), '-DependenciesOnly', '-ValidateDefinitionOnly'],
                             capture_output=True, text=True, timeout=30)
-    assert (result.returncode == 0) == accepted, result.stdout + result.stderr
+    assert (result.returncode == 0) == accepted, powershell_output(result)
     assert list(profile.iterdir()) == [path]
     assert path.read_bytes() == original
 
@@ -678,7 +699,7 @@ def test_validation_modes_cannot_be_combined(tmp_path):
         '-ProfileDirectory', str(profile), '-ValidateOnly', '-ValidateDefinitionOnly',
     ], capture_output=True, text=True, timeout=30)
     assert result.returncode != 0
-    assert 'cannot be combined' in result.stdout + result.stderr
+    assert 'cannot be combined' in powershell_output(result)
     assert list(profile.iterdir()) == []
 
 
@@ -747,7 +768,7 @@ def test_mod_source_validation_accepts_only_pinned_mod_hosts(tmp_path, filename,
         '-ProfileDirectory', str(profile), '-DependenciesOnly', '-ValidateDefinitionOnly',
     ], capture_output=True, text=True, timeout=30)
 
-    assert (result.returncode == 0) == accepted, result.stdout + result.stderr
+    assert (result.returncode == 0) == accepted, powershell_output(result)
     assert list(profile.iterdir()) == [profile / 'Copimine.json']
 
 
@@ -936,8 +957,8 @@ def test_profile_install_activates_migration_pack_and_preserves_other_options(tm
         shell, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(script),
         '-ProfileDirectory', str(profile),
     ], capture_output=True, text=True, timeout=30)
-    assert rejected_client.returncode != 0, rejected_client.stdout + rejected_client.stderr
-    assert 'pinned build artifact' in rejected_client.stdout + rejected_client.stderr
+    assert rejected_client.returncode != 0, powershell_output(rejected_client)
+    assert 'pinned build artifact' in powershell_output(rejected_client)
     assert (profile / 'options.txt').read_text(encoding='utf-8').splitlines() == original_options
     assert receipt_alias.read_text(encoding='utf-8') == 'preserve linked file contents'
     assert not (profile / 'mods' / module_filename).exists()
@@ -956,8 +977,8 @@ def test_profile_install_activates_migration_pack_and_preserves_other_options(tm
         shell, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(script),
         '-ProfileDirectory', str(profile),
     ], capture_output=True, text=True, timeout=30)
-    assert failed_commit.returncode != 0, failed_commit.stdout + failed_commit.stderr
-    assert 'simulated migration receipt publication failure' in failed_commit.stdout + failed_commit.stderr
+    assert failed_commit.returncode != 0, powershell_output(failed_commit)
+    assert 'simulated migration receipt publication failure' in powershell_output(failed_commit)
     assert (profile / 'options.txt').read_bytes() == original_options_bytes
     assert tlauncher_additional.read_bytes() == original_tlauncher_additional
     assert (profile / 'copimine-migration-receipt.json').read_text(encoding='utf-8') == 'preserve linked file contents'
@@ -974,7 +995,7 @@ def test_profile_install_activates_migration_pack_and_preserves_other_options(tm
         '-ProfileDirectory', str(profile),
     ], capture_output=True, text=True, timeout=30)
 
-    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.returncode == 0, powershell_output(result)
     tlauncher_manifest = json.loads(tlauncher_additional.read_text(encoding='utf-8'))
     launcher_mods = tlauncher_manifest['modpack']['version']['mods']
     assert not any(
@@ -1032,7 +1053,7 @@ def test_profile_install_activates_migration_pack_and_preserves_other_options(tm
         shell, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(script),
         '-ProfileDirectory', str(profile),
     ], capture_output=True, text=True, timeout=30)
-    assert repeated.returncode == 0, repeated.stdout + repeated.stderr
+    assert repeated.returncode == 0, powershell_output(repeated)
     assert tlauncher_additional.read_bytes() == manifest_after_install
     assert hashlib.sha256(installed_pack.read_bytes()).hexdigest() == candidate_sha256
     assert list((profile / 'resourcepacks').glob('CopiMineResourcePack-26.3.zip.backup-*'))
@@ -1058,7 +1079,7 @@ def test_profile_install_activates_migration_pack_and_preserves_other_options(tm
         )
     }
     validation = subprocess.run(validation_command, capture_output=True, text=True, timeout=30)
-    assert validation.returncode == 0, validation.stdout + validation.stderr
+    assert validation.returncode == 0, powershell_output(validation)
     assert {path: path.read_bytes() for path in installed_state} == installed_state
 
     stale_manifest = json.loads(installed_state[tlauncher_additional].decode('utf-8-sig'))
@@ -1072,36 +1093,36 @@ def test_profile_install_activates_migration_pack_and_preserves_other_options(tm
     stale_validation = subprocess.run(validation_command, capture_output=True, text=True, timeout=30)
     assert stale_validation.returncode != 0
     assert 'TLauncherAdditional.json contains stale migration mod entries' in (
-        stale_validation.stdout + stale_validation.stderr)
+        powershell_output(stale_validation))
     assert tlauncher_additional.read_bytes() == stale_manifest_bytes
     tlauncher_additional.write_bytes(installed_state[tlauncher_additional])
 
     module_path = profile / 'mods' / module_filename
     module_path.unlink()
     validation = subprocess.run(validation_command, capture_output=True, text=True, timeout=30)
-    assert validation.returncode != 0 and 'missing locked migration mod' in validation.stdout + validation.stderr
+    assert validation.returncode != 0 and 'missing locked migration mod' in powershell_output(validation)
     module_path.write_bytes(module_bytes)
 
     client_path = profile / 'mods' / 'CopiMineClient-0.1.3+26.3.jar'
     client_path.write_bytes(b'corrupt client')
     validation = subprocess.run(validation_command, capture_output=True, text=True, timeout=30)
-    assert validation.returncode != 0 and 'CopiMineClient differs from its pinned artifact' in validation.stdout + validation.stderr
+    assert validation.returncode != 0 and 'CopiMineClient differs from its pinned artifact' in powershell_output(validation)
     client_path.write_bytes(installed_state[client_path])
 
     installed_pack.write_bytes(b'corrupt pack')
     validation = subprocess.run(validation_command, capture_output=True, text=True, timeout=30)
-    assert validation.returncode != 0 and 'resource pack differs from its pinned candidate' in validation.stdout + validation.stderr
+    assert validation.returncode != 0 and 'resource pack differs from its pinned candidate' in powershell_output(validation)
     installed_pack.write_bytes(installed_state[installed_pack])
 
     (profile / 'options.txt').write_text('resourcePacks:["vanilla"]\n', encoding='utf-8')
     validation = subprocess.run(validation_command, capture_output=True, text=True, timeout=30)
-    assert validation.returncode != 0 and 'is not enabled in options.txt' in validation.stdout + validation.stderr
+    assert validation.returncode != 0 and 'is not enabled in options.txt' in powershell_output(validation)
     (profile / 'options.txt').write_bytes(installed_state[profile / 'options.txt'])
 
     receipt_path = profile / 'copimine-migration-receipt.json'
     receipt_path.write_text('{"minecraftVersion":"26.2"}', encoding='utf-8')
     validation = subprocess.run(validation_command, capture_output=True, text=True, timeout=30)
-    assert validation.returncode != 0 and 'receipt does not match the installed profile' in validation.stdout + validation.stderr
+    assert validation.returncode != 0 and 'receipt does not match the installed profile' in powershell_output(validation)
 
     if os.name == 'nt':
         receipt_path.write_bytes(installed_state[receipt_path])
@@ -1113,7 +1134,7 @@ def test_profile_install_activates_migration_pack_and_preserves_other_options(tm
             shell, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(script),
             '-ProfileDirectory', str(renamed_profile), '-ValidateOnly',
         ], capture_output=True, text=True, timeout=30)
-        assert renamed_validation.returncode == 0, renamed_validation.stdout + renamed_validation.stderr
+        assert renamed_validation.returncode == 0, powershell_output(renamed_validation)
 
 
 @pytest.mark.parametrize('unsafe_target', [
@@ -1249,8 +1270,8 @@ def test_profile_install_rejects_unsafe_targets_before_mutating_profile(tmp_path
         command.append('-DependenciesOnly')
     result = subprocess.run(command, capture_output=True, text=True, timeout=30)
 
-    assert result.returncode != 0, result.stdout + result.stderr
-    diagnostic = (result.stdout + result.stderr).lower()
+    assert result.returncode != 0, powershell_output(result)
+    diagnostic = (powershell_output(result)).lower()
     expected_message = {
         'receipt-directory': 'migration receipt destination',
         'options-directory': 'text file destination',
@@ -1363,7 +1384,7 @@ def test_malformed_resource_pack_options_fail_before_profile_mutation(tmp_path, 
         '-ProfileDirectory', str(profile),
     ], capture_output=True, text=True, timeout=30)
 
-    assert result.returncode != 0, result.stdout + result.stderr
+    assert result.returncode != 0, powershell_output(result)
     assert options.read_bytes() == original_options
     assert sorted(path.name for path in profile.iterdir()) == ['Copimine.json', 'options.txt']
     assert not (profile / 'mods').exists()
@@ -1433,8 +1454,8 @@ def test_existing_copimineclient_mod_is_rejected_or_upgraded_transactionally(tmp
         '-ProfileDirectory', str(profile),
     ], capture_output=True, text=True, timeout=30)
 
-    assert result.returncode != 0, result.stdout + result.stderr
-    assert 'Another CopiMineClient mod is already present' in result.stdout + result.stderr
+    assert result.returncode != 0, powershell_output(result)
+    assert 'Another CopiMineClient mod is already present' in powershell_output(result)
     assert (profile / 'options.txt').read_bytes() == original_options
     assert existing_client.is_file()
     assert not (profile / 'resourcepacks').exists()
@@ -1467,7 +1488,7 @@ try {{
         shell, '-NoProfile', '-Command', lock_wrapper,
     ], capture_output=True, text=True, timeout=30)
 
-    assert locked_result.returncode != 0, locked_result.stdout + locked_result.stderr
+    assert locked_result.returncode != 0, powershell_output(locked_result)
     assert {
         path.relative_to(profile).as_posix(): path.read_bytes() if path.is_file() else None
         for path in profile.rglob('*')
@@ -1481,7 +1502,7 @@ try {{
         '-ProfileDirectory', str(profile),
     ], capture_output=True, text=True, timeout=30)
 
-    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.returncode == 0, powershell_output(result)
     assert (mods / client_jar.name).read_bytes() == client_jar.read_bytes()
     assert not previous_client.exists()
     backups = list((profile / 'migration-backups' / 'client-mods').glob('*/' + previous_client.name))
@@ -1551,9 +1572,9 @@ def test_stale_locked_fabric_mod_id_is_rejected_before_profile_mutation(tmp_path
         '-ProfileDirectory', str(profile), '-DependenciesOnly', '-ValidateOnly',
     ], capture_output=True, text=True, timeout=30)
 
-    assert result.returncode != 0, result.stdout + result.stderr
-    assert 'conflicts with locked migration mod' in result.stdout + result.stderr
-    assert locked_mod['filename'] in result.stdout + result.stderr
+    assert result.returncode != 0, powershell_output(result)
+    assert 'conflicts with locked migration mod' in powershell_output(result)
+    assert locked_mod['filename'] in powershell_output(result)
     assert options.read_bytes() == original_options
     assert stale_mod.read_bytes() == original_stale_mod
     assert not (mods / locked_mod['filename']).exists()
@@ -1603,8 +1624,8 @@ def test_profile_install_rejects_unpinned_pack_before_modifying_profile(tmp_path
         '-ProfileDirectory', str(profile), '-DependenciesOnly',
     ], capture_output=True, text=True, timeout=30)
 
-    assert result.returncode != 0, result.stdout + result.stderr
-    assert 'Resource-pack SHA-256 differs' in result.stdout + result.stderr
+    assert result.returncode != 0, powershell_output(result)
+    assert 'Resource-pack SHA-256 differs' in powershell_output(result)
     assert options.read_bytes() == original_options
     assert not (profile / 'mods').exists()
     assert not (profile / 'resourcepacks').exists()
@@ -1650,8 +1671,8 @@ def test_required_client_validator_scopes_enabled_check_to_client_bridge(tmp_pat
         str(temp_repo / 'tests/ValidateCopiMineClientModRequired.ps1'),
     ], capture_output=True, text=True, timeout=30)
 
-    assert result.returncode != 0, result.stdout + result.stderr
-    assert 'client bridge must be enabled' in result.stdout + result.stderr
+    assert result.returncode != 0, powershell_output(result)
+    assert 'client bridge must be enabled' in powershell_output(result)
 
 
 def test_partial_client_mod_copy_does_not_install_corrupt_jar_or_replace_existing_mod(tmp_path):
@@ -1729,8 +1750,8 @@ function Copy-Item {
         '-Installer', str(script), '-Profile', str(profile),
     ], capture_output=True, text=True, timeout=30)
 
-    assert result.returncode != 0, result.stdout + result.stderr
-    assert 'simulated partial client-mod copy failure' in result.stdout + result.stderr
+    assert result.returncode != 0, powershell_output(result)
+    assert 'simulated partial client-mod copy failure' in powershell_output(result)
     assert not destination.exists()
     assert not list(mods.glob('*.candidate*'))
 
@@ -1740,6 +1761,6 @@ function Copy-Item {
         shell, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(script),
         '-ProfileDirectory', str(profile), '-DependenciesOnly',
     ], capture_output=True, text=True, timeout=30)
-    assert conflict.returncode != 0, conflict.stdout + conflict.stderr
-    assert 'Refusing to replace a different existing mod' in conflict.stdout + conflict.stderr
+    assert conflict.returncode != 0, powershell_output(conflict)
+    assert 'Refusing to replace a different existing mod' in powershell_output(conflict)
     assert destination.read_bytes() == original_jar

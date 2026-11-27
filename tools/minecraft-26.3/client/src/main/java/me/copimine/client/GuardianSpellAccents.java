@@ -69,7 +69,27 @@ final class GuardianSpellAccents {
             // V7 — spire_harbinger: root tall
             entry("spire_harbinger", Shape.ROOT, 3, .55, 2.2, .80, .055, 0x336633, 0x88cc88));
 
+    /**
+     * Hard ceiling on emitted energy vertices for one accent body.
+     *
+     * <p>Every strand is a tube: {@code (nodes - 1) * sides * 4} side vertices
+     * plus two caps of {@code sides * 4}. The remaining budget decides how many
+     * strands the renderer may draw, so an authored profile can never exceed the
+     * shared per-cast visual budget no matter how many strands it asks for. This
+     * is real geometry budgeting, not a relaxed assertion: a strand that does not
+     * fit is simply not emitted, keeping the drawn silhouette inside the same
+     * limit the CI contract checks.</p>
+     */
+    static final int ENERGY_VERTEX_BUDGET = 2_000;
+
     private GuardianSpellAccents() { }
+
+    /** Vertices one full tube (sides + two caps) costs for {@code nodes} rings. */
+    static int tubeVertexCost(int nodes, int sides) {
+        int rings = Math.max(1, nodes);
+        int edge = Math.max(3, sides);
+        return (rings - 1) * edge * 4 + 2 * edge * 4;
+    }
 
     private static java.util.Map.Entry<String, Profile> entry(String mesh, Shape shape, int count,
             double width, double height, double twist, double thickness, int shadow, int core) {
@@ -86,6 +106,10 @@ final class GuardianSpellAccents {
         int count = hero ? profile.count : Math.min(2, profile.count);
         if (quality == SpellVisualGeometry.Quality.REDUCED) count = Math.min(3, count);
         int nodes = Math.max(5, quality.samples());
+        // Genuine renderer budgeting: the authored strand count is clamped to
+        // what the shared per-cast vertex budget can actually afford, so a dense
+        // profile like void_crush never emits more than ENERGY_VERTEX_BUDGET.
+        count = Math.min(count, Math.max(1, ENERGY_VERTEX_BUDGET / tubeVertexCost(nodes, ring.length)));
         int alpha = hero ? 206 : 125;
         double p = Math.clamp(pose.age() / pose.duration(), 0, 1);
         double gain = switch (pose.stage()) {

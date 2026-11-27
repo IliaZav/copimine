@@ -19,26 +19,33 @@ package me.copimine.endevent.domain;
  */
 public final class RiftFireRingPolicy {
     /** Segments drawn around the ring; the hit volume matches this ring. */
-    public static final int SEGMENTS = 14;
+    public static final int SEGMENTS = 18;
     /** The visible gather tell before the ring leaves the Guardian. */
     public static final int GATHER_TICKS = 30;
     /** Hard ceiling on the flight so a ring can never live forever. */
-    public static final int FLIGHT_TICKS_MAX = 90;
+    public static final int FLIGHT_TICKS_MAX = 140;
     /** How long the detonation remains a damaging volume. */
     public static final int BURST_TICKS = 6;
-    /** Ring geometry in world blocks. */
-    public static final double RING_RADIUS = 2.8D;
-    public static final double SEGMENT_RADIUS = 1.2D;
+    /**
+     * Ring geometry in world blocks. V7 §1.1 approved direction: a LARGE,
+     * almost-horizontal, slightly-tilted ring that flies SLOWLY — not a small
+     * fast vertical projectile. Radius 5.0, tilt 12° off horizontal, travel
+     * 0.26 blocks/tick.
+     */
+    public static final double RING_RADIUS = 5.0D;
+    public static final double SEGMENT_RADIUS = 1.6D;
     /** Real hit geometry, not cosmetic. */
-    public static final double HIT_RADIUS = 2.2D;
-    public static final double BURST_RADIUS = 3.6D;
+    public static final double HIT_RADIUS = 3.2D;
+    public static final double BURST_RADIUS = 5.5D;
+    /** The ring lies almost flat: this small tilt off horizontal is intentional. */
+    public static final double TILT_DEGREES = 12.0D;
     /** Damage and burn. */
     public static final double IMPACT_DAMAGE = 10.0D;
     public static final double BURST_DAMAGE = 15.0D;
     public static final int IGNITE_TICKS = 60;
     /** Visual spin; the ring keeps turning the whole flight. */
-    public static final double ROTATION_DEGREES_PER_TICK = 18.0D;
-    public static final double SPEED_BLOCKS_PER_TICK = 0.55D;
+    public static final double ROTATION_DEGREES_PER_TICK = 12.0D;
+    public static final double SPEED_BLOCKS_PER_TICK = 0.26D;
     /** A signature cast still needs a real cooldown. */
     public static final int COOLDOWN_TICKS = 1000;
 
@@ -82,6 +89,11 @@ public final class RiftFireRingPolicy {
 
     public static double travelPerTick() {
         return SPEED_BLOCKS_PER_TICK;
+    }
+
+    /** The ring's slight tilt off the horizontal plane, in degrees (V7 §1.1). */
+    public static double tiltDegrees() {
+        return TILT_DEGREES;
     }
 
     /** Spin angle of the ring at a flight tick; continuous, never a jump cut. */
@@ -143,8 +155,10 @@ public final class RiftFireRingPolicy {
                 + " gather_ticks=" + GATHER_TICKS
                 + " flight_ticks_max=" + FLIGHT_TICKS_MAX
                 + " ring_radius=" + RING_RADIUS
+                + " tilt_degrees=" + TILT_DEGREES
                 + " hit_radius=" + HIT_RADIUS
                 + " burst_radius=" + BURST_RADIUS
+                + " speed_blocks_per_tick=" + SPEED_BLOCKS_PER_TICK
                 + " impact_damage=" + IMPACT_DAMAGE
                 + " burst_damage=" + BURST_DAMAGE
                 + " ignite_ticks=" + IGNITE_TICKS

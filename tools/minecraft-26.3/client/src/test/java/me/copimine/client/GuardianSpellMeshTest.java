@@ -18,7 +18,7 @@ class GuardianSpellMeshTest {
      * the contract -- the faces, UVs and unit normals below are -- so this
      * only has to stay in step with {@code GuardianSpellMesh.NAMES}.
      */
-    private static final int AUTHORED_MESHES = 23;
+    private static final int AUTHORED_MESHES = 37;
     @Test void authoredMeshesHaveBoundedRealFacesUvsAndUnitNormals() {
         assertEquals(AUTHORED_MESHES,GuardianSpellMesh.names().size());
         assertEquals(AUTHORED_MESHES,GuardianSpellMesh.names().stream().filter(name->!name.isBlank()).distinct().count());

@@ -505,3 +505,22 @@ defects**, and are reproducible on the untouched deployment branch too:
 Closing these requires running the full 26.3 migration pipeline
 (`PrepareMigrationCandidates.ps1` + downloads + Gradle client build), which is outside
 the End Rift runtime and does not change any deployed End Rift behaviour.
+
+### GitHub Actions
+
+Pushing `codex/end-rift-v7-release` triggered `CopiMine verification`. The run fails in
+the step **Build and verify pinned Minecraft 26.3 candidates** with:
+
+```
+CopiMineClient build output differs from its pinned artifact digest and size: pinned 307…
+throw 'Pinned Minecraft 26.3 candidate preparation failed.'
+```
+
+Because that step aborts the job, `Run Python contract tests` never executes and
+`Publish Python test report` then fails on the missing `test-results.xml`. This is the
+same non-reproducible client-JAR pin that also fails the local
+`test_copimine_client_mob_artifact.py` group, and it is **pre-existing**: the previously
+deployed branch `codex/end-rift-v7-acceptance` (`ec03dff0`, run `46035755195`) fails with
+the identical message. It is a Minecraft-26.3 client packaging problem, not an End Rift
+source defect; the End Rift contract tests were therefore run directly against this tree
+(see above) instead of through CI.

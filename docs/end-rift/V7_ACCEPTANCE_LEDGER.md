@@ -462,6 +462,17 @@ and no `end_portal`/`end_portal_frame` block exists near the arena in the overwo
 region files. Per V7/OV4.7 the pre-existing behind-arena portal room must not be
 guessed, so its coordinates remain **BLOCKED-OWNER** pending the owner's real survey.
 
+### Event gate — owner action (`gate=UNSET`)
+
+`/cmend arena admission` reports `Официальная попытка заблокирована: ворота отсутствуют или
+требуют восстановления`, and `event-layout.yml` stores `gate.status: UNSET`. This is by
+design for a freshly surveyed site (`candidate/site.json` carries no gate cuboid): the gate is
+a snapshot-owned obsidian door, so its cells must be bound to the real built passage before
+an official run. Owner action: `/cmend gate pos1` + `/cmend gate pos2` (aim at both corners)
+or, with `environment: local`, `/cmend gate setat <x1> <y1> <z1> <x2> <y2> <z2>`; verify
+with `/cmend gate info` and `/cmend arena admission`. The demo reveal path is unaffected and
+already verified.
+
 ### Code upload
 
 The reviewed source and the exact deployed jar are on the server at

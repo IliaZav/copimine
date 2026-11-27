@@ -199,11 +199,15 @@ def test_the_phase_three_hazards_spawn_their_authored_bodies():
     event = (ROOT / "copimine-end-event/src/me/copimine/endevent/CopiMineEndEvent.java").read_text(
         encoding="utf-8", errors="surrogateescape")
     start = _method(event, "private void startCurrentRiftFractures(")
-    assert ("playCasterSpellBody(boss, BossSpellGeometryPolicy.Shape.RIFT_FRACTURE,"
-            in start), "the floor rift must spawn its authored crack body"
     tick = _method(event, "private void tickCurrentRiftFractures(")
-    assert ("playCasterSpellBody(boss, BossSpellGeometryPolicy.Shape.INFERNO_GEYSER,"
-            in tick), "the eruption must spawn its authored pressure-fire body"
-    # Both live behind the eruption one-shot, so one hazard cannot spam bodies.
-    eruption = tick[tick.index("if (!state.erupted())"):]
-    assert "INFERNO_GEYSER" in eruption[: eruption.index("renderCurrentRiftFracture")]
+    assert "renderCurrentRiftFracture(boss, state);" in start
+    assert "renderCurrentRiftFracture(boss, state);" in tick
+    render = _method(event, "private void renderCurrentRiftFracture(")
+    assert "boolean entered = visualStage != geyser.visualStage" in render
+    assert "geyser.visualStage = visualStage" in render
+    warning, eruption = render.split("} else if (entered && visualStage == 1) {", 1)
+    assert "if (entered && visualStage == 0)" in warning
+    assert "playCasterSpellBody(boss, BossSpellGeometryPolicy.Shape.RIFT_FRACTURE," in warning
+    assert "playCasterSpellBody(boss, BossSpellGeometryPolicy.Shape.INFERNO_GEYSER," in eruption
+    assert "ownsRiftFracturePresentation(state) && geyser.visualStage == 0" in warning
+    assert "ownsRiftFracturePresentation(state) && geyser.visualStage == 1" in eruption

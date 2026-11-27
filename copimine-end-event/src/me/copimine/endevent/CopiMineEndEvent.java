@@ -23157,6 +23157,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      */
     private void playCasterSpellBody(LivingEntity caster, BossSpellGeometryPolicy.Shape shape,
             String label, Location at, int ticks) {
+        playCasterSpellBody(caster, shape, label, at, ticks, () -> true);
+    }
+
+    private void playCasterSpellBody(LivingEntity caster, BossSpellGeometryPolicy.Shape shape,
+            String label, Location at, int ticks, java.util.function.BooleanSupplier active) {
         int modelData = BossSpellGeometryPolicy.cueModelData(label, shape);
         if (taskRegistry == null || caster == null || at == null || at.getWorld() == null
                 || modelData == 0 || !caster.getWorld().equals(at.getWorld())
@@ -23199,7 +23204,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 if (elapsed >= lifetime || taskRegistry == null || !taskRegistry.owns(ownerGeneration)
                         || generation != ownerGeneration || !Objects.equals(eventId, ownerEvent)
                         || !caster.isValid() || caster.isDead() || !display.isValid()
-                        || !ownedBySession(caster, ownerEvent, ownerGeneration)
+                        || !ownedBySession(caster, ownerEvent, ownerGeneration) || !active.getAsBoolean()
                         || (ownerWave == 7 && (!isRealitySplitTrialRuntimeActive()
                                 || !Objects.equals(readString(caster, keyTrialRole), ownerRole)))) {
                     removeMiniBossSpellModel(display.getUniqueId()); cancel(); return;
@@ -63011,7 +63016,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             lastSuperGeyserTick = eventTickCounter;
             riftClusterSinceTick = eventTickCounter;
         }
-        renderCurrentRiftFracture(state);
+        renderCurrentRiftFracture(boss, state);
         nextCurrentRiftFractureBatchTick = eventTickCounter + batchGapTicks;
         getLogger().info("RIFT_FRACTURES_STARTED event=" + eventId
                 + " boss=" + boss.getUniqueId() + " phase=RIFT"
@@ -63487,7 +63492,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 state.restorationPending = true;
                 continue;
             }
-            renderCurrentRiftFracture(state);
+            renderCurrentRiftFracture(boss, state);
             damageRiftFractureColumn(state, participants);
         }
     }
@@ -63542,7 +63547,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
-    private void renderCurrentRiftFracture(RiftFractureRuntimeState state) {
+    private boolean ownsRiftFracturePresentation(RiftFractureRuntimeState state) {
+        return bossPhase == BossPhase.RIFT && activeCurrentRiftFractures.get(state.id()) == state
+                && !state.restorationPending;
+    }
+
+    private void renderCurrentRiftFracture(LivingEntity boss, RiftFractureRuntimeState state) {
         if (state == null || state.center() == null || state.center().getWorld() == null) {
             return;
         }
@@ -63550,9 +63560,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         for (int root = 0; root < state.geysers.size(); root++) {
             RiftGeyser geyser = state.geysers.get(root);
             var stage = geyser.stage;
-            if (eventTickCounter < stage.preparedAt()
-                    || eventTickCounter % 3L != 0L && eventTickCounter != stage.preparedAt()
-                    && eventTickCounter != stage.eruptionTick() && eventTickCounter != stage.collapseStart()) continue;
+            if (eventTickCounter < stage.preparedAt()) continue;
             var phase = stage.phase(eventTickCounter);
             double height = stage.geyserHeight(eventTickCounter);
             double radius = geyser.radius;
@@ -63563,6 +63571,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 case COLLAPSE -> 2;
                 default -> -1;
             };
+            boolean entered = visualStage != geyser.visualStage;
+            if (!entered && eventTickCounter % 3L != 0L) continue;
+            geyser.visualStage = visualStage;
             long seed = geyserCueSeed(state.id(), root);
             if (visualStage >= 0) {
                 var lane = spellLane(center, new Vector(0, 1, 0), (float) radius, (float) height);
@@ -63570,13 +63581,19 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 spellCasts.publish(new me.copimine.endevent.runtime.SpellCastRuntime.CastKey(geyser.shape.cue(), seed, null),
                         eventId, generation, worldVfxDimension(center), center, List.of(lane), eventTickCounter,
                         16, visualStage, true, viewers, this::sendSpellCast);
-                if (eventTickCounter == stage.preparedAt()) {
+                if (entered && visualStage == 0) {
                     center.getWorld().playSound(center, Sound.BLOCK_DEEPSLATE_HIT, SoundCategory.HOSTILE, .85F, .53F);
-                } else if (eventTickCounter == stage.eruptionTick()) {
+                    if (root == 0) playCasterSpellBody(boss, BossSpellGeometryPolicy.Shape.RIFT_FRACTURE,
+                            "rift_fracture", center, (int) (stage.eruptionTick() - eventTickCounter),
+                            () -> ownsRiftFracturePresentation(state) && geyser.visualStage == 0);
+                } else if (entered && visualStage == 1) {
                     boolean large = geyser.shape == RiftFractureEruptionPolicy.Footprint.SUPER;
                     center.getWorld().playSound(center, Sound.ENTITY_GENERIC_EXPLODE, SoundCategory.HOSTILE,
                             large ? 1.85F : 1.1F, large ? .48F : .72F);
-                } else if (eventTickCounter == stage.collapseStart()) {
+                    if (root == 0) playCasterSpellBody(boss, BossSpellGeometryPolicy.Shape.INFERNO_GEYSER,
+                            "inferno_geyser", center, (int) (stage.collapseStart() - eventTickCounter),
+                            () -> ownsRiftFracturePresentation(state) && geyser.visualStage == 1);
+                } else if (entered && visualStage == 2) {
                     center.getWorld().playSound(center, Sound.BLOCK_FIRE_EXTINGUISH, SoundCategory.HOSTILE, .85F, .62F);
                 }
             }
@@ -65989,6 +66006,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         final RiftFractureEruptionPolicy.Footprint shape;
         final double radius;
         final Set<UUID> damaged = new HashSet<>();
+        int visualStage = -1;
 
         RiftGeyser(Location center, RiftFractureEruptionPolicy.Stage stage,
                    RiftFractureEruptionPolicy.Footprint shape, double radius) {

@@ -45,7 +45,30 @@ public final class BossSpellGeometryPolicy {
          * object of three unrelated mechanics. Each now has its own silhouette
          * in sample(), its own client mesh and its own renderer profile.
          */
-        KAGUNE_STAB, KAGUNE_ERUPTION, KAGUNE_SMALL
+        KAGUNE_STAB, KAGUNE_ERUPTION, KAGUNE_SMALL,
+        /*
+         * V7 phase-signature portfolio (specification section 6). The authored
+         * client meshes 830223-830236 existed without a server shape, so they
+         * were unreachable: no cast could ever emit their CustomModelData and
+         * the "every mesh has a body" contract was broken. Each phase now owns
+         * a distinct silhouette here, and therefore a distinct client body.
+         *
+         * Phase 1 AWAKENING: the broken ground shock front (VOID_CRUSH) and the
+         *   sweeping claw (CLAW_CHAIN).
+         * Phase 2 HUNT: torn-space doorway (DIMENSIONAL_CARVE), the dash wake
+         *   (HUNT_DASH) and the close grapple (GRAB_SHOVE).
+         * Phase 4/5 OVERLOAD/RAGE: the wall of fire (INFERNAL_SURGE), the
+         *   hanging flame curtain (INFERNO_CURTAIN) and the shattered mirror
+         *   planes (MIRROR_CARNAGE).
+         * Phase 6 LAST_SEAL: the spear volley (SEAL_LANCE), the rising Kagune
+         *   ring (RING_OF_KAGUNE) and the under-player tendrils (AMBUSH_GRAB).
+         * Wave 6: the expanding shock ring (EARTHQUAKE_WAVE).
+         * Wave 6 harbinger: the stacked skeleton spire (SPIRE_HARBINGER).
+         */
+        VOID_CRUSH, CLAW_CHAIN, DIMENSIONAL_CARVE, HUNT_DASH, GRAB_SHOVE,
+        INFERNAL_SURGE, INFERNO_CURTAIN, MIRROR_CARNAGE, SEAL_LANCE,
+        RING_OF_KAGUNE, AMBUSH_GRAB, EARTHQUAKE_WAVE, SPIRE_HARBINGER,
+        SHOULDER_SLAM
     }
     public enum Anchor { CHEST, FEET, LOCKED_FLOOR }
     public enum Beat { CHARGE, RELEASE, IMPACT }
@@ -68,7 +91,7 @@ public final class BossSpellGeometryPolicy {
             case "melee_swipe" -> Shape.SWIPE;
             case "chest_strike" -> Shape.CHEST_IRIS;
             case "ground_slam" -> Shape.SLAM_FAULT;
-            case "ambush_grab" -> Shape.AMBUSH_TALONS;
+            case "ambush_grab" -> Shape.AMBUSH_GRAB;
             case "small_kagune" -> Shape.KAGUNE_SMALL;
             // The Kagune roles are real boss mechanics, not decorative effects,
             // so each needs a body of its own rather than borrowing the lance,
@@ -98,6 +121,21 @@ public final class BossSpellGeometryPolicy {
             case "dragon_breath" -> Shape.INFERNO_CROWN;
             case "void_burst" -> Shape.VOID_SPHERE;
             case "web_shot" -> Shape.SNARE_CHAINS;
+            // V7 phase-signature portfolio (specification section 6). These ids
+            // are the real abilities of the six phases and the Wave 6 harbinger.
+            case "void_crush" -> Shape.VOID_CRUSH;
+            case "claw_chain" -> Shape.CLAW_CHAIN;
+            case "shoulder_slam" -> Shape.SHOULDER_SLAM;
+            case "dimensional_carve" -> Shape.DIMENSIONAL_CARVE;
+            case "hunt_dash" -> Shape.HUNT_DASH;
+            case "grab_shove" -> Shape.GRAB_SHOVE;
+            case "infernal_surge" -> Shape.INFERNAL_SURGE;
+            case "inferno_curtain" -> Shape.INFERNO_CURTAIN;
+            case "mirror_carnage" -> Shape.MIRROR_CARNAGE;
+            case "seal_lance" -> Shape.SEAL_LANCE;
+            case "ring_of_kagune" -> Shape.RING_OF_KAGUNE;
+            case "earthquake_wave" -> Shape.EARTHQUAKE_WAVE;
+            case "spire_harbinger" -> Shape.SPIRE_HARBINGER;
             default -> null;
         };
     }
@@ -146,6 +184,21 @@ public final class BossSpellGeometryPolicy {
             case KAGUNE_STAB -> 830220;
             case KAGUNE_ERUPTION -> 830221;
             case KAGUNE_SMALL -> 830222;
+            // V7 phase-signature bodies, one CustomModelData per authored mesh.
+            case VOID_CRUSH -> 830223;
+            case CLAW_CHAIN -> 830224;
+            case DIMENSIONAL_CARVE -> 830225;
+            case SHOULDER_SLAM -> 830226;
+            case HUNT_DASH -> 830227;
+            case GRAB_SHOVE -> 830228;
+            case SEAL_LANCE -> 830229;
+            case RING_OF_KAGUNE -> 830230;
+            case AMBUSH_GRAB -> 830231;
+            case INFERNAL_SURGE -> 830232;
+            case MIRROR_CARNAGE -> 830233;
+            case INFERNO_CURTAIN -> 830234;
+            case EARTHQUAKE_WAVE -> 830235;
+            case SPIRE_HARBINGER -> 830236;
             default -> 0;
         };
     }
@@ -179,7 +232,13 @@ public final class BossSpellGeometryPolicy {
                     RIFT_FRACTURE, INFERNO_GEYSER, SNARE_CHAINS,
                     KAGUNE_ERUPTION -> Anchor.LOCKED_FLOOR;
             case VOID_SPHERE -> Anchor.LOCKED_FLOOR;
-            case RIFT_LANCE, ARROW_RACK, FIREBALL_CAGE, CHEST_IRIS, CHEST_BEAM -> Anchor.CHEST;
+            // V7 phase-signature floors: the shock front, the Kagune ring, the
+            // under-player tendrils, the ground shock ring, the fire wall/curtain
+            // and the harbinger spire all grow out of a locked floor point.
+            case VOID_CRUSH, RING_OF_KAGUNE, AMBUSH_GRAB, EARTHQUAKE_WAVE,
+                    INFERNAL_SURGE, INFERNO_CURTAIN, SPIRE_HARBINGER -> Anchor.LOCKED_FLOOR;
+            case RIFT_LANCE, ARROW_RACK, FIREBALL_CAGE, CHEST_IRIS, CHEST_BEAM,
+                    SEAL_LANCE, DIMENSIONAL_CARVE -> Anchor.CHEST;
             default -> Anchor.FEET;
         };
     }
@@ -559,6 +618,182 @@ public final class BossSpellGeometryPolicy {
                                     Math.sin(a) * r * 0.46, 2), 3, 2);
                 }
             }
+            case VOID_CRUSH -> {
+                // A broken ground shock front: three concentric rings with
+                // alternating gaps, so a grounded or jumping player can read a
+                // lane out of it. It is deliberately a front, not a solid disk.
+                double reach = (charge ? 0.35 + 0.40 * p : 0.45 + 0.75 * easeOut(p)) * r;
+                for (int ring = 0; ring < 3; ring++) {
+                    double ringD = reach * (0.45 + 0.28 * ring);
+                    int segments = 10 + ring * 2;
+                    for (int i = 0; i < segments; i += 2) {
+                        double a0 = i * TAU / segments + ring * 0.25;
+                        double a1 = (i + 1) * TAU / segments + ring * 0.25;
+                        line(out, new Point(Math.cos(a0) * ringD, 0.06, Math.sin(a0) * ringD, ring % 2),
+                                new Point(Math.cos(a1) * ringD, 0.06, Math.sin(a1) * ringD, ring % 2), 3, ring % 2);
+                    }
+                }
+                // Falling shards above the front give the release real height.
+                if (!charge) for (int shard = 0; shard < 6; shard++) {
+                    double a = shard * TAU / 6 + spin * 0.4;
+                    double s = reach * (0.20 + 0.10 * (shard % 3));
+                    add(out, Math.cos(a) * s, 1.2 + 0.5 * (shard % 3), Math.sin(a) * s, 2);
+                }
+            }
+            case CLAW_CHAIN -> {
+                // Three steel claw arcs sweeping across the caster's front.
+                for (int arc = 0; arc < 3; arc++) {
+                    double half = 0.75 + 0.15 * arc, lift = 0.7 + 0.35 * arc;
+                    for (int i = 0; i < 12; i++) {
+                        double u = i / 11.0;
+                        double a = -half + 2 * half * u;
+                        add(out, Math.sin(a) * r * size, lift + Math.cos(a) * 0.35 * size,
+                                Math.cos(a) * r * size * 0.55, arc % 2);
+                    }
+                }
+                line(out, new Point(0, 0.05, 0, 2), new Point(0, 1.8 * size, 0, 2), 5, 2);
+            }
+            case DIMENSIONAL_CARVE -> {
+                // A torn-space doorway plus the diagonal cut that leaves it.
+                double halfWidth = 0.7 * size, height = 2.2 * size;
+                for (int plane = 0; plane < 2; plane++) {
+                    double z = plane * 0.4 * size;
+                    line(out, new Point(-halfWidth, 0, z, 0), new Point(-halfWidth, height, z, 0), 6, 0);
+                    line(out, new Point(halfWidth, 0, z, 0), new Point(halfWidth, height, z, 0), 6, 0);
+                    line(out, new Point(-halfWidth, height, z, 1), new Point(halfWidth, height, z, 1), 6, 1);
+                }
+                for (int i = 0; i < 10; i++) {
+                    double u = i / 9.0;
+                    add(out, -halfWidth + 2 * halfWidth * u, height * (1 - u) + 0.1,
+                            0.2 * size + u * 0.6 * size, 2);
+                }
+            }
+            case SHOULDER_SLAM -> {
+                // A compact shoulder burst: short radial spikes from one point.
+                double burst = (charge ? 0.25 + 0.35 * p : 0.55 + 0.45 * easeOut(p)) * r;
+                for (int spoke = 0; spoke < 8; spoke++) {
+                    double a = spoke * TAU / 8 + spin * 0.2;
+                    line(out, new Point(0, 0.7 * size, 0, 0),
+                            new Point(Math.cos(a) * burst, 0.7 * size + Math.sin(a) * burst * 0.6,
+                                    Math.sin(a) * burst, spoke % 2), 4, spoke % 2);
+                }
+            }
+            case HUNT_DASH -> {
+                // A long wake trail: shrinking rings behind the moving caster.
+                double length = (charge ? 1.2 : 3.4) * size;
+                for (int ring = 0; ring < 5; ring++) {
+                    double z = -length * ring / 4.0;
+                    double wakeR = r * (0.40 - 0.06 * ring) * (charge ? 0.7 : 1.0);
+                    polygonAt(out, 8, wakeR, 0.7 * size, z, spin * 0.15, 4, ring % 2);
+                }
+            }
+            case GRAB_SHOVE -> {
+                // A close grapple: three short barbs snapped out and hooked back.
+                double reach = (charge ? 0.8 : 1.4) * size;
+                for (int barb = 0; barb < 3; barb++) {
+                    double a = barb * TAU / 3 + 0.3;
+                    for (int i = 0; i < 6; i++) {
+                        double u = i / 5.0;
+                        double s = reach * Math.sin(u * Math.PI * 0.8);
+                        add(out, Math.cos(a) * s, 0.8 + u * 0.9 * size - u * u * 0.5 * size,
+                                Math.sin(a) * s, barb % 2);
+                    }
+                }
+            }
+            case SEAL_LANCE -> {
+                // Three tall spear lances fanned from the seal, each with a barb.
+                for (int lane = -1; lane <= 1; lane++) {
+                    double x = lane * 0.55 * size;
+                    double height = (charge ? 1.6 : 3.0) * size;
+                    line(out, new Point(x, 0.05, 0, 0), new Point(x * 0.6, height, 0.4 * size, 0), 8, 0);
+                    line(out, new Point(x * 0.6, height, 0.4 * size, 1),
+                            new Point(x * 0.9, height * 0.7, 0.9 * size, 1), 3, 1);
+                    line(out, new Point(x * 0.6, height, 0.4 * size, 1),
+                            new Point(x * 0.3, height * 0.7, 0.9 * size, 1), 3, 1);
+                }
+            }
+            case RING_OF_KAGUNE -> {
+                // An expanding ring of rising tentacle spikes in validated gaps.
+                double ringRadius = (charge ? 0.45 + 0.25 * p : 0.6 + 0.5 * easeOut(p)) * r;
+                int spikes = 10;
+                for (int i = 0; i < spikes; i++) {
+                    double a = i * TAU / spikes + spin * 0.12;
+                    double h = (charge ? 0.8 : 1.9) * size * (0.7 + 0.3 * (i % 3));
+                    line(out, new Point(Math.cos(a) * ringRadius, 0.05, Math.sin(a) * ringRadius, 0),
+                            new Point(Math.cos(a) * (ringRadius + 0.12), h,
+                                    Math.sin(a) * (ringRadius + 0.12), 0), 5, i % 2);
+                }
+                polygon(out, 12, ringRadius, 0.05, spin * 0.2, 3, 2);
+            }
+            case AMBUSH_GRAB -> {
+                // Under-player tendrils: four reaching roots that curl inward.
+                double rise = (charge ? 0.7 + 0.5 * p : 1.4 + 0.6 * easeOut(p)) * size;
+                for (int root = 0; root < 4; root++) {
+                    double a = root * TAU / 4 + 0.4;
+                    for (int i = 0; i < 8; i++) {
+                        double u = i / 7.0;
+                        double s = r * (0.10 + 0.30 * Math.sin(u * Math.PI * 0.7));
+                        add(out, Math.cos(a) * s - Math.sin(a) * 0.25 * size * u,
+                                rise * u, Math.sin(a) * s + Math.cos(a) * 0.25 * size * u, root % 2);
+                    }
+                }
+                polygon(out, 8, r * 0.22, 0.04, spin * 0.1, 3, 2);
+            }
+            case INFERNAL_SURGE -> {
+                // A moving wall of fire: stacked, staggered flame panels.
+                double wallHeight = (charge ? 1.0 : 2.4) * size;
+                int panels = 7;
+                for (int panel = 0; panel < panels; panel++) {
+                    double x = (panel / (double) (panels - 1) - 0.5) * 2 * r * 0.7;
+                    double lean = (panel % 2 == 0 ? 1 : -1) * 0.18 * size;
+                    line(out, new Point(x, 0.05, 0, 0),
+                            new Point(x + lean, wallHeight * (0.7 + 0.3 * (panel % 3)), 0, 0), 5, panel % 2);
+                }
+            }
+            case INFERNO_CURTAIN -> {
+                // Hanging flame panels falling from above the arena.
+                double drop = (charge ? 1.0 : 2.6) * size;
+                for (int panel = 0; panel < 6; panel++) {
+                    double a = panel * TAU / 6 + spin * 0.1;
+                    double s = r * 0.65;
+                    line(out, new Point(Math.cos(a) * s, drop, Math.sin(a) * s, 1),
+                            new Point(Math.cos(a) * s, Math.max(0.05, drop - 2.2 * size),
+                                    Math.sin(a) * s, 1), 6, panel % 2);
+                }
+            }
+            case MIRROR_CARNAGE -> {
+                // Shattered mirror planes: four offset facets, none camera-locked.
+                for (int plane = 0; plane < 4; plane++) {
+                    double a = plane * TAU / 4 + spin * 0.15;
+                    double s = r * (0.35 + 0.25 * (plane % 2));
+                    for (int i = 0; i < 5; i++) {
+                        double u = i / 4.0;
+                        add(out, Math.cos(a) * s + (u - 0.5) * 0.5 * size,
+                                0.6 + u * 1.4 * size, Math.sin(a) * s + (u - 0.5) * 0.5 * size,
+                                plane % 2);
+                    }
+                }
+            }
+            case EARTHQUAKE_WAVE -> {
+                // An expanding ground shock ring with radial cracks.
+                double reach = (charge ? 0.4 + 0.4 * p : 0.5 + 0.9 * easeOut(p)) * r;
+                polygon(out, 16, reach, 0.04, spin * 0.2, 3, 0);
+                for (int crack = 0; crack < 8; crack++) {
+                    double a = crack * TAU / 8 + 0.2;
+                    line(out, new Point(Math.cos(a) * reach * 0.3, 0.05, Math.sin(a) * reach * 0.3, 1),
+                            new Point(Math.cos(a) * reach, 0.05, Math.sin(a) * reach, 1), 4, crack % 2);
+                }
+            }
+            case SPIRE_HARBINGER -> {
+                // A stacked skeleton spire: three narrowing tiers.
+                double base = r * 0.8, height = (charge ? 1.8 : 3.6) * size;
+                for (int tier = 0; tier < 3; tier++) {
+                    double tierBase = height * tier / 3.0;
+                    double tierRadius = base * (1.0 - 0.22 * tier);
+                    polygonAt(out, 6, tierRadius, tierBase, 0, spin * (tier % 2 == 0 ? 0.1 : -0.1), 4, tier % 2);
+                }
+                line(out, new Point(0, 0.05, 0, 2), new Point(0, height, 0, 2), 6, 2);
+            }
         }
         return List.copyOf(out);
     }
@@ -584,6 +819,15 @@ public final class BossSpellGeometryPolicy {
             double a = edge * TAU / sides + spin, b = (edge + 1) * TAU / sides + spin;
             line(out, new Point(Math.cos(a) * radius, height, Math.sin(a) * radius, layer),
                     new Point(Math.cos(b) * radius, height, Math.sin(b) * radius, layer), samples, layer);
+        }
+    }
+    /** A horizontal ring lifted to {@code height} and pushed forward by {@code depth}. */
+    private static void polygonAt(List<Point> out, int sides, double radius, double height,
+                                  double depth, double spin, int samples, int layer) {
+        for (int edge = 0; edge < sides; edge++) {
+            double a = edge * TAU / sides + spin, b = (edge + 1) * TAU / sides + spin;
+            line(out, new Point(Math.cos(a) * radius, height, depth + Math.sin(a) * radius, layer),
+                    new Point(Math.cos(b) * radius, height, depth + Math.sin(b) * radius, layer), samples, layer);
         }
     }
 }

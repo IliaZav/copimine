@@ -59,6 +59,7 @@ import me.copimine.endevent.domain.InfernoSceneryPolicy;
 import me.copimine.endevent.domain.InfernoTransitionCinematicPolicy;
 import me.copimine.endevent.domain.InfernalForgePolicy;
 import me.copimine.endevent.domain.RiftFireRingPolicy;
+import me.copimine.endevent.domain.SequentialGeyserWavePolicy;
 import me.copimine.endevent.domain.EndEventDisplayItems;
 import me.copimine.endevent.domain.WaveSixSequencePolicy;
 import me.copimine.endevent.domain.Wave7MarksmanDefenderPolicy;
@@ -1720,6 +1721,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private long riftClusterSinceTick = -1L;
     private Set<UUID> riftClusterPair = Set.of();
     private int currentRiftFractureCursor;
+    /**
+     * Phase 3 Sequential 3x3 Geyser Wave: one contiguous strip of adjacent
+     * sections that erupts from the boss toward a frozen target position.
+     */
+    private final Map<UUID, SequentialGeyserWaveRuntimeState> activeSequentialGeyserWaves
+            = new LinkedHashMap<>();
+    /** Cells a live sequential wave owns, so no fracture batch can collide with it. */
+    private final Map<BlockCellKey, UUID> currentSequentialWaveCells = new LinkedHashMap<>();
+    private long nextSequentialGeyserWaveTick;
     /** Real-block Wave 4 obelisks; boss-phase display obelisks remain separate. */
     private final Map<UUID, Wave4ObeliskRuntimeState> activeWave4Obelisks = new LinkedHashMap<>();
     private final Map<UUID, Transformation> currentWave4CollapseTransforms = new HashMap<>();
@@ -2124,6 +2134,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * fire stage reuses them verbatim instead of re-picking targets.
      */
     private List<ChestBeamPolicy.Aim> bossChestBeamLockedAims = List.of();
+    /**
+     * The selected players each lane is assigned to, captured with the lanes at
+     * aim-lock. The owner's latest decision makes the fired beam slowly hunt its
+     * assigned body: the target list is used only to track the lane direction by
+     * the bounded {@link ChestBeamPolicy#TRACK_RADIANS_PER_TICK}, never to
+     * re-select a different player at fire time.
+     */
+    private List<UUID> bossChestBeamLockedTargets = List.of();
     private Location bossChestBeamLockedChest;
     private long bossChestBeamLockedGeneration = -1L;
     /** N23-P1-05: stable per-cast seed for the authored full-length beam mesh cue. */
@@ -6285,6 +6303,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         clearActiveRiftProjectiles();
         clearRiftObelisks("session cancellation");
         clearCurrentRiftFractures("session cancellation");
+        clearSequentialGeyserWaves("session cancellation");
         cleanupSucceeded &= activeCurrentRiftFractures.isEmpty();
         clearTentacles("session cancellation");
         clearActiveEventArrows();
@@ -6478,6 +6497,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         clearActiveRiftProjectiles();
         clearRiftObelisks("combat AI reset");
         clearCurrentRiftFractures("combat AI reset");
+        clearSequentialGeyserWaves("combat AI reset");
         clearTentacles("combat AI reset");
         clearArenaInferno();
         clearActiveEventArrows();
@@ -6848,6 +6868,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // magma behind. The teardown restores the exact original BlockData and
         // retires the journal entry before the scheduler stops ticking.
         clearCurrentRiftFractures("plugin disable");
+        clearSequentialGeyserWaves("plugin disable");
         releaseAllBlackFogEffects();
         clearShardPassiveEffects();
         clearClientEffects();
@@ -9179,7 +9200,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         arenaMaxX = Math.max(first.x(), second.x());
         arenaMaxY = Math.max(first.y(), second.y());
         arenaMaxZ = Math.max(first.z(), second.z());
-        return arenaVolume() > 0L && arenaVolume() <= 262_144L;
+        // V7 §12: the underground arena is a 69x61x69 square (290,421 blocks).
+        // The retired 262,144 ceiling was smaller than the owner-authored hall, so
+        // a legitimate layout could never be applied or saved. Keep a hard bound
+        // (2^20) so a mistyped corner still cannot select a whole dimension.
+        return arenaVolume() > 0L && arenaVolume() <= 1_048_576L;
     }
 
     private long arenaVolume() {
@@ -12789,6 +12814,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         bossChestBeamActive = false;
         bossChestBeamCooldownUntilTick = -1L;
         bossChestBeamLockedAims = List.of();
+        bossChestBeamLockedTargets = List.of();
         bossChestBeamLockedChest = null;
         bossChestBeamLockedGeneration = -1L;
         clearWorldVfxBeamsByPrefix(CHEST_BEAM_VFX_PREFIX);
@@ -33289,9 +33315,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         long width = (long) arenaMaxX - arenaMinX + 1L;
         long height = (long) arenaMaxY - arenaMinY + 1L;
         long depth = (long) arenaMaxZ - arenaMinZ + 1L;
+        // V7 §12: the authored square hall is 69x61x69 = 290,421 blocks, larger
+        // than the retired 262,144 cap; bound it at 2^20 instead of rejecting the
+        // real arena, while still refusing a dimension-scale mistake.
         if (width <= 0L || height <= 0L || depth <= 0L
-                || width > 262_144L || height > 262_144L || depth > 262_144L
-                || width * height > 262_144L || width * height * depth > 262_144L) {
+                || width > 1_048_576L || height > 1_048_576L || depth > 1_048_576L
+                || width * height > 1_048_576L || width * height * depth > 1_048_576L) {
             return false;
         }
         World world = Bukkit.getWorld(worldName);
@@ -50697,6 +50726,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         reconcileBossCastProjection(boss, now);
         tickCurrentRiftFractures(boss);
+        // V7 §6: exactly ONE directional geyser system is authoritative. The
+        // main-branch RiftGeyserWave cast (with explicit hazard reservations,
+        // oriented 3x3 sections and explicit retirement) owns the mechanic; the
+        // divergent sequential runtime stays compiled and unit-tested as a
+        // policy library but is deliberately not driven here so the two systems
+        // can never double-fire on the same tick.
+        // tickSequentialGeyserWaves(boss);
         tickKaguneRingCast(boss);
         tickCurrentTentacles(boss);
         boolean cocoonHover = bossPhase == BossPhase.LAST_SEAL && !guardianDeaths.cocoonBroken();
@@ -51188,9 +51224,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 && transition.entered().contains(BossPhase.OVERLOAD)) {
             startInfernoTransitionCinematic(boss);
         }
-        if (bossPhase != BossPhase.RIFT
-                && (riftGeyserWaveTask != null || !activeCurrentRiftFractures.isEmpty())) {
-            clearCurrentRiftFractures("Current stage exit from RIFT");
+        if (bossPhase != BossPhase.RIFT) {
+            if (riftGeyserWaveTask != null || !activeCurrentRiftFractures.isEmpty()) {
+                clearCurrentRiftFractures("Current stage exit from RIFT");
+            }
+            if (!activeSequentialGeyserWaves.isEmpty()) {
+                clearSequentialGeyserWaves("Current stage exit from RIFT");
+            }
         }
         if (bossPhase == BossPhase.RIFT && transition.entered().contains(BossPhase.RIFT)) {
             startCurrentRiftFractures(boss);
@@ -52994,6 +53034,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         clearVoidMarkZones();
         clearActiveRiftProjectiles();
         clearCurrentRiftFractures("disposable-boss-defeat");
+        clearSequentialGeyserWaves("disposable-boss-defeat");
         bossDefeatCinematicStarted = true;
         bossDefeatCinematicBossUuid = boss.getUniqueId();
         bossAbilityState = BossAbilityState.NONE;
@@ -55902,17 +55943,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return false;
         }
         List<ChestBeamPolicy.Aim> aims = new ArrayList<>();
+        List<UUID> targets = new ArrayList<>();
         long laneSeed = bossChestBeamSequence + eventTickCounter + generation;
         for (int index : ChestBeamPolicy.selectLaneIndices(participants.size(),
                 ChestBeamPolicy.laneCount(participants.size()), laneSeed)) {
             Location eye = participants.get(index).getEyeLocation();
             aims.add(ChestBeamPolicy.aimAt(chest.getX(), chest.getY(), chest.getZ(),
                     eye.getX(), eye.getY(), eye.getZ()));
+            targets.add(participants.get(index).getUniqueId());
         }
         if (aims.isEmpty()) {
             return false;
         }
         bossChestBeamLockedAims = List.copyOf(aims);
+        bossChestBeamLockedTargets = List.copyOf(targets);
         bossChestBeamLockedChest = chest;
         bossChestBeamLockedGeneration = generation;
         getLogger().info("BOSS_CHEST_BEAM_AIM_LOCK event=" + eventId + " boss=" + boss.getUniqueId()
@@ -55968,6 +56012,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         Location chest = bossChestBeamLockedChest.clone();
         List<ChestBeamPolicy.Aim> aims = new ArrayList<>(bossChestBeamLockedAims);
+        List<UUID> trackedTargets = new ArrayList<>(bossChestBeamLockedTargets);
         long castSequence = ++bossChestBeamSequence;
         String callbackEvent = eventId;
         UUID bossId = boss.getUniqueId();
@@ -56008,6 +56053,26 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 return;
             }
             int tick = elapsed[0];
+            // Owner's latest decision: the live beam slowly hunts its assigned
+            // body instead of staying a completely frozen ray. The per-tick turn
+            // is capped far below a normal strafe (ChestBeamPolicy), so a player
+            // can still step out of the lane, while a parked body is held. The
+            // target identity itself is never re-selected: each lane only tracks
+            // the exact player chosen at aim-lock, and a dead/logged-out target
+            // leaves the lane frozen at its last direction.
+            if (!aims.isEmpty()
+                    && (ChestBeamPolicy.chargingAt(tick) || ChestBeamPolicy.damagesAt(tick))) {
+                for (int lane = 0; lane < aims.size() && lane < trackedTargets.size(); lane++) {
+                    Player hunted = Bukkit.getPlayer(trackedTargets.get(lane));
+                    if (hunted == null || !hunted.isOnline() || hunted.isDead()
+                            || !world.equals(hunted.getWorld())) {
+                        continue;
+                    }
+                    Location eye = hunted.getEyeLocation();
+                    aims.set(lane, ChestBeamPolicy.trackToward(aims.get(lane),
+                            eye.getX(), eye.getY(), eye.getZ()));
+                }
+            }
             // Shot 4/5 beats: the crown detonates at the real collision end of
             // every locked lane, then the fracturing shell spits its recoil.
             if (tick == ChestBeamPolicy.CHARGE_TICKS) {
@@ -56042,6 +56107,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 renderChestBeamCharge(chest, aims, tick);
             } else if (ChestBeamPolicy.damagesAt(tick)) {
                 renderChestBeamStage(chest, aims, tick, true);
+                applyChestBeamPull(chest, aims, world);
                 for (Player player : activeLivingPlayers()) {
                     if (player == null || !world.equals(player.getWorld())) {
                         continue;
@@ -56103,6 +56169,48 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
         }, 0L, 1L);
         registerEncounterTask(holder[0]);
+    }
+
+    /**
+     * Gentle continuous pull toward the Core while a body stands inside a live
+     * beam. The owner asked for a beam that pulls you in without trapping you:
+     * the added velocity is weaker than normal walking and stops entirely on top
+     * of the Core volume, so a player always keeps the agency to leave the lane.
+     */
+    private void applyChestBeamPull(Location chest, List<ChestBeamPolicy.Aim> aims, World world) {
+        if (chest == null || aims == null || aims.isEmpty() || world == null) {
+            return;
+        }
+        double minSquared = ChestBeamPolicy.PULL_MIN_DISTANCE * ChestBeamPolicy.PULL_MIN_DISTANCE;
+        for (Player player : activeLivingPlayers()) {
+            if (player == null || !player.isOnline() || player.isDead()
+                    || !world.equals(player.getWorld())) {
+                continue;
+            }
+            if (player.getLocation().distanceSquared(chest) < minSquared) {
+                continue;
+            }
+            Location torso = player.getLocation().clone()
+                    .add(0.0D, player.getHeight() * 0.5D, 0.0D);
+            ChestBeamPolicy.Aim lane = null;
+            for (ChestBeamPolicy.Aim candidate : aims) {
+                if (ChestBeamPolicy.beamHits(candidate,
+                        torso.getX(), torso.getY(), torso.getZ())) {
+                    lane = candidate;
+                    break;
+                }
+            }
+            if (lane == null) {
+                continue;
+            }
+            double[] pull = ChestBeamPolicy.pullTowardCore(lane,
+                    player.getLocation().getX(), player.getLocation().getY(),
+                    player.getLocation().getZ());
+            if (pull == null) {
+                continue;
+            }
+            player.setVelocity(player.getVelocity().add(new Vector(pull[0], pull[1], pull[2])));
+        }
     }
 
     /** One authored frame of the beam body and the world-vfx textured ray. */
@@ -56313,6 +56421,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         bossChestBeamSequence++;
         bossChestBeamActive = false;
         bossChestBeamLockedAims = List.of();
+        bossChestBeamLockedTargets = List.of();
         bossChestBeamLockedChest = null;
         bossChestBeamLockedGeneration = -1L;
         clearWorldVfxBeamsByPrefix(CHEST_BEAM_VFX_PREFIX);
@@ -56340,6 +56449,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " generation=" + callbackGeneration
                 + " lockedGeneration=" + bossChestBeamLockedGeneration);
         bossChestBeamLockedAims = List.of();
+        bossChestBeamLockedTargets = List.of();
         bossChestBeamLockedChest = null;
         bossChestBeamLockedGeneration = -1L;
         bossChestBeamActive = false;
@@ -56358,6 +56468,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         bossChestBeamSequence++;
         bossChestBeamActive = false;
         bossChestBeamLockedAims = List.of();
+        bossChestBeamLockedTargets = List.of();
         bossChestBeamLockedChest = null;
         bossChestBeamLockedGeneration = -1L;
         clearWorldVfxBeamsByPrefix(CHEST_BEAM_VFX_PREFIX);
@@ -57857,6 +57968,23 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         double radius = RiftFireRingPolicy.TUBE_RADIUS;
         return !point.clone().add(0, -radius, 0).getBlock().isPassable()
                 || !point.clone().add(0, radius, 0).getBlock().isPassable();
+    }
+
+    private void renderRiftFireRing(LivingEntity owner, Location centre, double spin) {
+        World world = owner.getWorld();
+        if (world == null) {
+            return;
+        }
+        // V7 §1.1 — the ring is almost horizontal but slightly tilted, so the
+        // far edge rides a little higher than the near edge.
+        double tiltRadians = Math.toRadians(RiftFireRingPolicy.tiltDegrees());
+        double tiltSlope = Math.tan(tiltRadians);
+        for (int index = 0; index < RiftFireRingPolicy.SEGMENTS; index++) {
+            double[] offset = RiftFireRingPolicy.segmentOffset(index, spin);
+            double tiltY = 0.35D + offset[1] * tiltSlope;
+            Location point = centre.clone().add(offset[0], tiltY, offset[1]);
+            spawnEventParticle(point, Particle.FLAME, 3, 0.05D, 0.05D, 0.05D, 0.0D);
+        }
     }
 
     private void renderRiftFireRing(List<Location> shell, int age, boolean gathering) {
@@ -64035,6 +64163,534 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return 31_337L * (long) eventId.hashCode() + 7L * generation + activeWave;
     }
 
+    // -----------------------------------------------------------------------
+    // Phase 3 Sequential 3x3 Geyser Wave (owner assignment section 2)
+    // -----------------------------------------------------------------------
+
+    /**
+     * Independent Phase 3 cadence for the Sequential 3x3 Geyser Wave.
+     *
+     * <p>This is the second Phase 3 hazard family: instead of independent locked
+     * geysers, the Guardian captures one living player's ground position and lays
+     * a contiguous strip of adjacent 3x3 sections from itself toward that frozen
+     * point. The sections erupt in order — nearest the boss first — so the danger
+     * walks toward the locked player and a sidestep out of the strip is the
+     * counterplay. The strip is planned, journaled, applied, damaged and restored
+     * through the same durable hazard journal as the fracture batches, and the
+     * two families are mutually exclusive because the journal only supports one
+     * live mutation at a time.</p>
+     */
+    private void tickSequentialGeyserWaves(LivingEntity boss) {
+        if (bossPhase != BossPhase.RIFT) {
+            if (!activeSequentialGeyserWaves.isEmpty()) {
+                clearSequentialGeyserWaves("rift-phase-exit");
+            }
+            return;
+        }
+        if (!isBossCombatRuntimeActive(boss)) {
+            clearSequentialGeyserWaves("boss-runtime-inactive");
+            return;
+        }
+        if (activeSequentialGeyserWaves.isEmpty()) {
+            if (eventTickCounter < nextSequentialGeyserWaveTick
+                    || !activeCurrentRiftFractures.isEmpty()
+                    || !hazardJournalIsIdle("sequential-geyser-wave")) {
+                return;
+            }
+            Player target = selectSequentialWaveTarget(boss);
+            if (target == null) {
+                nextSequentialGeyserWaveTick = eventTickCounter + 40L;
+                return;
+            }
+            startSequentialGeyserWave(boss, target);
+            return;
+        }
+        List<Player> participants = activeBossParticipants();
+        for (SequentialGeyserWaveRuntimeState state
+                : new ArrayList<>(activeSequentialGeyserWaves.values())) {
+            SequentialGeyserWavePolicy.Timeline timeline = state.timeline();
+            if (state.restorationPending || eventTickCounter >= timeline.endTick()) {
+                state.restorationPending = true;
+                if (eventTickCounter < state.nextRestoreAttemptTick) {
+                    continue;
+                }
+                state.nextRestoreAttemptTick = eventTickCounter + 20L;
+                if (restoreSequentialWaveBlocks(state)) {
+                    removeSequentialGeyserWave(state, "restored");
+                }
+                continue;
+            }
+            boolean surfaceFailed = false;
+            for (SequentialGeyserWavePolicy.Section section : state.plan().sections()) {
+                SequentialGeyserWavePolicy.Phase phase =
+                        timeline.phase(section.index(), eventTickCounter);
+                boolean erupting = phase == SequentialGeyserWavePolicy.Phase.ERUPTION;
+                boolean collapsing = phase == SequentialGeyserWavePolicy.Phase.COLLAPSE;
+                if (!erupting && !collapsing && phase != SequentialGeyserWavePolicy.Phase.WARNING) {
+                    continue;
+                }
+                if (!applySequentialSectionSurface(state, section, phase, timeline)) {
+                    surfaceFailed = true;
+                    break;
+                }
+                if (erupting) {
+                    if (state.eruptedSections.add(section.index())) {
+                        onSequentialSectionErupted(boss, state, section);
+                    }
+                    damageSequentialWaveSection(state, section, participants, timeline);
+                }
+            }
+            if (surfaceFailed) {
+                state.restorationPending = true;
+                continue;
+            }
+            renderSequentialWave(state, participants);
+        }
+    }
+
+    /** Nearest living, legally combat-valid participant; the strip is then planned toward it. */
+    private Player selectSequentialWaveTarget(LivingEntity boss) {
+        if (boss == null) {
+            return null;
+        }
+        Location bossAt = boss.getLocation();
+        World world = bossAt.getWorld();
+        if (world == null) {
+            return null;
+        }
+        Player best = null;
+        double bestDistance = Double.MAX_VALUE;
+        for (Player player : activeBossParticipants()) {
+            if (player == null || !isCombatTarget(player)) {
+                continue;
+            }
+            if (player.getWorld() == null || !player.getWorld().equals(world)) {
+                continue;
+            }
+            double distance = bossAt.distanceSquared(player.getLocation());
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                best = player;
+            }
+        }
+        return best;
+    }
+
+    /**
+     * Plans, journals and applies the strip. Save-before-mutate: nothing is
+     * written until the original BlockData of every section cell is durable.
+     */
+    private void startSequentialGeyserWave(LivingEntity boss, Player target) {
+        if (boss == null || target == null) {
+            return;
+        }
+        Location bossGround = boss.getLocation();
+        Location targetGround = target.getLocation();
+        World world = bossGround.getWorld();
+        if (world == null || targetGround.getWorld() == null
+                || !world.equals(targetGround.getWorld())) {
+            nextSequentialGeyserWaveTick = eventTickCounter + 20L;
+            return;
+        }
+        int floorY = combatFloorY();
+        Map<BlockCellKey, String> plannedOriginals = new LinkedHashMap<>();
+        SequentialGeyserWavePolicy.Plan plan = SequentialGeyserWavePolicy.plan(
+                bossGround.getX(), bossGround.getZ(), targetGround.getX(), targetGround.getZ(),
+                section -> legalSequentialSection(world, section, floorY, plannedOriginals));
+        if (!plan.coversTarget() || plan.sections().isEmpty()) {
+            getLogger().info("SEQUENTIAL_GEYSER_REFUSED event=" + eventId
+                    + " target=" + target.getUniqueId()
+                    + " sections=" + plan.sections().size()
+                    + " reason=no-legal-route");
+            nextSequentialGeyserWaveTick = eventTickCounter + 40L;
+            return;
+        }
+        Map<BlockCellKey, String> selectedOriginals = new LinkedHashMap<>();
+        List<HazardMutationJournal.Entry> journalEntries = new ArrayList<>();
+        for (SequentialGeyserWavePolicy.Section section : plan.sections()) {
+            for (SequentialGeyserWavePolicy.Cell cell : section.cells()) {
+                BlockCellKey key = new BlockCellKey(world.getUID(), cell.x(), floorY, cell.z());
+                String original = plannedOriginals.get(key);
+                if (original == null) {
+                    continue;
+                }
+                selectedOriginals.put(key, original);
+                journalEntries.add(new HazardMutationJournal.Entry(
+                        key.x(), key.y(), key.z(), original, "", "MAGMA",
+                        world.getUID().toString(), eventId, generation));
+            }
+        }
+        if (hazardJournal == null
+                || !hazardJournal.prepare(eventId, generation, world.getName(), journalEntries)) {
+            getLogger().warning("SEQUENTIAL_GEYSER_REFUSED event=" + eventId
+                    + " target=" + target.getUniqueId()
+                    + " reason=journal-prepare-failed journal="
+                    + (hazardJournal == null ? "none" : hazardJournal.lastFailure()));
+            nextSequentialGeyserWaveTick = eventTickCounter + 40L;
+            return;
+        }
+        SequentialGeyserWavePolicy.Timeline timeline = new SequentialGeyserWavePolicy.Timeline(
+                eventTickCounter, plan.sections().size());
+        SequentialGeyserWaveRuntimeState state = new SequentialGeyserWaveRuntimeState(
+                UUID.randomUUID(), world, floorY, plan, timeline, selectedOriginals);
+        activeSequentialGeyserWaves.put(state.id(), state);
+        for (BlockCellKey cell : selectedOriginals.keySet()) {
+            currentSequentialWaveCells.put(cell, state.id());
+        }
+        // Warning: the whole strip's floor cracks immediately, so the first
+        // section and the last section warn side by side.
+        if (!applySequentialSectionSurfaces(state, eventTickCounter)) {
+            state.restorationPending = true;
+            if (restoreSequentialWaveBlocks(state)) {
+                removeSequentialGeyserWave(state, "failed-apply-restored");
+            }
+            nextSequentialGeyserWaveTick = eventTickCounter + 20L;
+            return;
+        }
+        if (!hazardJournal.markApplied()) {
+            getLogger().severe("SEQUENTIAL_GEYSER_APPLY_FAILED event=" + eventId
+                    + " wave=" + state.id() + " journal="
+                    + (hazardJournal == null ? "none" : hazardJournal.path()));
+            state.restorationPending = true;
+            if (restoreSequentialWaveBlocks(state)) {
+                removeSequentialGeyserWave(state, "failed-apply-restored");
+            }
+            nextSequentialGeyserWaveTick = eventTickCounter + 20L;
+            return;
+        }
+        nextSequentialGeyserWaveTick = eventTickCounter
+                + SequentialGeyserWavePolicy.waveGapTicks(activeBossParticipants().size());
+        getLogger().info("SEQUENTIAL_GEYSER_STARTED event=" + eventId
+                + " boss=" + boss.getUniqueId() + " phase=RIFT"
+                + " generation=" + generation
+                + " " + SequentialGeyserWavePolicy.describe(activeBossParticipants().size(), plan)
+                + " target=" + target.getUniqueId()
+                + " floor_y=" + floorY
+                + " journal_entries=" + journalEntries.size()
+                + " real_blocks=true");
+    }
+
+    /**
+     * A section is legal only when all nine floor cells are real arena floor with
+     * three blocks of clear headroom. A refusal truncates the strip, which is how
+     * a wall, a ceiling, the Core, a rune, a gate or a live inferno cell ends the
+     * wave without tunnelling.
+     */
+    private boolean legalSequentialSection(World world, SequentialGeyserWavePolicy.Section section,
+                                           int floorY, Map<BlockCellKey, String> originals) {
+        if (world == null || section == null) {
+            return false;
+        }
+        Location center = new Location(world, section.centerX(), floorY + 1.0D, section.centerZ());
+        if (!isArenaLocation(center)) {
+            return false;
+        }
+        for (SequentialGeyserWavePolicy.Cell cell : section.cells()) {
+            if (isRiftFractureReservedCell(world, cell.x(), floorY, cell.z())
+                    || isLiveInfernoCell(cell.x(), floorY, cell.z())) {
+                return false;
+            }
+            BlockCellKey key = new BlockCellKey(world.getUID(), cell.x(), floorY, cell.z());
+            if (currentRiftFractureCells.containsKey(key)
+                    || currentSequentialWaveCells.containsKey(key)) {
+                return false;
+            }
+            if (!world.isChunkLoaded(cell.x() >> 4, cell.z() >> 4)) {
+                return false;
+            }
+            Block floor = world.getBlockAt(cell.x(), floorY, cell.z());
+            if (!floor.getType().isSolid() || floor.isLiquid()
+                    || floor.getState() instanceof org.bukkit.block.TileState) {
+                return false;
+            }
+            for (int dy = 1; dy <= SequentialGeyserWavePolicy.SECTION_SIZE; dy++) {
+                if (world.getBlockAt(cell.x(), floorY + dy, cell.z()).getType().isSolid()) {
+                    return false;
+                }
+            }
+            originals.putIfAbsent(key, floor.getBlockData().getAsString());
+        }
+        return true;
+    }
+
+    /** Applies the crack/magma surface of every section for the current tick. */
+    private boolean applySequentialSectionSurfaces(SequentialGeyserWaveRuntimeState state,
+                                                   long nowTick) {
+        if (state == null) {
+            return false;
+        }
+        SequentialGeyserWavePolicy.Timeline timeline = state.timeline();
+        for (SequentialGeyserWavePolicy.Section section : state.plan().sections()) {
+            SequentialGeyserWavePolicy.Phase phase = timeline.phase(section.index(), nowTick);
+            if (phase != SequentialGeyserWavePolicy.Phase.WARNING
+                    && phase != SequentialGeyserWavePolicy.Phase.ERUPTION
+                    && phase != SequentialGeyserWavePolicy.Phase.COLLAPSE) {
+                continue;
+            }
+            if (!applySequentialSectionSurface(state, section, phase, timeline)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Writes one section's crack or magma, refusing to clobber a foreign edit.
+     *
+     * <p>Only a cell that still holds the surface this wave last wrote is
+     * touched, so a player-placed block or a competing hazard is never
+     * overwritten.</p>
+     */
+    private boolean applySequentialSectionSurface(SequentialGeyserWaveRuntimeState state,
+                                                 SequentialGeyserWavePolicy.Section section,
+                                                 SequentialGeyserWavePolicy.Phase phase,
+                                                 SequentialGeyserWavePolicy.Timeline timeline) {
+        if (state == null || section == null || timeline == null) {
+            return false;
+        }
+        World world = state.world();
+        if (world == null) {
+            return false;
+        }
+        String blockData = switch (phase) {
+            case ERUPTION, COLLAPSE -> RiftFractureEruptionPolicy.surfaceBlockDataFor(1.0D, true);
+            case WARNING -> RiftFractureEruptionPolicy.surfaceBlockDataFor(
+                    timeline.width(section.index(), eventTickCounter), false);
+            default -> null;
+        };
+        if (blockData == null) {
+            return true;
+        }
+        BlockData data;
+        try {
+            data = Bukkit.createBlockData(blockData);
+        } catch (IllegalArgumentException invalid) {
+            getLogger().warning("SEQUENTIAL_GEYSER_SURFACE_REFUSED event=" + eventId
+                    + " reason=invalid-polled-block-data block_data=" + blockData);
+            return false;
+        }
+        for (SequentialGeyserWavePolicy.Cell cell : section.cells()) {
+            BlockCellKey key = new BlockCellKey(world.getUID(), cell.x(), state.floorY(), cell.z());
+            String applied = state.appliedSurfaces.get(key);
+            if (blockData.equals(applied)) {
+                continue;
+            }
+            String expected = applied != null ? applied : state.originals().get(key);
+            if (expected == null) {
+                continue;
+            }
+            Block block = world.getBlockAt(cell.x(), state.floorY(), cell.z());
+            if (!block.getBlockData().getAsString().equals(expected)) {
+                getLogger().warning("SEQUENTIAL_GEYSER_SURFACE_REFUSED event=" + eventId
+                        + " wave=" + state.id() + " reason=surface-changed"
+                        + " cell=" + cell.x() + ":" + cell.z());
+                return false;
+            }
+            block.setBlockData(data, false);
+            state.appliedSurfaces.put(key, blockData);
+        }
+        return true;
+    }
+
+    /**
+     * The column IS the damage volume, and the whole strip is one cast, so a
+     * player is hurt at most once no matter how many overlapping sections reach
+     * them.
+     */
+    private void damageSequentialWaveSection(SequentialGeyserWaveRuntimeState state,
+                                             SequentialGeyserWavePolicy.Section section,
+                                             List<Player> participants,
+                                             SequentialGeyserWavePolicy.Timeline timeline) {
+        if (state == null || section == null || participants == null || participants.isEmpty()) {
+            return;
+        }
+        World world = state.world();
+        if (world == null) {
+            return;
+        }
+        // The wrecking tick is the section's own eruption start; it scopes the
+        // once-per-cast ledger so a latecomer still takes their single hit.
+        long eruptionTick = timeline.eruptionTick(section.index());
+        double damage = SequentialGeyserWavePolicy.eruptionDamage(participants.size());
+        double centerX = section.centerX();
+        double centerZ = section.centerZ();
+        for (Player player : participants) {
+            if (player == null || player.getWorld() == null || !player.getWorld().equals(world)) {
+                continue;
+            }
+            Location at = player.getLocation();
+            if (!SequentialGeyserWavePolicy.contains(section, state.floorY(),
+                    at.getX(), at.getY(), at.getZ())) {
+                continue;
+            }
+            if (!SequentialGeyserWavePolicy.mayDamagePlayer(
+                    state.id().toString(), player.getUniqueId(), state.damagedPlayers)) {
+                continue;
+            }
+            LivingEntity attacker = liveBoss();
+            if (!applyBossAbilityDamage(attacker, player, damage)) {
+                state.damagedPlayers.remove(SequentialGeyserWavePolicy.scopedKey(
+                        state.id().toString(), player.getUniqueId()));
+                continue;
+            }
+            SequentialGeyserWavePolicy.Launch launch = SequentialGeyserWavePolicy.launch(
+                    at.getX() - centerX, at.getZ() - centerZ);
+            player.setVelocity(new Vector(launch.x(), launch.y(), launch.z()));
+            getLogger().info("SEQUENTIAL_GEYSER_HIT event=" + eventId
+                    + " wave=" + state.id() + " section=" + section.index()
+                    + " player=" + player.getUniqueId()
+                    + " damage=" + damage + " eruption_tick=" + eruptionTick
+                    + " radius=" + SequentialGeyserWavePolicy.GEYSER_RADIUS_BLOCKS);
+        }
+    }
+
+    /** Authored eruption body and sound for one section, once per eruption. */
+    private void onSequentialSectionErupted(LivingEntity boss,
+                                            SequentialGeyserWaveRuntimeState state,
+                                            SequentialGeyserWavePolicy.Section section) {
+        World world = state.world();
+        if (world == null) {
+            return;
+        }
+        Location at = new Location(world, section.centerX(), state.floorY() + 1.0D, section.centerZ());
+        playCasterSpellBody(boss, BossSpellGeometryPolicy.Shape.INFERNO_GEYSER,
+                "PHASE3_SEQUENTIAL_GEYSER", at, SequentialGeyserWavePolicy.ERUPTION_TICKS + 8);
+        world.playSound(at, Sound.ENTITY_GENERIC_EXPLODE, SoundCategory.HOSTILE, 1.05F, 0.72F);
+        getLogger().info("SEQUENTIAL_GEYSER_ERUPTION event=" + eventId
+                + " wave=" + state.id() + " section=" + section.index()
+                + " geyser_height=" + (int) RiftFractureEruptionPolicy.MAX_GEYSER_HEIGHT
+                + " radius=" + SequentialGeyserWavePolicy.GEYSER_RADIUS_BLOCKS);
+    }
+
+    /** Light per-section particle tell; the real mutation carries the warning. */
+    private void renderSequentialWave(SequentialGeyserWaveRuntimeState state,
+                                      List<Player> participants) {
+        if (state == null || state.world() == null) {
+            return;
+        }
+        SequentialGeyserWavePolicy.Timeline timeline = state.timeline();
+        List<Player> audience = eventAudience();
+        for (SequentialGeyserWavePolicy.Section section : state.plan().sections()) {
+            SequentialGeyserWavePolicy.Phase phase = timeline.phase(section.index(), eventTickCounter);
+            if (phase != SequentialGeyserWavePolicy.Phase.WARNING
+                    && phase != SequentialGeyserWavePolicy.Phase.ERUPTION) {
+                continue;
+            }
+            double width = timeline.width(section.index(), eventTickCounter);
+            Location center = new Location(state.world(), section.centerX(),
+                    state.floorY() + 0.12D, section.centerZ());
+            for (Player viewer : audience) {
+                if (viewer == null || !viewer.getWorld().equals(state.world())) {
+                    continue;
+                }
+                Particle.DustOptions dust = new Particle.DustOptions(
+                        Color.fromRGB(126, 62, 255), 0.8F);
+                viewer.spawnParticle(Particle.DUST, center,
+                        3 + (int) (width * 6.0D),
+                        width * 1.4D, 0.03D, width * 1.4D, 0.0D, dust);
+                if (phase == SequentialGeyserWavePolicy.Phase.ERUPTION) {
+                    for (int level = 0; level <= 6; level++) {
+                        double y = RiftFractureEruptionPolicy.MAX_GEYSER_HEIGHT * level / 6.0D;
+                        viewer.spawnParticle(Particle.FLAME,
+                                center.clone().add(0.0D, y, 0.0D),
+                                2, 0.34D, 0.18D, 0.34D, 0.01D);
+                    }
+                }
+            }
+        }
+    }
+
+    /** Puts the exact original BlockData back, then retires the journal. */
+    private boolean restoreSequentialWaveBlocks(SequentialGeyserWaveRuntimeState state) {
+        if (state == null) {
+            return false;
+        }
+        World world = state.world();
+        if (world == null || hazardJournal == null) {
+            return false;
+        }
+        int restored = 0;
+        int skipped = 0;
+        for (Map.Entry<BlockCellKey, String> entry : state.originals().entrySet()) {
+            BlockCellKey cell = entry.getKey();
+            try {
+                Block block = world.getBlockAt(cell.x(), cell.y(), cell.z());
+                String original = entry.getValue();
+                String current = block.getBlockData().getAsString();
+                if (original.equals(current)) {
+                    restored++;
+                    continue;
+                }
+                if (isRiftFractureSurface(block.getType())
+                        && current.equals(state.appliedSurfaces.get(cell))) {
+                    restoreBlock(block, original);
+                    if (original.equals(block.getBlockData().getAsString())) {
+                        restored++;
+                    } else {
+                        skipped++;
+                    }
+                } else {
+                    skipped++;
+                }
+            } catch (RuntimeException unavailable) {
+                skipped++;
+            }
+        }
+        if (skipped != 0 || restored != state.originals().size()) {
+            getLogger().severe("SEQUENTIAL_GEYSER_RESTORE_PENDING event=" + eventId
+                    + " wave=" + state.id() + " restored=" + restored + " unresolved=" + skipped);
+            return false;
+        }
+        if (!hazardJournal.markRestored()) {
+            getLogger().severe("SEQUENTIAL_GEYSER_RESTORE_JOURNAL_FAILED event=" + eventId
+                    + " wave=" + state.id() + " journal=" + hazardJournal.path());
+            return false;
+        }
+        getLogger().info("SEQUENTIAL_GEYSER_RESTORED event=" + eventId
+                + " wave=" + state.id() + " generation=" + generation
+                + " restored=" + restored + " journal_restored=true");
+        return true;
+    }
+
+    private void removeSequentialGeyserWave(SequentialGeyserWaveRuntimeState state, String reason) {
+        if (state == null || !activeSequentialGeyserWaves.remove(state.id(), state)) {
+            return;
+        }
+        for (BlockCellKey cell : state.originals().keySet()) {
+            currentSequentialWaveCells.remove(cell, state.id());
+        }
+        getLogger().info("SEQUENTIAL_GEYSER_CLEANUP event=" + eventId
+                + " wave=" + state.id() + " generation=" + generation
+                + " reason=" + reason);
+    }
+
+    /**
+     * Generation-guarded teardown: every outstanding strip restores its exact
+     * original BlockData, so neither a cracked floor nor delayed damage from an
+     * obsolete cast can survive phase change, boss death, encounter stop or
+     * restart.
+     */
+    private void clearSequentialGeyserWaves(String reason) {
+        int count = activeSequentialGeyserWaves.size();
+        for (SequentialGeyserWaveRuntimeState state
+                : new ArrayList<>(activeSequentialGeyserWaves.values())) {
+            state.restorationPending = true;
+            if (restoreSequentialWaveBlocks(state)) {
+                removeSequentialGeyserWave(state, reason);
+            }
+        }
+        if (activeSequentialGeyserWaves.isEmpty()) {
+            currentSequentialWaveCells.clear();
+            nextSequentialGeyserWaveTick = 0L;
+        }
+        if (count > 0) {
+            getLogger().info("SEQUENTIAL_GEYSERS_CLEANUP event=" + eventId
+                    + " remaining=" + activeSequentialGeyserWaves.size()
+                    + " count=" + count + " generation=" + generation
+                    + " reason=" + reason);
+        }
+    }
+
     /**
      * W4-002 [A]: the usable centre-to-boundary distance actually available.
      *
@@ -66240,6 +66896,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void clearRiftObelisks(String reason) {
         clearCurrentRiftFractures(reason);
+        clearSequentialGeyserWaves(reason);
         int obelisks = activeWave4Obelisks.size();
         int fireballs = activeRiftFireballs.size();
         clearWave4Obelisks(reason);
@@ -66385,6 +67042,68 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         private World world() { return geysers.getFirst().center.getWorld(); }
         private List<BlockCellKey> cells() { return cells; }
         private Map<BlockCellKey, String> originals() { return originals; }
+    }
+
+    /**
+     * Runtime state of one Sequential 3x3 Geyser Wave.
+     *
+     * <p>The plan (contiguous sections), the absolute timeline and the exact
+     * original BlockData of every floor cell are frozen at cast start. The
+     * damaged ledger is scoped to the cast, so a player is hurt at most once
+     * across the whole strip, and the applied-surface map lets restoration
+     * refuse to clobber a foreign edit.</p>
+     */
+    private static final class SequentialGeyserWaveRuntimeState {
+        private final UUID id;
+        private final World world;
+        private final int floorY;
+        private final SequentialGeyserWavePolicy.Plan plan;
+        private final SequentialGeyserWavePolicy.Timeline timeline;
+        private final Map<BlockCellKey, String> originals;
+        private final Set<String> damagedPlayers = new LinkedHashSet<>();
+        private final Set<Integer> eruptedSections = new LinkedHashSet<>();
+        private final Map<BlockCellKey, String> appliedSurfaces = new LinkedHashMap<>();
+        private boolean restorationPending;
+        private long nextRestoreAttemptTick;
+
+        private SequentialGeyserWaveRuntimeState(UUID id, World world, int floorY,
+                                                 SequentialGeyserWavePolicy.Plan plan,
+                                                 SequentialGeyserWavePolicy.Timeline timeline,
+                                                 Map<BlockCellKey, String> originals) {
+            if (world == null || plan == null || plan.sections().isEmpty() || originals == null) {
+                throw new IllegalArgumentException("missing-sequential-wave-geometry");
+            }
+            this.id = id;
+            this.world = world;
+            this.floorY = floorY;
+            this.plan = plan;
+            this.timeline = timeline;
+            this.originals = Map.copyOf(originals);
+        }
+
+        private UUID id() {
+            return id;
+        }
+
+        private World world() {
+            return world;
+        }
+
+        private int floorY() {
+            return floorY;
+        }
+
+        private SequentialGeyserWavePolicy.Plan plan() {
+            return plan;
+        }
+
+        private SequentialGeyserWavePolicy.Timeline timeline() {
+            return timeline;
+        }
+
+        private Map<BlockCellKey, String> originals() {
+            return originals;
+        }
     }
 
     /**

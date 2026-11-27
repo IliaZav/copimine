@@ -14,7 +14,10 @@ package me.copimine.endevent.domain;
  * <p>Counterplay is authored, not implied: the gather window is a readable tell
  * ({@link #GATHER_TICKS}), the flight is slow enough to sidestep
  * ({@link #travelPerTick()}), and the actual hit test is the ring's own
- * thickness ({@link #TUBE_RADIUS}).</p>
+ * thickness ({@link #TUBE_RADIUS}), never an invisible homing sphere.</p>
+ *
+ * <p>V7 §1.1 approved direction: a LARGE, almost-horizontal, slightly-tilted
+ * ring that flies SLOWLY and visibly, not a small fast vertical projectile.</p>
  */
 public final class RiftFireRingPolicy {
     /** Segments drawn around the ring; the hit volume matches this ring. */
@@ -27,10 +30,21 @@ public final class RiftFireRingPolicy {
     public static final int BURST_TICKS = 6;
     /** Ring geometry in world blocks. */
     public static final double RING_RADIUS = 5.0D;
+    /** The swept tube that owns the real damage test. */
     public static final double TUBE_RADIUS = 0.50D;
+    /** Per-segment visual bead radius (presentation-only). */
+    public static final double SEGMENT_RADIUS = 1.6D;
+    /** Real hit geometry, not cosmetic. */
+    public static final double HIT_RADIUS = 3.2D;
+    public static final double BURST_RADIUS = 5.5D;
+    /** Vertical rise of the near-horizontal, slightly tilted plane. */
     public static final double TILT_RISE_PER_BLOCK = 0.14D;
+    /** The ring lies almost flat: this small tilt off horizontal is intentional. */
+    public static final double TILT_DEGREES = 12.0D;
     /** Damage and burn. */
     public static final double CONTACT_DAMAGE = 15.0D;
+    public static final double IMPACT_DAMAGE = 10.0D;
+    public static final double BURST_DAMAGE = 15.0D;
     public static final int IGNITE_TICKS = 60;
     /** Visual spin; the ring keeps turning the whole flight. */
     public static final double ROTATION_DEGREES_PER_TICK = 18.0D;
@@ -80,6 +94,11 @@ public final class RiftFireRingPolicy {
         return SPEED_BLOCKS_PER_TICK;
     }
 
+    /** The ring's slight tilt off the horizontal plane, in degrees (V7 §1.1). */
+    public static double tiltDegrees() {
+        return TILT_DEGREES;
+    }
+
     /** Spin angle of the ring at a flight tick; continuous, never a jump cut. */
     public static double rotationDegrees(long flightTick) {
         long ticks = Math.max(0L, flightTick);
@@ -104,6 +123,32 @@ public final class RiftFireRingPolicy {
         return (dx * forwardX + dz * forwardZ) * TILT_RISE_PER_BLOCK;
     }
 
+    /** A ring segment itself hits only inside its own authored radius. */
+    public static boolean segmentConnects(double dx, double dz) {
+        if (!Double.isFinite(dx) || !Double.isFinite(dz)) {
+            return false;
+        }
+        return Math.hypot(dx, dz) <= SEGMENT_RADIUS + HIT_RADIUS;
+    }
+
+    /**
+     * First-contact test: the ring detonates when its centre reaches a player's
+     * body or the floor. {@code centreDistanceToPlayer} is the 3D distance from
+     * the flying centre to the player; {@code reachedFloor} is a real block
+     * probe, never inferred.
+     */
+    public static boolean detonates(double centreDistanceToPlayer, boolean reachedFloor) {
+        if (reachedFloor) {
+            return true;
+        }
+        return Double.isFinite(centreDistanceToPlayer) && centreDistanceToPlayer <= HIT_RADIUS;
+    }
+
+    /** The burst volume is a real radius around the detonation point. */
+    public static boolean burstConnects(double distance) {
+        return Double.isFinite(distance) && distance <= BURST_RADIUS;
+    }
+
     /** Conservative horizontal rejection before the world-space swept body test. */
     public static boolean mayReachRing(double dx, double dz, double bodyRadius, double travel) {
         return Math.abs(Math.hypot(dx, dz) - RING_RADIUS) <= bodyRadius + TUBE_RADIUS + travel;
@@ -124,6 +169,10 @@ public final class RiftFireRingPolicy {
                 + " flight_ticks_max=" + FLIGHT_TICKS_MAX
                 + " ring_radius=" + RING_RADIUS
                 + " tube_radius=" + TUBE_RADIUS
+                + " tilt_degrees=" + TILT_DEGREES
+                + " hit_radius=" + HIT_RADIUS
+                + " burst_radius=" + BURST_RADIUS
+                + " speed_blocks_per_tick=" + SPEED_BLOCKS_PER_TICK
                 + " contact_damage=" + CONTACT_DAMAGE
                 + " ignite_ticks=" + IGNITE_TICKS
                 + " cooldown_ticks=" + COOLDOWN_TICKS;

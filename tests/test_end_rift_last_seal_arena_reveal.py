@@ -92,8 +92,10 @@ public class LastSealRevealCapProbe {{
         try {{ parseChanges(tooLarge); }} catch (IOException expected) {{ ceilingRefused = true; }}
         require(ceilingRefused, "a plan above the documented ceiling must be refused");
 
+        // The guard is 64 chunks now (the square alone spans 36), so probe it
+        // with 80 deliberately scattered chunk columns.
         List<String> wandering = new ArrayList<>();
-        for (int i = 0; i < 40; i++) wandering.add(cell(i * 16 * 40, 64, i * 16 * 40));
+        for (int i = 0; i < 80; i++) wandering.add(cell(i * 16 * 40, 64, i * 16 * 40));
         boolean chunksRefused = false;
         try {{ parseChanges(wandering); }} catch (IOException expected) {{ chunksRefused = true; }}
         require(chunksRefused, "a plan spanning too many chunks must be refused");

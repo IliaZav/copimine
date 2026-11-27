@@ -466,10 +466,15 @@ guessed, so its coordinates remain **BLOCKED-OWNER** pending the owner's real su
 
 The reviewed source and the exact deployed jar are on the server at
 `/opt/copimine-game/code-uploads/20261128-end-rift-v7-c7195be7/`:
-- `end-rift-v7-src.tgz` (8,445,539 bytes, SHA-256 `AAB0250594D7395CF2867672AEE013BCEDDB9772FD51541E9779631A3E35CC29`)
-  — all plugin `src`, `docs/end-rift` (ledger + `V7_OWNER_ACCEPTANCE_GUIDE_RU.md`),
-  `tests`, the built jar, `MANIFEST.txt`, `git-log.txt`, `git-diff-stat.txt`.
-- `CopiMineEndEvent-5BDD63E6.jar`.
+- `end-rift-v7-src.tgz` — all plugin `src`, `docs/end-rift` (ledger +
+  `V7_OWNER_ACCEPTANCE_GUIDE_RU.md`), `tests`, the built jar, plus `MANIFEST.txt`,
+  `git-log.txt`, `git-diff-stat.txt`.
+- `CopiMineEndEvent-5BDD63E6.jar` (2,695,900 bytes,
+  SHA-256 `5BDD63E61A72D1CB2D50191E14BDB26EDABE9481013CF6DA51D487149ED6BD90`).
+
+The branch `codex/end-rift-v7-release` is pushed to `github.com/IliaZav/copimine`; the
+End Rift production source is unchanged from `c7195be7` (later commits are docs and one
+test-probe fix).
 
 ### Backups / rollback
 

@@ -337,10 +337,15 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # taken from two clean `clean build` runs of HEAD 85519c40 that agreed byte
     # for byte (30 769 867 B), and the same digits were written to
     # docs/minecraft-26.3/README.md in the same commit.
-    assert artifact['size'] == 30_705_791
+    # 27-November (V7): `dbd9864e` extended the cocoon-beam / Last-Seal-ring
+    # client visuals, so the previous pin (30 705 791 B) predated the merged
+    # source. Repinned from two clean cold builds of the merged tree that agreed
+    # byte for byte and matched the clean CI build (30 706 521 B); README updated
+    # in the same commit.
+    assert artifact['size'] == 30_706_521
     assert artifact['sha512'] == (
-        '136bcdee73cc290b3903d467563b34bdd0684f6b5c47d72022764e20b0d806ca'
-        '8b5d117aae9e0fd161e13b7f1e1f69fff6966d68ecb3e2dc776310b8b5fe9418'
+        '4886667becd7d516b9cfec96b9cb3a93e4f986cc0f25544062110f2f64526b24'
+        'de74fd24156e6102d62374dcc7ddc64fc69ba402cdc2bd21ca2c0ad30ac29124'
     )
 
 

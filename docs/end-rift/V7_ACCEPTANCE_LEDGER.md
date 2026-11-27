@@ -520,7 +520,7 @@ defects**, and are reproducible on the untouched deployment branch too:
 | `test_end_event_current_contract.py::test_staged_client_artifact_matches_current_source_build` | same missing source-built client jar |
 | `test_minecraft_26_3_pack.py::test_built_26_3_candidate_matches_locked_source_and_archive_digests` | pinned Minecraft 26.3 client not downloaded (`build/minecraft-26.3/toolchain/minecraft-26.3-client.jar`) |
 | `test_minecraft_26_3_paper.py::test_paper_server_candidate_matches_locked_build_and_download_object` | `PrepareMigrationCandidates.ps1` did not stage `paper-26.3-205.jar` |
-| `test_minecraft_26_3_paper.py::test_copimine_client_candidate_matches_locked_build_artifact` | on-disk `CopiMineClient-0.1.5+26.3.jar` size 30,706,420 ≠ lock 30,705,791 |
+| `test_minecraft_26_3_paper.py::test_copimine_client_candidate_matches_locked_build_artifact` | **fixed**: stale pin (30,705,791) predated the merged client source; repinned to 30,706,521 |
 | `test_minecraft_migration_server_plugins.py` (7) | stale first-party 26.3 candidates (Dungeon lock `0020ee86…` vs disk `f447404b…`; EndEvent lock size 3,001,381 vs disk 2,958,162) and un-staged `CoreProtect-CE-…-26.3-upstream.jar`, `ClearLag …-26.3.jar`, `Chunky-Bukkit-1.5.3.jar` |
 | `test_minecraft_26_3_custom_plugin_database_contracts.py` | same Dungeon candidate lock drift |
 
@@ -528,21 +528,33 @@ Closing these requires running the full 26.3 migration pipeline
 (`PrepareMigrationCandidates.ps1` + downloads + Gradle client build), which is outside
 the End Rift runtime and does not change any deployed End Rift behaviour.
 
-### GitHub Actions
+### GitHub Actions — client pin fixed
 
-Pushing `codex/end-rift-v7-release` triggered `CopiMine verification`. The run fails in
-the step **Build and verify pinned Minecraft 26.3 candidates** with:
+The CI failure was a **stale pin, not a non-deterministic build**. Commit `dbd9864e`
+extended the cocoon-beam / Last-Seal-ring client visuals but left
+`tools/minecraft-26.3/profile.lock.json` at the pre-merge client digest
+(30,705,791 B, SHA-512 `136bcdee…`). The merged sources legitimately build a different
+archive. Three independent clean builds agree byte for byte:
+
+| Build | Size | SHA-512 |
+|---|---|---|
+| Clean CI runner (run `46064564674`, Temurin 25.0.4.1) | 30,706,521 | `4886667b…0ac29124` |
+| Local clean build #1 (Temurin 25.0.2, fresh project cache) | 30,706,521 | `4886667b…0ac29124` |
+| Local clean build #2 (Temurin 25.0.2, fresh project + local cache) | 30,706,521 | `4886667b…0ac29124` |
+
+The full digest is
+`4886667becd7d516b9cfec96b9cb3a93e4f986cc0f25544062110f2f64526b24de74fd24156e6102d62374dcc7ddc64fc69ba402cdc2bd21ca2c0ad30ac29124`.
+The lock, `docs/minecraft-26.3/README.md` and
+`tests/test_minecraft_migration_profile.py` now carry it. Verified locally:
 
 ```
-CopiMineClient build output differs from its pinned artifact digest and size: pinned 307…
-throw 'Pinned Minecraft 26.3 candidate preparation failed.'
+tests/test_minecraft_migration_profile.py::test_profile_lock_matches_the_repeatable_current_client_build PASSED
+tests/test_minecraft_26_3_paper.py::test_copimine_client_candidate_matches_locked_build_artifact PASSED
+2 passed in 0.63s
 ```
 
-Because that step aborts the job, `Run Python contract tests` never executes and
-`Publish Python test report` then fails on the missing `test-results.xml`. This is the
-same non-reproducible client-JAR pin that also fails the local
-`test_copimine_client_mob_artifact.py` group, and it is **pre-existing**: the previously
-deployed branch `codex/end-rift-v7-acceptance` (`ec03dff0`, run `46035755195`) fails with
-the identical message. It is a Minecraft-26.3 client packaging problem, not an End Rift
-source defect; the End Rift contract tests were therefore run directly against this tree
-(see above) instead of through CI.
+Because the client check aborted the job before them, `Run Python contract tests` and
+`Publish Python test report` never executed in the earlier runs; a fresh run on the
+repinned commit now exercises the rest of the migration staging. The rebuilt
+30,706,521 B client also replaces the stale 30,706,420 B jar staged for the owner, so
+the visual-acceptance client includes the `dbd9864e` VFX.

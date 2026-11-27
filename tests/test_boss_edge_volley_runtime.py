@@ -74,6 +74,9 @@ public class BossEdgeVolleyRuntimeProbe {
     void releaseBossHazardReservation(String s){}
     void clearBossSpellModels(){}
     void cancelBossFinalStrike(){}
+    // Merged V7: cancelBossCastForPhaseChange also tears down the Phase 6
+    // cocoon beam, so the extracted slice needs the seam.
+    void stopCocoonBeam(String reason){}
     // V5.1: cancelBossCastForPhaseChange also resets the Guardian physical
     // melee / Crushing Gravity state, so the slice needs the seam.
     void resetGuardianV5State(){}

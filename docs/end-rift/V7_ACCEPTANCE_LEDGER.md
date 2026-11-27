@@ -365,3 +365,77 @@ contains `BossCopyCooperationPolicy`, `RageEchoSummonPolicy` and
   `native_upgrade_commands` to upgrade it to MEASURED.
 - V7-26 native cold-restart timing: BLOCKED (no live server with RCON). The
   automated boundary matrix is `tests/test_end_rift_cold_restart_boundary_matrix.py`.
+
+## Production acceptance — 2026-11-28 (merged release `c7195be7`)
+
+The single coherent V7 release that reconciles main (`f48aac70`) with the deployed
+physical-site branch (`ec03dff0`) is commit `c7195be7` on
+`codex/end-rift-v7-release`. It was built deterministically with
+`build-plugin.ps1` (JDK 25) into `CopiMineEndEvent.jar` (2,695,900 bytes,
+SHA-256 `5BDD63E61A72D1CB2D50191E14BDB26EDABE9481013CF6DA51D487149ED6BD90`)
+and promoted to both runtimes.
+
+### Deployment
+
+| Target | Path | JAR SHA-256 | Service |
+|---|---|---|---|
+| Production | `/opt/copimine-game/minecraft/server/plugins/` | `5BDD63E6…` | `copimine-game.service` active, phase `COLLECTING`, invariants=0 |
+| Isolated site | `/opt/copimine-game/playtest-end-rift-site-20261125/plugins/` | `5BDD63E6…` | `copimine-end-rift-site-paper-20261125.service` active (`UNCONFIGURED` — that site has no arena) |
+
+Both runtimes enabled the plugin with no load errors. The production event state was
+preserved across the restart: `COLLECTING`, event `42ae3f02…`, generation 1, core
+`CopiMine 2048,72,2048`, pads 0/2, runes 2/2, `portal=unset`.
+
+### Arena destruction and restoration (real prod blocks, via RCON)
+
+`/cmend arena reveal-preview` on the promoted JAR returns
+`Карта совпадает с блоками. Радиус 57 · SHA-256 9ba622c8245a78853c5a74a8c3231441cfbfac56b7824621889ea52270a4e5e9`,
+equal to `last-seal-reveal.approved-plan-sha256` (the 16,690-cell plan; 0 safe-zone
+overlap).
+
+`/cmend arena reveal-test` then, at t+18 s (during the 5→6 reveal), measured on the
+live blocks:
+
+| Cell | Before | During reveal | After auto-restore |
+|---|---|---|---|
+| `(2014,77,2014)` inner panel | `deepslate_bricks` | **`air`** | `deepslate_bricks` |
+| `(2014,72,2014)` outer wall | `deepslate_bricks` | `deepslate_bricks` | `deepslate_bricks` |
+| `(2085,71,2033)` far wall | `deepslate_tiles` | `deepslate_tiles` | `deepslate_tiles` |
+
+The demo log shows `LAST_SEAL_REVEAL_BEGIN generation=1 plan=9ba622c8…`; the test boss
+reached `bossPhase=LAST_SEAL`, the demo ended on its own (`bossPhase` LAST_SEAL →
+AWAKENING, `boss=none`, `event-mobs=0`). After restoration `reveal-preview` again
+returns `9ba622c8…`, `/cmend debug invariants` reports `failures=0`, and the service
+log has no End Rift errors. This proves real block destruction **and** the reverse
+square restoration on the production world, including that the safe zone, outer wall
+and far tiled wall are untouched.
+
+### Portal room — BLOCKED-OWNER
+
+`/cmend portalroom info` = `CopiMine_the_end 0.5,80.0,0.5 (source=config)`. The world
+`CopiMine_the_end` exists (`CopiMine/dimensions/minecraft/the_end`; WorldGuard loaded
+it), but the End is closed through `CopiMineWorldCore` (`/cmworld end status` =
+`закрыт`), so the Rift Core Shard teleport is already gated. The configured point is
+not a standable destination: a scoreboard block probe at `(0,y,0)` in the End shows
+the island surface at y=60 (solid at 60, air 61+), so the floor beneath y=80 is air;
+and no `end_portal`/`end_portal_frame` block exists near the arena in the overworld
+region files. Per V7/OV4.7 the pre-existing behind-arena portal room must not be
+guessed, so its coordinates remain **BLOCKED-OWNER** pending the owner's real survey.
+
+### Code upload
+
+The reviewed source and the exact deployed jar are on the server at
+`/opt/copimine-game/code-uploads/20261128-end-rift-v7-c7195be7/`:
+- `end-rift-v7-src.tgz` (8,445,539 bytes, SHA-256 `AAB0250594D7395CF2867672AEE013BCEDDB9772FD51541E9779631A3E35CC29`)
+  — all plugin `src`, `docs/end-rift` (ledger + `V7_OWNER_ACCEPTANCE_GUIDE_RU.md`),
+  `tests`, the built jar, `MANIFEST.txt`, `git-log.txt`, `git-diff-stat.txt`.
+- `CopiMineEndEvent-5BDD63E6.jar`.
+
+### Backups / rollback
+
+- Previous jar: `/opt/copimine-game/deploy-backups/20261127T200539Z/CopiMineEndEvent.jar.pre-5BDD63E6`
+  (SHA `cd2f7765…`).
+- Pre-destruction overworld region: `/opt/copimine-game/backups/arena-region-20261127T200539Z/overworld-region.tgz`
+  (130,523,099 bytes).
+- Exact destructive-cell snapshot: `plugins/CopiMineEndEvent/last-seal-arena.tsv`
+  (761,176 bytes); `/cmend arena reveal-stop` restores from it idempotently.

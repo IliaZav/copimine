@@ -8707,9 +8707,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         try {
             Location core = coreCombatAnchorLocation();
-            var plan = lastSealArena.preview(core == null ? null : core.getWorld(), core,
+            var plan = lastSealArena.previewBound(core == null ? null : core.getWorld(), core,
                     lastSealSquare(), lastSealConfiguredVolume("concealed-corridor"),
-                    lastSealConfiguredVolume("protected-safe-zone"), this::protectedLastSealCell);
+                    lastSealConfiguredVolume("protected-safe-zone"), this::protectedLastSealCell, eventId);
             message(sender, "&aКарта совпадает с блоками. Радиус " + plan.radius() + " · SHA-256 " + plan.digest());
             message(sender, "&7Для утверждения укажите этот хеш в last-seal-reveal.approved-plan-sha256.");
         } catch (java.io.IOException invalid) {
@@ -8739,8 +8739,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         && "local".equalsIgnoreCase(config.environment()))) return false;
         try {
             Location core = coreCombatAnchorLocation();
-            var site = lastSealArena.preview(boss.getWorld(), core, lastSealSquare(), lastSealConfiguredVolume("concealed-corridor"),
-                    lastSealConfiguredVolume("protected-safe-zone"), this::protectedLastSealCell);
+            var site = lastSealArena.previewBound(boss.getWorld(), core, lastSealSquare(), lastSealConfiguredVolume("concealed-corridor"),
+                    lastSealConfiguredVolume("protected-safe-zone"), this::protectedLastSealCell, eventId);
             lastSealArena.begin(site, lastSealSquare(), approved, generation, eventTickCounter);
             stopEventMusic();
             lastSealAscentOrigin = boss.getLocation().clone();
@@ -12580,10 +12580,27 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         arenaMaxY = Math.min(targetWorld.getMaxHeight() - 1, coreY + verticalRadius);
         arenaMinZ = coreZ - (int) Math.ceil(config.arenaRadius());
         arenaMaxZ = coreZ + (int) Math.ceil(config.arenaRadius());
-        layoutState = new EventLayoutState(
-                new EventLayoutState.Point(worldName, arenaMinX, arenaMinY, arenaMinZ),
-                new EventLayoutState.Point(worldName, arenaMaxX, arenaMaxY, arenaMaxZ),
-                null, null, Map.of(), "UNSET", previousLayout.portalRoom());
+        var first = previousLayout.arenaPos1();
+        var second = previousLayout.arenaPos2();
+        boolean sameSite = first != null && second != null
+                && worldName.equalsIgnoreCase(first.world()) && worldName.equalsIgnoreCase(second.world())
+                && coreX >= Math.min(first.x(), second.x()) && coreX <= Math.max(first.x(), second.x())
+                && coreY >= Math.min(first.y(), second.y()) && coreY <= Math.max(first.y(), second.y())
+                && coreZ >= Math.min(first.z(), second.z()) && coreZ <= Math.max(first.z(), second.z());
+        if (sameSite) {
+            layoutState = previousLayout;
+            if (!applyArenaBoundsFromLayout()) {
+                applySnapshot(previousSnapshot);
+                layoutState = previousLayout;
+                message(feedback, "&cГраницы существующей арены недопустимы. Ядро не назначено.");
+                return;
+            }
+        } else {
+            layoutState = new EventLayoutState(
+                    new EventLayoutState.Point(worldName, arenaMinX, arenaMinY, arenaMinZ),
+                    new EventLayoutState.Point(worldName, arenaMaxX, arenaMaxY, arenaMaxZ),
+                    null, null, Map.of(), "UNSET", previousLayout.portalRoom());
+        }
         resourceRequirements.clear();
         resourceRequirements.putAll(config.resourceRequirements());
         depositedResources.clear();
@@ -12638,6 +12655,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             layoutState = previousLayout;
             message(feedback, "&cСостояние не удалось durable-сохранить; мир оставлен без Core.");
             return;
+        }
+        if (lastSealArena != null && lastSealArena.configured()) {
+            try {
+                lastSealArena.bindCoreVisuals(targetWorld, coreCombatAnchorLocation(), lastSealSquare(),
+                        lastSealConfiguredVolume("concealed-corridor"), lastSealConfiguredVolume("protected-safe-zone"),
+                        this::protectedLastSealCell, eventId,
+                        getConfig().getString("last-seal-reveal.approved-plan-sha256", ""));
+                message(feedback, "&aВнешний вид утверждённых блоков Last Seal записан для этого ядра.");
+            } catch (java.io.IOException invalid) {
+                getLogger().warning("LAST_SEAL_CORE_VISUALS_REFUSED " + invalid.getMessage());
+                message(feedback, "&eЯдро назначено. Снимок разрушения не принят: " + invalid.getMessage());
+            }
         }
         forcePhase(EventPhase.COLLECTING, "core configured");
         rebuildPersistedVisuals();
@@ -18890,7 +18919,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         String approved = getConfig().getString("last-seal-reveal.approved-plan-sha256", "");
         try {
-            var plan = lastSealArena.preview(world, core, lastSealSquare(), corridor, safe, this::protectedLastSealCell);
+            var plan = lastSealArena.previewBound(world, core, lastSealSquare(), corridor, safe, this::protectedLastSealCell, eventId);
             if (!plan.digest().equalsIgnoreCase(approved)) return "маска Last Seal не утверждена для этой площадки";
         } catch (java.io.IOException blocked) {
             return "маска Last Seal не прошла проверку: " + blocked.getMessage();
@@ -20093,9 +20122,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     waveMovementRadius(),
                     MIN_WAVE_CORE_DISTANCE_BLOCKS, realitySplitChamberId(mob), mob);
         }
-        if (destination == null || outsideCombatVertical(destination, anchor)
-                || horizontalDistanceSquared(destination, anchor)
-                > boundedCombatRadius(config.containmentRadius()) * boundedCombatRadius(config.containmentRadius())) {
+        if (destination == null || !isArenaLocation(destination) || outsideCombatVertical(destination, anchor)
+                || horizontalDistanceSquared(destination, anchor) > waveMovementRadius() * waveMovementRadius()) {
             return;
         }
         mob.getPathfinder().stopPathfinding();
@@ -20104,7 +20132,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         boolean moved = mob.getPathfinder().moveTo(destination, speed);
         if (!moved) {
             moved = requestBoundedCombatMovement(mob, destination, speed, anchor,
-                    boundedCombatRadius(config.containmentRadius()), MIN_WAVE_CORE_DISTANCE_BLOCKS,
+                    waveMovementRadius(), MIN_WAVE_CORE_DISTANCE_BLOCKS,
                     realitySplitChamberId(mob),
                     "WAVE_AI_STUCK_REPOSITION");
         }
@@ -20207,7 +20235,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         boolean moved = skeleton.getPathfinder().moveTo(destination, speed);
         if (!moved) {
             moved = requestBoundedCombatMovement(skeleton, destination, speed, anchor,
-                    boundedCombatRadius(config.containmentRadius()), MIN_WAVE_CORE_DISTANCE_BLOCKS,
+                    waveMovementRadius(), MIN_WAVE_CORE_DISTANCE_BLOCKS,
                     realitySplitChamberId(skeleton),
                     "WAVE_SKELETON_PATH");
         }
@@ -20958,7 +20986,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 continue;
             }
             requestBoundedCombatMovement(mob, destination, 1.0D, anchor,
-                    boundedCombatRadius(config.containmentRadius()),
+                    waveMovementRadius(),
                     MIN_WAVE_CORE_DISTANCE_BLOCKS, -1, "WAVE6_RING_LEASH");
         }
     }
@@ -21257,6 +21285,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Location carrierRetreat = currentCarrierRetreatDestination(mob, target, now);
         if (carrierRetreat != null) mob.setTarget(null);
         if (carrierRetreat == null && !isEliteSpiderWebSupport(mob, kind)
+                && isArenaLocation(target.getLocation())
                 && horizontalDistanceSquared(mob.getLocation(), target.getLocation()) <= 16.0D
                 && horizontalDistanceSquared(target.getLocation(), anchor)
                 <= waveMovementRadius() * waveMovementRadius()
@@ -21283,9 +21312,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     waveMovementRadius(),
                     MIN_WAVE_CORE_DISTANCE_BLOCKS, realitySplitChamberId(mob), mob);
         }
-        if (destination == null
-                || horizontalDistanceSquared(destination, anchor)
-                > boundedCombatRadius(config.containmentRadius()) * boundedCombatRadius(config.containmentRadius())
+        if (destination == null || !isArenaLocation(destination)
+                || horizontalDistanceSquared(destination, anchor) > waveMovementRadius() * waveMovementRadius()
                 || outsideCombatVertical(destination, anchor)) {
             mob.setTarget(null);
             nextWavePathRequestMillis.put(mob.getUniqueId(), now + WAVE_PATH_REQUEST_INTERVAL_MILLIS);
@@ -21313,7 +21341,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         boolean moved = mob.getPathfinder().moveTo(destination, speed);
         if (!moved) {
             moved = requestBoundedCombatMovement(mob, destination, speed, anchor,
-                    boundedCombatRadius(config.containmentRadius()), MIN_WAVE_CORE_DISTANCE_BLOCKS,
+                    waveMovementRadius(), MIN_WAVE_CORE_DISTANCE_BLOCKS,
                     realitySplitChamberId(mob),
                     "WAVE_AI_PATH");
         }
@@ -21407,6 +21435,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                                       Entity occupant) {
         if (anchor == null || candidate == null || candidate.getWorld() == null
                 || !anchor.getWorld().equals(candidate.getWorld())
+                || !isArenaLocation(candidate)
                 || !CombatMovementPolicy.withinBounds(anchor.getX(), anchor.getY(), anchor.getZ(),
                 candidate.getX(), candidate.getY(), candidate.getZ(), radius,
                 configuredCombatVerticalRadius(), minimumCoreDistance)) {
@@ -24517,7 +24546,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             waveLeashReturns.remove(entity.getUniqueId());
             return;
         }
-        boolean hardViolation = standingOnCore || outsideVerticalRadius || outsideClosedChamber
+        boolean hardViolation = standingOnCore || !isArenaLocation(current) || outsideVerticalRadius || outsideClosedChamber
                 || unsafeWaveFootprint || horizontalDistanceSquared(current, anchor)
                 > (radius + 6.0D) * (radius + 6.0D);
         WaveLeashReturn returning = waveLeashReturns.get(entity.getUniqueId());
@@ -24658,9 +24687,19 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return Math.max(1.0D, Math.min(MAX_COMBAT_RADIUS_BLOCKS, configuredRadius));
     }
 
+    private double assignedArenaCombatRadius(double fallback) {
+        if (!isConfigured() || arenaMaxX <= arenaMinX || arenaMaxZ <= arenaMinZ) return fallback;
+        // The coarse Pathfinder radius encloses even the far corner of an
+        // asymmetric rectangle. Every actual destination still checks the cuboid.
+        double x = Math.max(Math.abs((double) arenaMinX - coreX), Math.abs((double) arenaMaxX - coreX));
+        double z = Math.max(Math.abs((double) arenaMinZ - coreZ), Math.abs((double) arenaMaxZ - coreZ));
+        return Math.hypot(x + .5D, z + .5D);
+    }
+
     private double bossArenaRadius() {
         var expanded = lastSealArena == null ? null : lastSealArena.opened(generation);
-        return expanded == null ? boundedCombatRadius(config.bossRadius()) : expanded.radius() - .75D;
+        return expanded == null ? assignedArenaCombatRadius(boundedCombatRadius(config.bossRadius()))
+                : expanded.radius() - .75D;
     }
 
     private Location bossArenaAnchor() {
@@ -24672,8 +24711,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     /** Keep native Pathfinder movement inside the public containment radius. */
     private double waveMovementRadius() {
-        return CombatMovementPolicy.movementContainmentRadius(
-                boundedCombatRadius(config.containmentRadius()));
+        return assignedArenaCombatRadius(CombatMovementPolicy.movementContainmentRadius(
+                boundedCombatRadius(config.containmentRadius())));
     }
 
     /** Keep mini-boss Weakness meaningful without making ordinary weapons deal zero damage. */
@@ -49605,9 +49644,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             event.setTo(target);
             return;
         }
-        double radius = EVENT_KIND_BOSS.equals(kind)
-                ? boundedCombatRadius(config.bossRadius())
-                : boundedCombatRadius(config.containmentRadius());
+        double radius = EVENT_KIND_BOSS.equals(kind) ? bossArenaRadius() : waveMovementRadius();
         int chamber = realitySplitChamberId(entity);
         int chamberCount = realitySplitChamberController.assignment().chamberCount();
         boolean closedChamber = chamber >= 0
@@ -49647,7 +49684,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         boolean outsideHorizontalRadius = horizontalDistanceSquared(target, anchor) > radius * radius;
         boolean outsideVerticalRadius = outsideCombatVertical(target, anchor);
-        if (outsideHorizontalRadius || outsideVerticalRadius || outsideChamber) {
+        if (!isArenaLocation(target) || outsideHorizontalRadius || outsideVerticalRadius || outsideChamber) {
             double minimum = EVENT_KIND_BOSS.equals(kind)
                     ? MIN_BOSS_CORE_DISTANCE_BLOCKS : MIN_WAVE_CORE_DISTANCE_BLOCKS;
             Location preferred = chamber >= 0
@@ -49657,7 +49694,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             Location safe = findSafeCombatLocation(anchor, preferred, radius - 0.75D,
                     minimum, chamber, entity);
-            if (safe == null) {
+            if (safe == null || !isArenaLocation(safe)) {
                 if (activeWave == 6) {
                     combatTeleportRejectionReasons.put(entityId, "containment-has-no-safe-correction");
                 }

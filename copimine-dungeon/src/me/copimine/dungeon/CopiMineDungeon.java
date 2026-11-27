@@ -106,7 +106,7 @@ public final class CopiMineDungeon extends JavaPlugin {
         }
         EditorSessionListener editor = new EditorSessionListener(sessions, wand, store);
         getServer().getPluginManager().registerEvents(editor, this);
-        getServer().getScheduler().runTaskTimer(this, editor::drawOverlays, 5L, 10L);
+        getServer().getScheduler().runTaskTimer(this, editor::drawOverlays, 5L, 5L);
         runtime = new DungeonRuntime(this, getConfig().getBoolean("dungeons.runtime.enabled", false));
         runtime.start(published);
         java.util.function.Predicate<String> roomReadiness = runtime::officialRoomReady;

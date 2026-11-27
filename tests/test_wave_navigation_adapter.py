@@ -71,6 +71,7 @@ public class WaveLeashProbe {
   boolean isWaveCombatKind(String kind){return "MOB".equals(kind);}
   boolean isLiveOwnedEntity(UUID id){return true;}
   boolean isCoreBlockPosition(Location loc){return core;}
+  boolean isArenaLocation(Location loc){return Math.abs(loc.x)<=34 && Math.abs(loc.z)<=34;}
   boolean outsideCombatVertical(Location loc,Location anchor){return Math.abs(loc.y-anchor.y)>3;}
   double configuredCombatVerticalRadius(){return 3;}
   double horizontalDistanceSquared(Location a,Location b){return Math.pow(a.x-b.x,2)+Math.pow(a.z-b.z,2);}
@@ -106,6 +107,12 @@ public class WaveLeashProbe {
     var fallen=p.new Mob();fallen.position=new Location(5,58,0);
     p.enforceCombatLeash(fallen,anchor,19,"WAVE_AI_LEASH");
     if(p.teleports!=2)throw new AssertionError("void recovery was removed");
+    var wide=p.new Mob(); wide.position=new Location(29,68,28);
+    p.enforceCombatLeash(wide,anchor,49,"WAVE_AI_LEASH");
+    if(p.teleports!=2)throw new AssertionError("leash rejected the interior of a larger configured square");
+    var outside=p.new Mob(); outside.position=new Location(35,68,0);
+    p.enforceCombatLeash(outside,anchor,49,"WAVE_AI_LEASH");
+    if(p.teleports!=3)throw new AssertionError("rectangular boundary allowed an out-of-arena mob");
     generationProbe(p,anchor);
     p=new WaveLeashProbe();p.pathWorks=false;edge=p.new Mob();edge.position=new Location(19.15,68,0);
     p.enforceCombatLeash(edge,anchor,19,"WAVE_AI_LEASH");

@@ -82,6 +82,7 @@ final class LastSealArenaReveal {
     private record Fragment(BlockDisplay display, Transformation fall, long start, long end) { }
 
     private final Path planPath;
+    private final Path coreVisuals;
     private final Path journal;
     private final List<Fragment> fragments = new ArrayList<>();
     private List<CollapseCell> collapse = List.of();
@@ -96,6 +97,7 @@ final class LastSealArenaReveal {
 
     LastSealArenaReveal(Path directory) {
         planPath = directory.resolve("last-seal-arena.tsv");
+        coreVisuals = directory.resolve("last-seal-core-visuals.tsv");
         journal = directory.resolve("last-seal-arena-journal.tsv");
     }
 
@@ -105,6 +107,27 @@ final class LastSealArenaReveal {
     Plan preview(World world, Location core, Square original, Square corridor, Square safeZone,
                  Predicate<Location> protectedCell)
             throws IOException {
+        return inspect(world, core, original, corridor, safeZone, protectedCell, null, false);
+    }
+
+    Plan previewBound(World world, Location core, Square original, Square corridor, Square safeZone,
+                      Predicate<Location> protectedCell, String eventId) throws IOException {
+        return inspect(world, core, original, corridor, safeZone, protectedCell, eventId, false);
+    }
+
+    void bindCoreVisuals(World world, Location core, Square original, Square corridor, Square safeZone,
+                         Predicate<Location> protectedCell, String eventId, String approved) throws IOException {
+        if (needsRecovery() || plan != null || eventId == null || eventId.isBlank()) throw new IOException("unfinished Last Seal recovery");
+        Plan captured = inspect(world, core, original, corridor, safeZone, protectedCell, null, true);
+        if (!captured.digest().equalsIgnoreCase(approved)) throw new IOException("structural mask is not approved");
+        String body = encodeChanges(captured.changes());
+        String header = String.join("\t", "last-seal-core-v1", eventId, captured.digest(),
+                digest(body.getBytes(StandardCharsets.UTF_8)));
+        writeAtomic(coreVisuals, header + "\n" + body, true);
+    }
+
+    private Plan inspect(World world, Location core, Square original, Square corridor, Square safeZone,
+                         Predicate<Location> protectedCell, String eventId, boolean capture) throws IOException {
         if (world == null || core == null || original == null) throw new IOException("arena layout is unavailable");
         byte[] bytes = readBounded(planPath);
         List<String> lines = java.util.Arrays.asList(new String(bytes, StandardCharsets.UTF_8).split("\\R"));
@@ -136,6 +159,9 @@ final class LastSealArenaReveal {
                 }
             }
             List<Change> changes = parseChanges(lines.subList(1, lines.size()));
+            if (eventId != null && Files.exists(coreVisuals)) {
+                changes = readCoreVisuals(changes, eventId, candidate.digest());
+            }
             if (safeZone != null && safeZone.contains(landing.at(world)))
                 throw new IOException("rescue landing cannot be in the protected safe zone");
             if (changes.size() != expectedCount || changes.stream().noneMatch(Change::wall))
@@ -146,6 +172,7 @@ final class LastSealArenaReveal {
             LastSealStructuralGeometryPolicy.Box corridorBox = corridor == null ? null
                     : new LastSealStructuralGeometryPolicy.Box(corridor.minX(), corridor.minY(),
                             corridor.minZ(), corridor.maxX(), corridor.maxY(), corridor.maxZ());
+            List<Change> visualStates = capture ? new ArrayList<>(changes.size()) : changes;
             for (Change change : changes) {
                 Cell cell = change.cell();
                 Location at = cell.at(world);
@@ -156,15 +183,39 @@ final class LastSealArenaReveal {
                         || safeZone != null && safeZone.contains(at)
                         || !ensureLoaded(world, cell)) throw new IOException("unapproved, protected, or unloaded cell " + cell);
                 Block block = cell.block(world);
+                String actual = block.getBlockData().getAsString();
                 if (!block.getType().isSolid() || block.getState(false) instanceof TileState
-                        || !block.getBlockData().getAsString().equals(change.original())) {
+                        || !capture && !actual.equals(change.original())) {
                     throw new IOException("site no longer matches original block at " + cell);
                 }
+                if (capture) visualStates.add(new Change(change.kind(), cell, actual));
             }
-            return new Plan(id, x, z, radius, floor, rescueY, landing, candidate.digest(), changes, safeZone);
+            return new Plan(id, x, z, radius, floor, rescueY, landing, candidate.digest(), List.copyOf(visualStates), safeZone);
         } catch (IllegalArgumentException invalid) {
             throw new IOException("invalid Last Seal plan", invalid);
         }
+    }
+
+    private List<Change> readCoreVisuals(List<Change> structural, String eventId, String maskDigest)
+            throws IOException {
+        String encoded = new String(readBounded(coreVisuals), StandardCharsets.UTF_8);
+        int end = encoded.indexOf('\n');
+        if (end < 1) throw new IOException("missing core visual header");
+        String[] header = encoded.substring(0, end).split("\t", -1);
+        if (header.length != 4 || !header[0].equals("last-seal-core-v1"))
+            throw new IOException("invalid core visual header");
+        if (!header[1].equals(eventId)) return structural;
+        String body = encoded.substring(end + 1);
+        if (!header[2].equals(maskDigest) || !header[3].equals(digest(body.getBytes(StandardCharsets.UTF_8))))
+            throw new IOException("core visual snapshot does not match the approved mask");
+        List<Change> captured = parseChanges(java.util.Arrays.asList(body.split("\\R")));
+        if (captured.size() != structural.size()) throw new IOException("core visual cell count changed");
+        for (int i = 0; i < structural.size(); i++) {
+            Change expected = structural.get(i), visual = captured.get(i);
+            if (!expected.kind().equals(visual.kind()) || !expected.cell().equals(visual.cell()))
+                throw new IOException("core visual cell outside the approved mask");
+        }
+        return captured;
     }
 
     void begin(Plan checked, Square original, String approved, long generation, long tick) throws IOException {
@@ -441,17 +492,12 @@ final class LastSealArenaReveal {
     }
 
     private void writeJournal(Plan checked, Square original) throws IOException {
-        StringBuilder body = new StringBuilder();
-        for (Change change : checked.changes()) {
-            Cell c = change.cell();
-            body.append(change.kind()).append('\t').append(c.x()).append('\t')
-                    .append(c.y()).append('\t').append(c.z()).append('\t').append(change.original()).append('\n');
-        }
+        String body = encodeChanges(checked.changes());
         Cell safe = checked.landing();
         // V2: floor, origMinY, origMaxY inserted after origXZ (indices 11-13)
         String header = String.join("\t", VERSION_V2, checked.worldId().toString(),
                 "" + safe.x(), "" + safe.y(), "" + safe.z(),
-                "" + checked.changes().size(), digest(body.toString().getBytes(StandardCharsets.UTF_8)),
+                "" + checked.changes().size(), digest(body.getBytes(StandardCharsets.UTF_8)),
                 "" + original.minX(), "" + original.minZ(),
                 "" + original.maxX(), "" + original.maxZ(),
                 "" + checked.floor(), "" + original.minY(), "" + original.maxY(),
@@ -459,15 +505,30 @@ final class LastSealArenaReveal {
         Square safeZone = checked.protectedSafeZone();
         if (safeZone != null) header += "\t" + String.join("\t", "" + safeZone.minX(), "" + safeZone.minY(),
                 "" + safeZone.minZ(), "" + safeZone.maxX(), "" + safeZone.maxY(), "" + safeZone.maxZ());
-        Files.createDirectories(journal.getParent());
-        Path temporary = Files.createTempFile(journal.getParent(), "last-seal-arena-", ".tmp");
+        writeAtomic(journal, header + "\n" + body, false);
+    }
+
+    private static String encodeChanges(List<Change> changes) {
+        StringBuilder body = new StringBuilder();
+        for (Change change : changes) {
+            Cell c = change.cell();
+            body.append(change.kind()).append('\t').append(c.x()).append('\t')
+                    .append(c.y()).append('\t').append(c.z()).append('\t').append(change.original()).append('\n');
+        }
+        return body.toString();
+    }
+
+    private static void writeAtomic(Path file, String content, boolean replace) throws IOException {
+        Files.createDirectories(file.getParent());
+        Path temporary = Files.createTempFile(file.getParent(), "last-seal-arena-", ".tmp");
         try {
             try (FileChannel channel = FileChannel.open(temporary, StandardOpenOption.WRITE)) {
-                ByteBuffer bytes = StandardCharsets.UTF_8.encode(header + "\n" + body);
+                ByteBuffer bytes = StandardCharsets.UTF_8.encode(content);
                 while (bytes.hasRemaining()) channel.write(bytes);
                 channel.force(true);
             }
-            Files.move(temporary, journal, StandardCopyOption.ATOMIC_MOVE);
+            if (replace) Files.move(temporary, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            else Files.move(temporary, file, StandardCopyOption.ATOMIC_MOVE);
         } finally {
             Files.deleteIfExists(temporary);
         }

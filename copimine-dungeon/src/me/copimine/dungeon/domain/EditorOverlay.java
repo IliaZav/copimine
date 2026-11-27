@@ -83,6 +83,68 @@ public final class EditorOverlay {
         return cap(points, total);
     }
 
+    public record OutlinePoint(double x, double y, double z, boolean guide) { }
+
+    private record VisibleLine(double x, double y, double z, double dx, double dy, double dz,
+                               double start, double end, boolean guide) {
+        double length() { return (end - start) * Math.sqrt(dx * dx + dy * dy + dz * dz); }
+    }
+
+    /** Exact block-face outlines, clipped before allocating the per-viewer point budget. */
+    public static List<OutlinePoint> visibleOutline(Cuboid box, double eyeX, double eyeY, double eyeZ,
+                                                    double range, int budget, boolean guides) {
+        if (budget < 1 || range <= 0D) return List.of();
+        double[] x = {box.minX() + .035D, box.maxX() + .965D};
+        double[] y = {box.minY() + .035D, box.maxY() + .965D};
+        double[] z = {box.minZ() + .035D, box.maxZ() + .965D};
+        List<VisibleLine> lines = new ArrayList<>(16);
+        for (int a = 0; a < 2; a++) {
+            for (int b = 0; b < 2; b++) {
+                clip(lines, x[0], y[a], z[b], x[1], y[a], z[b], eyeX, eyeY, eyeZ, range, false);
+                clip(lines, x[a], y[0], z[b], x[a], y[1], z[b], eyeX, eyeY, eyeZ, range, false);
+                clip(lines, x[a], y[b], z[0], x[a], y[b], z[1], eyeX, eyeY, eyeZ, range, false);
+            }
+        }
+        if (guides && eyeX >= x[0] && eyeX <= x[1] && eyeZ >= z[0] && eyeZ <= z[1]
+                && eyeY >= y[0] && eyeY <= y[1] + 2D) {
+            double level = Math.clamp(eyeY - 1.6D, y[0] + .02D, y[1]);
+            clip(lines, x[0], level, eyeZ, x[1], level, eyeZ, eyeX, eyeY, eyeZ, range, true);
+            clip(lines, eyeX, level, z[0], eyeX, level, z[1], eyeX, eyeY, eyeZ, range, true);
+        }
+        if (lines.isEmpty()) return List.of();
+        int limit = Math.min(HARD_BUDGET, budget);
+        double length = lines.stream().mapToDouble(VisibleLine::length).sum();
+        double spacing = Math.max(.35D, length / Math.max(1, limit - 2 * lines.size()));
+        List<OutlinePoint> result = new ArrayList<>(limit);
+        for (int lineIndex = 0; lineIndex < lines.size() && result.size() < limit; lineIndex++) {
+            var line = lines.get(lineIndex);
+            int available = Math.max(1, limit - result.size() - (lines.size() - lineIndex - 1));
+            int count = Math.min(available, Math.max(2, 1 + (int) Math.ceil(line.length() / spacing)));
+            for (int i = 0; i < count; i++) {
+                double fraction = count == 1 ? .5D : (double) i / (count - 1);
+                double t = line.start() + (line.end() - line.start()) * fraction;
+                result.add(new OutlinePoint(line.x() + line.dx() * t, line.y() + line.dy() * t,
+                        line.z() + line.dz() * t, line.guide()));
+            }
+        }
+        return result;
+    }
+
+    private static void clip(List<VisibleLine> lines, double x, double y, double z,
+                             double endX, double endY, double endZ,
+                             double eyeX, double eyeY, double eyeZ, double range, boolean guide) {
+        double dx = endX - x, dy = endY - y, dz = endZ - z;
+        double a = dx * dx + dy * dy + dz * dz;
+        double px = x - eyeX, py = y - eyeY, pz = z - eyeZ;
+        double projection = px * dx + py * dy + pz * dz;
+        double discriminant = projection * projection - a * (px * px + py * py + pz * pz - range * range);
+        if (a <= 0 || discriminant < 0) return;
+        double root = Math.sqrt(discriminant);
+        double start = Math.max(0, (-projection - root) / a);
+        double end = Math.min(1, (-projection + root) / a);
+        if (start <= end) lines.add(new VisibleLine(x, y, z, dx, dy, dz, start, end, guide));
+    }
+
     /** The twelve mid-plane guide segments (three rectangles). */
     public static List<int[][]> planeGuideSegments(Cuboid c) {
         List<int[][]> guides = new ArrayList<>(12);

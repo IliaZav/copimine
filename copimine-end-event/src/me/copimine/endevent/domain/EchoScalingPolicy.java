@@ -5,7 +5,7 @@ package me.copimine.endevent.domain;
  *
  * <p>The copy is deliberately not a miniboss. It fights with the owner's own
  * weapon concept, so it is built from the owner's stable maximum health at
- * admission and hits 1.25x harder. The damage bonus is applied once, after the
+ * admission and hits 1.45x harder. The damage bonus is applied once, after the
  * legitimate hit has been established, because applying it twice is how copies
  * quietly become unkillable.
  */
@@ -14,9 +14,9 @@ public final class EchoScalingPolicy {
     public static final double MIN_HEALTH_MULTIPLIER = 2.0D;
     public static final double MAX_HEALTH_MULTIPLIER = 3.0D;
     /** Accepted default inside the band. */
-    public static final double HEALTH_MULTIPLIER = 2.5D;
+    public static final double HEALTH_MULTIPLIER = 3.0D;
     /** Starting damage bonus. */
-    public static final double DAMAGE_MULTIPLIER = 1.25D;
+    public static final double DAMAGE_MULTIPLIER = 1.45D;
 
     private EchoScalingPolicy() {
     }
@@ -35,7 +35,7 @@ public final class EchoScalingPolicy {
         return ownerMaxHealth * HEALTH_MULTIPLIER;
     }
 
-    /** Owner damage after the 1.25x bonus, applied once. */
+    /** Owner damage after the 1.45x bonus, applied once. */
     public static double copyDamage(double legitimateDamage) {
         if (!Double.isFinite(legitimateDamage) || legitimateDamage <= 0.0D) {
             return 0.0D;

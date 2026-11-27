@@ -535,7 +535,7 @@ public final class EditorSessionListener implements Listener {
             EditorSession session = sessions.open(id, player.getName());
             if (!session.overlayVisible()) continue;
             Location eye = player.getEyeLocation();
-            double rangeSquared = (double) session.overlayRangeBlocks() * session.overlayRangeBlocks();
+            double range = session.overlayRangeBlocks();
             List<Inspect> objects = nearbyObjects(player, session);
             Inspect focused = focus(player, objects, session.overlayRangeBlocks());
             if (focused != null) {
@@ -546,15 +546,22 @@ public final class EditorSessionListener implements Listener {
             var entries = objects.stream()
                     .sorted(Comparator.comparing((Inspect entry) -> entry != focused && !entry.selected())
                             .thenComparingDouble(entry -> distanceToBoundsSquared(eye, entry.bounds())))
-                    .limit(16)
-                    .map(entry -> new EditorOverlay.Entry(entry.type(), entry.bounds(), entry.selected() || entry == focused))
+                    .limit(10)
                     .toList();
-            for (var sample : EditorOverlay.sampleAll(entries, 150)) {
-                Location at = new Location(player.getWorld(), sample.x() + 0.5, sample.y() + 0.5, sample.z() + 0.5);
-                if (at.distanceSquared(eye) <= rangeSquared) {
-                    player.spawnParticle(Particle.DUST, at, 1, 0, 0, 0, 0,
-                            new Particle.DustOptions(Color.fromRGB(sample.color()), 0.8f));
+            int remaining = 444;
+            for (int index = 0; index < entries.size() && remaining > 0; index++) {
+                Inspect entry = entries.get(index);
+                boolean active = entry == focused || entry.selected() || entry.type() == OverlayType.DRAFT;
+                int budget = Math.min(remaining, active ? 168 : Math.max(24, remaining / (entries.size() - index)));
+                var outline = EditorOverlay.visibleOutline(entry.bounds(), eye.getX(), eye.getY(), eye.getZ(),
+                        range, budget, active || entry.type() == OverlayType.ROOM);
+                var edge = new Particle.DustOptions(Color.fromRGB(entry.type().color()), active ? 1.35f : 1.0f);
+                var guide = new Particle.DustOptions(Color.fromRGB(entry.type().color()), .72f);
+                for (var sample : outline) {
+                    Location at = new Location(player.getWorld(), sample.x(), sample.y(), sample.z());
+                    player.spawnParticle(Particle.DUST, at, 1, 0, 0, 0, 0, sample.guide() ? guide : edge, true);
                 }
+                remaining -= outline.size();
             }
         }
     }

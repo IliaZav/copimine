@@ -25,7 +25,7 @@ public final class EditorSession {
     private String world;
     private boolean overlayVisible = true;
     private OverlayType overlayFilter;
-    private int overlayRangeBlocks = 32;
+    private int overlayRangeBlocks = 64;
     private boolean occlusion = true;
     private boolean draftPreview = false;
 

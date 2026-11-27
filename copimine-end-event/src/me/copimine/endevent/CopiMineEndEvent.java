@@ -2106,6 +2106,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * fire stage reuses them verbatim instead of re-picking targets.
      */
     private List<ChestBeamPolicy.Aim> bossChestBeamLockedAims = List.of();
+    /**
+     * The selected players each lane is assigned to, captured with the lanes at
+     * aim-lock. The owner's latest decision makes the fired beam slowly hunt its
+     * assigned body: the target list is used only to track the lane direction by
+     * the bounded {@link ChestBeamPolicy#TRACK_RADIANS_PER_TICK}, never to
+     * re-select a different player at fire time.
+     */
+    private List<UUID> bossChestBeamLockedTargets = List.of();
     private Location bossChestBeamLockedChest;
     private long bossChestBeamLockedGeneration = -1L;
     /** N23-P1-05: stable per-cast seed for the authored full-length beam mesh cue. */
@@ -9122,7 +9130,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         arenaMaxX = Math.max(first.x(), second.x());
         arenaMaxY = Math.max(first.y(), second.y());
         arenaMaxZ = Math.max(first.z(), second.z());
-        return arenaVolume() > 0L && arenaVolume() <= 262_144L;
+        // V7 §12: the underground arena is a 69x61x69 square (290,421 blocks).
+        // The retired 262,144 ceiling was smaller than the owner-authored hall, so
+        // a legitimate layout could never be applied or saved. Keep a hard bound
+        // (2^20) so a mistyped corner still cannot select a whole dimension.
+        return arenaVolume() > 0L && arenaVolume() <= 1_048_576L;
     }
 
     private long arenaVolume() {
@@ -12788,6 +12800,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         bossChestBeamActive = false;
         bossChestBeamCooldownUntilTick = -1L;
         bossChestBeamLockedAims = List.of();
+        bossChestBeamLockedTargets = List.of();
         bossChestBeamLockedChest = null;
         bossChestBeamLockedGeneration = -1L;
         clearWorldVfxBeamsByPrefix(CHEST_BEAM_VFX_PREFIX);
@@ -33119,9 +33132,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         long width = (long) arenaMaxX - arenaMinX + 1L;
         long height = (long) arenaMaxY - arenaMinY + 1L;
         long depth = (long) arenaMaxZ - arenaMinZ + 1L;
+        // V7 §12: the authored square hall is 69x61x69 = 290,421 blocks, larger
+        // than the retired 262,144 cap; bound it at 2^20 instead of rejecting the
+        // real arena, while still refusing a dimension-scale mistake.
         if (width <= 0L || height <= 0L || depth <= 0L
-                || width > 262_144L || height > 262_144L || depth > 262_144L
-                || width * height > 262_144L || width * height * depth > 262_144L) {
+                || width > 1_048_576L || height > 1_048_576L || depth > 1_048_576L
+                || width * height > 1_048_576L || width * height * depth > 1_048_576L) {
             return false;
         }
         World world = Bukkit.getWorld(worldName);
@@ -55598,17 +55614,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return false;
         }
         List<ChestBeamPolicy.Aim> aims = new ArrayList<>();
+        List<UUID> targets = new ArrayList<>();
         long laneSeed = bossChestBeamSequence + eventTickCounter + generation;
         for (int index : ChestBeamPolicy.selectLaneIndices(participants.size(),
                 ChestBeamPolicy.laneCount(participants.size()), laneSeed)) {
             Location eye = participants.get(index).getEyeLocation();
             aims.add(ChestBeamPolicy.aimAt(chest.getX(), chest.getY(), chest.getZ(),
                     eye.getX(), eye.getY(), eye.getZ()));
+            targets.add(participants.get(index).getUniqueId());
         }
         if (aims.isEmpty()) {
             return false;
         }
         bossChestBeamLockedAims = List.copyOf(aims);
+        bossChestBeamLockedTargets = List.copyOf(targets);
         bossChestBeamLockedChest = chest;
         bossChestBeamLockedGeneration = generation;
         getLogger().info("BOSS_CHEST_BEAM_AIM_LOCK event=" + eventId + " boss=" + boss.getUniqueId()
@@ -55664,6 +55683,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         Location chest = bossChestBeamLockedChest.clone();
         List<ChestBeamPolicy.Aim> aims = new ArrayList<>(bossChestBeamLockedAims);
+        List<UUID> trackedTargets = new ArrayList<>(bossChestBeamLockedTargets);
         long castSequence = ++bossChestBeamSequence;
         String callbackEvent = eventId;
         UUID bossId = boss.getUniqueId();
@@ -55704,6 +55724,26 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 return;
             }
             int tick = elapsed[0];
+            // Owner's latest decision: the live beam slowly hunts its assigned
+            // body instead of staying a completely frozen ray. The per-tick turn
+            // is capped far below a normal strafe (ChestBeamPolicy), so a player
+            // can still step out of the lane, while a parked body is held. The
+            // target identity itself is never re-selected: each lane only tracks
+            // the exact player chosen at aim-lock, and a dead/logged-out target
+            // leaves the lane frozen at its last direction.
+            if (!aims.isEmpty()
+                    && (ChestBeamPolicy.chargingAt(tick) || ChestBeamPolicy.damagesAt(tick))) {
+                for (int lane = 0; lane < aims.size() && lane < trackedTargets.size(); lane++) {
+                    Player hunted = Bukkit.getPlayer(trackedTargets.get(lane));
+                    if (hunted == null || !hunted.isOnline() || hunted.isDead()
+                            || !world.equals(hunted.getWorld())) {
+                        continue;
+                    }
+                    Location eye = hunted.getEyeLocation();
+                    aims.set(lane, ChestBeamPolicy.trackToward(aims.get(lane),
+                            eye.getX(), eye.getY(), eye.getZ()));
+                }
+            }
             // Shot 4/5 beats: the crown detonates at the real collision end of
             // every locked lane, then the fracturing shell spits its recoil.
             if (tick == ChestBeamPolicy.CHARGE_TICKS) {
@@ -55738,6 +55778,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 renderChestBeamCharge(chest, aims, tick);
             } else if (ChestBeamPolicy.damagesAt(tick)) {
                 renderChestBeamStage(chest, aims, tick, true);
+                applyChestBeamPull(chest, aims, world);
                 for (Player player : activeLivingPlayers()) {
                     if (player == null || !world.equals(player.getWorld())) {
                         continue;
@@ -55799,6 +55840,48 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
         }, 0L, 1L);
         registerEncounterTask(holder[0]);
+    }
+
+    /**
+     * Gentle continuous pull toward the Core while a body stands inside a live
+     * beam. The owner asked for a beam that pulls you in without trapping you:
+     * the added velocity is weaker than normal walking and stops entirely on top
+     * of the Core volume, so a player always keeps the agency to leave the lane.
+     */
+    private void applyChestBeamPull(Location chest, List<ChestBeamPolicy.Aim> aims, World world) {
+        if (chest == null || aims == null || aims.isEmpty() || world == null) {
+            return;
+        }
+        double minSquared = ChestBeamPolicy.PULL_MIN_DISTANCE * ChestBeamPolicy.PULL_MIN_DISTANCE;
+        for (Player player : activeLivingPlayers()) {
+            if (player == null || !player.isOnline() || player.isDead()
+                    || !world.equals(player.getWorld())) {
+                continue;
+            }
+            if (player.getLocation().distanceSquared(chest) < minSquared) {
+                continue;
+            }
+            Location torso = player.getLocation().clone()
+                    .add(0.0D, player.getHeight() * 0.5D, 0.0D);
+            ChestBeamPolicy.Aim lane = null;
+            for (ChestBeamPolicy.Aim candidate : aims) {
+                if (ChestBeamPolicy.beamHits(candidate,
+                        torso.getX(), torso.getY(), torso.getZ())) {
+                    lane = candidate;
+                    break;
+                }
+            }
+            if (lane == null) {
+                continue;
+            }
+            double[] pull = ChestBeamPolicy.pullTowardCore(lane,
+                    player.getLocation().getX(), player.getLocation().getY(),
+                    player.getLocation().getZ());
+            if (pull == null) {
+                continue;
+            }
+            player.setVelocity(player.getVelocity().add(new Vector(pull[0], pull[1], pull[2])));
+        }
     }
 
     /** One authored frame of the beam body and the world-vfx textured ray. */
@@ -56009,6 +56092,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         bossChestBeamSequence++;
         bossChestBeamActive = false;
         bossChestBeamLockedAims = List.of();
+        bossChestBeamLockedTargets = List.of();
         bossChestBeamLockedChest = null;
         bossChestBeamLockedGeneration = -1L;
         clearWorldVfxBeamsByPrefix(CHEST_BEAM_VFX_PREFIX);
@@ -56036,6 +56120,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " generation=" + callbackGeneration
                 + " lockedGeneration=" + bossChestBeamLockedGeneration);
         bossChestBeamLockedAims = List.of();
+        bossChestBeamLockedTargets = List.of();
         bossChestBeamLockedChest = null;
         bossChestBeamLockedGeneration = -1L;
         bossChestBeamActive = false;
@@ -56054,6 +56139,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         bossChestBeamSequence++;
         bossChestBeamActive = false;
         bossChestBeamLockedAims = List.of();
+        bossChestBeamLockedTargets = List.of();
         bossChestBeamLockedChest = null;
         bossChestBeamLockedGeneration = -1L;
         clearWorldVfxBeamsByPrefix(CHEST_BEAM_VFX_PREFIX);

@@ -24,6 +24,8 @@ public final class ChestBeamPolicyTest {
         theCooldownIsHonest();
         aimIsAlwaysNormalised();
         laneRailsMarkTheRealRadius();
+        trackingPursuesSlowlyAndStaysEscapable();
+        pullIsGentleAndPointsAtTheCore();
         System.out.println("ChestBeamPolicyTest: PASS (" + checks + " checks)");
     }
 
@@ -190,6 +192,61 @@ public final class ChestBeamPolicyTest {
 
     private static boolean near(double a, double b) {
         return Math.abs(a - b) < 1.0E-9D;
+    }
+
+    /**
+     * Owner's latest decision: the fired chest beam slowly hunts the selected
+     * body instead of being a frozen ray, while a strafing player can still leave
+     * it. The pure geometry must prove both halves: a bounded per-tick turn and a
+     * real escape inside the authored fire window.
+     */
+    private static void trackingPursuesSlowlyAndStaysEscapable() {
+        ChestBeamPolicy.Aim aim = ChestBeamPolicy.aimAt(0, 0, 0, 0, 0, 10);
+        ChestBeamPolicy.Aim tracked = ChestBeamPolicy.trackToward(aim, 10, 0, 10);
+        double turned = Math.acos(Math.max(-1.0D, Math.min(1.0D,
+                aim.dx() * tracked.dx() + aim.dy() * tracked.dy() + aim.dz() * tracked.dz())));
+        check(turned > 0.0D, "a side target is actually pursued");
+        check(turned <= ChestBeamPolicy.TRACK_RADIANS_PER_TICK + 1.0E-9D,
+                "one tick never turns the lane faster than the authored cap");
+
+        // The same bounded turn converges on a parked target without overshoot.
+        ChestBeamPolicy.Aim parked = ChestBeamPolicy.aimAt(0, 0, 0, 1, 0, 10);
+        for (int tick = 0; tick < ChestBeamPolicy.FIRE_TICKS; tick++) {
+            parked = ChestBeamPolicy.trackToward(parked, 0, 0, 10);
+        }
+        check(ChestBeamPolicy.beamHits(parked, 0, 0, 10),
+                "a stationary target is still held by the slowly turning lane");
+
+        // A modest strafe outruns the lane well inside the fire window.
+        ChestBeamPolicy.Aim live = ChestBeamPolicy.aimAt(0, 0, 0, 0, 0, 10);
+        double strafeX = 0.0D;
+        for (int tick = 0; tick < ChestBeamPolicy.FIRE_TICKS; tick++) {
+            live = ChestBeamPolicy.trackToward(live, strafeX, 0, 10);
+            strafeX += 0.35D; // 7 blocks/s: a normal walk, not a sprint trick.
+        }
+        check(!ChestBeamPolicy.beamHits(live, strafeX, 0, 10),
+                "a normally strafing player escapes the slow beam inside the fire window");
+
+        // A dead/zero-length target must never spin or NaN the lane.
+        ChestBeamPolicy.Aim frozen = ChestBeamPolicy.aimAt(0, 0, 0, 0, 0, 10);
+        ChestBeamPolicy.Aim same = ChestBeamPolicy.trackToward(frozen, 0, 0, 0);
+        check(near(same.dx(), frozen.dx()) && near(same.dz(), frozen.dz()),
+                "a zero-length target keeps the previous lane");
+    }
+
+    private static void pullIsGentleAndPointsAtTheCore() {
+        ChestBeamPolicy.Aim aim = ChestBeamPolicy.aimAt(0, 0, 0, 0, 0, 1);
+        double[] pull = ChestBeamPolicy.pullTowardCore(aim, 5, 0, 0);
+        check(pull != null && pull[0] < 0.0D, "the pull points horizontally toward the Core");
+        check(Math.abs(pull[1]) < 1.0E-9D && Math.abs(pull[2]) < 1.0E-9D,
+                "the pull never lifts a player off the floor");
+        check(near(Math.sqrt(pull[0] * pull[0] + pull[2] * pull[2]),
+                        ChestBeamPolicy.PULL_PER_TICK),
+                "the pull is bounded to the authored gentle strength");
+        check(ChestBeamPolicy.pullTowardCore(aim, 1, 0, 1) == null,
+                "no pull is applied on top of the Core volume");
+        check(ChestBeamPolicy.pullTowardCore(null, 5, 0, 0) == null,
+                "a missing lane never pulls");
     }
 
     private static void check(boolean condition, String message) {

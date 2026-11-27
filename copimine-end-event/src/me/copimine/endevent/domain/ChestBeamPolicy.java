@@ -47,7 +47,94 @@ public final class ChestBeamPolicy {
     public static final double KNOCKBACK = 0.85D;
     public static final double LIFT = 0.22D;
 
+    /**
+     * Owner's latest decision: the fired beam slowly hunts the selected player's
+     * body instead of staying a completely frozen ray, but a player must still be
+     * able to walk out of it. The per-tick turn is deliberately far slower than a
+     * normal strafe: at the beam radius a body crosses the danger band in a few
+     * ticks, while the lane needs many ticks to follow, so escape is real and the
+     * damage stays dodgeable (specification 7.1.3: never follow perfectly).
+     *
+     * <p>0.0060 rad/tick is about 0.34 deg/tick, i.e. roughly 6 deg per second at
+     * 20 TPS. It is visible across a whole charge but never a tracking laser.</p>
+     */
+    public static final double TRACK_RADIANS_PER_TICK = 0.0060D;
+    /**
+     * Extra velocity added toward the Core while a body is inside a live beam:
+     * the beam gently pulls the chosen player in without locking them. It is far
+     * weaker than the knockback on impact and weaker than normal walk speed, so a
+     * determined player still leaves the lane.
+     */
+    public static final double PULL_PER_TICK = 0.028D;
+    /** No pull is applied within this horizontal distance of the Core. */
+    public static final double PULL_MIN_DISTANCE = 3.0D;
+
     private ChestBeamPolicy() {
+    }
+
+    /**
+     * Rotate a lane toward a live target point by at most
+     * {@link #TRACK_RADIANS_PER_TICK}. When the target already sits inside that
+     * cone the direction snaps exactly onto it. A zero-length or non-finite
+     * target keeps the previous direction, so a dead or teleported target can
+     * never spin the lane.
+     */
+    public static Aim trackToward(Aim aim, double tx, double ty, double tz) {
+        return trackToward(aim, tx, ty, tz, TRACK_RADIANS_PER_TICK);
+    }
+
+    /** As {@link #trackToward(Aim, double, double, double)} with an explicit cap. */
+    public static Aim trackToward(Aim aim, double tx, double ty, double tz, double maxRadians) {
+        if (aim == null) {
+            return null;
+        }
+        double vx = tx - aim.ox();
+        double vy = ty - aim.oy();
+        double vz = tz - aim.oz();
+        double targetLength = Math.sqrt(vx * vx + vy * vy + vz * vz);
+        if (!(targetLength > 1.0E-6D) || !Double.isFinite(targetLength)) {
+            return aim;
+        }
+        vx /= targetLength;
+        vy /= targetLength;
+        vz /= targetLength;
+        double dot = aim.dx() * vx + aim.dy() * vy + aim.dz() * vz;
+        dot = Math.max(-1.0D, Math.min(1.0D, dot));
+        double angle = Math.acos(dot);
+        double cap = Double.isFinite(maxRadians)
+                ? Math.max(0.0D, maxRadians) : TRACK_RADIANS_PER_TICK;
+        if (angle <= cap || angle < 1.0E-6D) {
+            return new Aim(aim.ox(), aim.oy(), aim.oz(), vx, vy, vz);
+        }
+        double sinAngle = Math.sin(angle);
+        if (sinAngle < 1.0E-9D) {
+            // Exactly opposite: no single well-conditioned plane to rotate in.
+            return aim;
+        }
+        double a = Math.sin(angle - cap) / sinAngle;
+        double b = Math.sin(cap) / sinAngle;
+        return new Aim(aim.ox(), aim.oy(), aim.oz(),
+                aim.dx() * a + vx * b,
+                aim.dy() * a + vy * b,
+                aim.dz() * a + vz * b);
+    }
+
+    /**
+     * Horizontal pull toward the Core while a body is inside the beam, returned
+     * as {@code {vx, vy, vz}}. Null when there is no lane or the body already
+     * stands on the Core volume, so a point-blank hit never becomes a hard grip.
+     */
+    public static double[] pullTowardCore(Aim aim, double px, double py, double pz) {
+        if (aim == null) {
+            return null;
+        }
+        double dx = aim.ox() - px;
+        double dz = aim.oz() - pz;
+        double distance = Math.sqrt(dx * dx + dz * dz);
+        if (!Double.isFinite(distance) || distance <= PULL_MIN_DISTANCE) {
+            return null;
+        }
+        return new double[]{dx / distance * PULL_PER_TICK, 0.0D, dz / distance * PULL_PER_TICK};
     }
 
     /**

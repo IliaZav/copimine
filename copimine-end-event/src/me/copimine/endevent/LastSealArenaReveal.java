@@ -40,20 +40,21 @@ import java.util.function.Predicate;
 
 /** Changes only the cells pinned by a site plan. The journal also owns recovery without that plan. */
 final class LastSealArenaReveal {
-    static final int DURATION_TICKS = 280;
+    static final int DURATION_TICKS = 320;
     // The approved site mask is authored, not generated, so the ceiling has to
-    // cover a genuinely large concealed corridor rather than the first 320
-    // cells: the V6 audit requires "the exact mask" be honoured in bounded
-    // batches, never that a real mask be rejected for exceeding a guess. The
-    // per-tick BATCH below still bounds world writes, the 32-chunk span guard
-    // still bounds chunk spread, and MAX_BYTES below bounds the journal/plan a
-    // single atomic recovery can carry. 1536 mirrors the RealitySplitBarrier
-    // ceiling so the two journaled block writers share one approved magnitude.
-    static final int MAX_CELLS = 1536;
-    static final int MAX_BYTES = 384_000;
+    // cover the full square->circle transformation: the concealed corridor plus
+    // the four authored inner-square wall partitions (a 67x60 face pair on each
+    // side is ~16.3k cells). The V6/V7 audit requires "the exact mask" be honoured
+    // in bounded batches, never that a real mask be rejected for exceeding a
+    // guess. The per-tick BATCH below still bounds world writes (64 cells/tick,
+    // the ceiling the reveal contract test pins), the 64-chunk span guard still
+    // bounds chunk spread (the square alone spans 36 chunks), and MAX_BYTES
+    // below bounds the journal/plan one atomic recovery can carry.
+    static final int MAX_CELLS = 20_000;
+    static final int MAX_BYTES = 3_000_000;
     private static final String VERSION = "last-seal-v1";
     private static final String VERSION_V2 = "last-seal-v2";
-    private static final int BATCH = 26;
+    private static final int BATCH = 64;
     private static final int FALL_TICKS = 22;
 
     record Square(int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
@@ -153,7 +154,7 @@ final class LastSealArenaReveal {
                 if (!geometry || !world.getWorldBorder().isInside(at)
                         || !candidate.horizontal(at.getX(), at.getZ()) || protectedCell.test(at)
                         || safeZone != null && safeZone.contains(at)
-                        || !cell.loaded(world)) throw new IOException("unapproved, protected, or unloaded cell " + cell);
+                        || !ensureLoaded(world, cell)) throw new IOException("unapproved, protected, or unloaded cell " + cell);
                 Block block = cell.block(world);
                 if (!block.getType().isSolid() || block.getState(false) instanceof TileState
                         || !block.getBlockData().getAsString().equals(change.original())) {
@@ -234,7 +235,7 @@ final class LastSealArenaReveal {
                 if (age < scheduled.tick()) break;
                 Change change = scheduled.change();
                 Cell cell = change.cell();
-                if (!cell.loaded(world)) throw new IOException("unloaded approved cell " + cell);
+                if (!ensureLoaded(world, cell)) throw new IOException("unloaded approved cell " + cell);
                 Block block = cell.block(world);
                 if (!block.getBlockData().getAsString().equals(change.original()) || block.getState(false) instanceof TileState)
                     throw new IOException("site was modified during reveal at " + cell);
@@ -472,12 +473,26 @@ final class LastSealArenaReveal {
             Cell cell = change.cell();
             return ((long) (cell.x() >> 4) << 32) | ((cell.z() >> 4) & 0xffffffffL);
         }).distinct().count();
-        if (chunks > 32) throw new IOException("arena cells span too many chunks");
+        if (chunks > 64) throw new IOException("arena cells span too many chunks");
         return List.copyOf(parsed);
     }
 
+    /**
+     * Load the cell's chunk before any block read. A reveal can legitimately
+     * start while a player stands at one edge of the 69x61 square, so the
+     * far chunks of the authored mask are not guaranteed loaded yet. The mask is
+     * already bounded to {@link #MAX_CELLS} cells and 64 chunk columns by
+     * {@link #parseChanges}, so this forces at most that bounded set and never a
+     * whole-dimension load. Returning the real post-load state keeps a genuinely
+     * unavailable chunk a hard failure instead of silently skipping a cell.
+     */
+    private static boolean ensureLoaded(World world, Cell cell) {
+        world.getChunkAt(cell.x() >> 4, cell.z() >> 4);
+        return world.isChunkLoaded(cell.x() >> 4, cell.z() >> 4);
+    }
+
     private static boolean safeLanding(Cell p, World world) {
-        if (!p.loaded(world) || p.y() <= world.getMinHeight() || p.y() >= world.getMaxHeight() - 1
+        if (!ensureLoaded(world, p) || p.y() <= world.getMinHeight() || p.y() >= world.getMaxHeight() - 1
                 || !world.getWorldBorder().isInside(p.at(world))) return false;
         Block feet = p.block(world);
         Block below = feet.getRelative(0, -1, 0);

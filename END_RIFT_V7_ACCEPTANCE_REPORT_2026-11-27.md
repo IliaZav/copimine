@@ -45,7 +45,20 @@
 
 ---
 
-## 2. GuardainSpellMesh — 37 Blockbench-мешей для VFX
+## 2. Исправленные P0-дефекты (аудит 27 ноября)
+
+| ID | Дефект | Исправление | Файл:строка |
+|---|---|---|---|
+| **P0-A** | Личное Эхо фазы 5 не создаёт боевую сессию — `UUID.randomUUID()` для инвентаря/дуэли не совпадают с `eventUuid`/`generation` | Инвентарь и сессия используют единые `eventUuid`, `generation`, `duelId` | `CopiMineEndEvent.java:10544-10581` |
+| **P0-B** | Совместные атаки копий используют `echoReplicaActors` (персональные отражения) вместо `echoDecoyIds` (50-HP боевые копии) | Координатор перебирает `echoDecoyIds` через новый `isEchoDecoyPresent()` | `CopiMineEndEvent.java:59016-59025` |
+| **P0-C** | Огненное кольцо при отмене (смена фазы/поколения) вызывает `detonateRiftFireRing()` — поздний урон по игрокам | Отмена гасит кольцо безопасно (`BLOCK_FIRE_EXTINGUISH`), без урона, лог `BOSS_SPELL_RIFT_FIRE_RING_CANCEL` | `CopiMineEndEvent.java:57472-57482` |
+| **P1-D** | Любой кастомный предмет блокирует создание Эха | Вместо `return false` — подсчёт и лог `RAGE_ECHO_CUSTOM_ITEMS`, Эхо создаётся | `CopiMineEndEvent.java:10549-10560` |
+
+**Проверка:** `pytest -k "cooperation or fire_ring or echo_decoy or rage_echo"` → **27 passed**; `-k "rage_echo or copy_cooperation or rift_fire_ring or echo_duel or personal_echo"` → **14 passed**. Сборка `javac` успешна (только deprecation-warnings). SHA развёрнутого JAR `b3c025d1…` совпадает на prod и playtest.
+
+---
+
+## 3. GuardainSpellMesh — 37 Blockbench-мешей для VFX
 
 ### 2.1 Оригинальные V5.1 меши (26 шт.) — существует и зарегистрированы
 

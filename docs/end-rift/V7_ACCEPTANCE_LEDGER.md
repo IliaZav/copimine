@@ -483,13 +483,19 @@ The reviewed source and the exact deployed jar are on the server at
 ### Automated suite status
 
 A full `pytest tests` run over the merged tree was executed with JDK 25 on `PATH`
-(the Java probe harnesses need `javac`/`java`). The only End Rift-caused failure was
+(the Java probe harnesses need `javac`/`java`). Final totals:
+
+```
+16 failed, 3936 passed, 15 skipped, 154 warnings, 2 subtests passed in 2061.61s (0:34:21)
+```
+
+The only End Rift-caused failure was
 `test_boss_edge_volley_runtime.py`, whose hand-built Java probe did not declare the
 `stopCocoonBeam(String)` seam that the merged `cancelBossCastForPhaseChange` now calls;
 the probe stub was added and all 12 cases pass (`12 passed in 11.15s`). This is a
 harness fixture, not production code — the production method signature is authoritative.
 
-The remaining failures are **environment/packaging pre-conditions, not End Rift
+The remaining 16 failures are **environment/packaging pre-conditions, not End Rift
 defects**, and are reproducible on the untouched deployment branch too:
 
 | Test | Cause |

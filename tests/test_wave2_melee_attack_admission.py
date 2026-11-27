@@ -114,6 +114,9 @@ public final class WaveTwoMeleeAdmissionHarness {
     static final class Skeleton extends Mob {}
     static final class EntityDamageByEntityEvent {
         final Entity damager, entity;
+        double damage = 10.0;
+        double getDamage() { return damage; }
+        void setDamage(double value) { damage = value; }
         boolean cancelled;
         EntityDamageByEntityEvent(Entity damager, Entity entity) {
             this.damager = damager; this.entity = entity;
@@ -145,7 +148,7 @@ public final class WaveTwoMeleeAdmissionHarness {
     }
     EventPhase phase = EventPhase.WAVE_2;
     boolean testWaveFrontVisualMode;
-    int activeWave = 2;
+    int activeWave = 2, waveSpawnGroupIndex = 1;
     long generation = 8L, eventTickCounter = 100L;
     final Map<UUID,Entity> ownedEntities = new HashMap<>();
     final Map<EntityDamageByEntityEvent, WaveTwoMeleeAttackEventToken>

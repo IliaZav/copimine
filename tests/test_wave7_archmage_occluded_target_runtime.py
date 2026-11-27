@@ -43,6 +43,9 @@ def occluded_archmage_probe(tmp_path_factory):
         # The three-argument overload delegates to the timed one, so the probe must
         # compile the real timed body rather than resolve a missing overload.
         "private boolean finishNamedTrialAttack(Entity actor,\n            Wave7NamedTrialActorPolicy.Checkpoint checkpoint, long now, long cooldownMillis)",
+        "private boolean archmageCastReady(",
+        "private NamespacedKey archmageAreaCooldownKey(",
+        "private static boolean isCommittedArchmageArea(",
         "private boolean resolveNamedTrialAttack(",
         "private boolean stepNamedTrialArchmage(",
         # MAGE7-005: the resolved cast now records what the tool cost through
@@ -69,6 +72,8 @@ public class OccludedArchmageProbe {
     // presentation, so the probe stubs them and asserts only server semantics.
     void renderWave7AbilityEffect(Object a,Object b,String c){}
     void renderWave7AbilityBurst(Object a,String b){}
+    final Set<UUID> activeCrownChannels=new HashSet<>();
+    void clearTrialFangCast(UUID actor,String spell){}
     boolean summonWave7MarksmanDefender(Object a,int b){return false;}
     // MARK-005 / MAGE7-004 seams added with the invisibility and Vex support.
     void tickWave7ArchmageVexes(Object a,int b){}
@@ -78,7 +83,10 @@ public class OccludedArchmageProbe {
     // and can commit the pair's joint crossfire. Both belong to the sibling
     // actor, so the probe stubs them out; the pair rules themselves are covered
     // by Wave7SkeletonPairPolicyTest.
-    boolean maintainNamedMarksmanPair(Object a,int b){return true;}
+    final Map<Integer,Object> marksmanSkyHail=new HashMap<>();
+    boolean marksmanHasVisibleCover(Object a,Object b,long now){return false;}
+    boolean beginMarksmanSkyHail(Object a,Object b,Object c,long now){return false;}
+    void emitTrialParticle(Object a,Object b,Particle c,int d,double x,double y,double z,double spread){}
     boolean isPairedCrossfireLeader(Object a,int b){return false;}
     boolean pairedCrossfireReady(Object a,Object b,int c){return false;}
     boolean fireNamedMarksmanPairedCrossfire(Object a,Object b,
@@ -115,17 +123,19 @@ public class OccludedArchmageProbe {
         @SuppressWarnings("unchecked") <T> T get(Object key,Type<T> type){return (T)values.get(key);}
     }
     enum EntityType { EVOKER, SKELETON }
-    enum Particle { PORTAL, HAPPY_VILLAGER }
+    enum Particle { PORTAL, HAPPY_VILLAGER, ASH, ELECTRIC_SPARK }
     enum Sound { ENTITY_ENDERMAN_TELEPORT }
     static class Vector {
         double x,y,z;Vector(double x,double y,double z){this.x=x;this.y=y;this.z=z;}
         double getX(){return x;}double getY(){return y;}double getZ(){return z;}
         public Vector clone(){return new Vector(x,y,z);}Vector multiply(double m){x*=m;y*=m;z*=m;return this;}
+        Vector setY(double y){this.y=y;return this;} double lengthSquared(){return x*x+y*y+z*z;}
     }
     static class Location {
         double x,y,z;Location(double x,double y,double z){this.x=x;this.y=y;this.z=z;}
         public Location clone(){return new Location(x,y,z);}
         Location add(Vector v){return add(v.x,v.y,v.z);}
+        Location subtract(Vector v){return add(-v.x,-v.y,-v.z);}
         Location add(double x,double y,double z){this.x+=x;this.y+=y;this.z+=z;return this;}
         double getX(){return x;}double getZ(){return z;}double getY(){return y;}void setY(double y){this.y=y;}
         double distanceSquared(Location other){double dx=x-other.x,dy=y-other.y,dz=z-other.z;return dx*dx+dy*dy+dz*dz;}
@@ -242,9 +252,9 @@ public class OccludedArchmageProbe {
     boolean launchMarksmanFan(LivingEntity a,Player p,Wave7NamedTrialActorPolicy.Attack attack,int fan){damageActions+=8;return true;}
     boolean spawnNamedTrialFangs(LivingEntity a,Player p,Wave7NamedTrialActorPolicy.Attack attack){damageActions++;return true;}
     void resolveNamedTrialBeam(LivingEntity a,Player p,int chamber){damageActions++;}
-    boolean spawnNamedTrialFangCircle(LivingEntity a,Player p,Wave7NamedTrialActorPolicy.Attack attack){damageActions++;return true;}
-    boolean beginNamedTrialFangCrown(LivingEntity a,Player p){damageActions++;return true;}
-    boolean resolveNamedTrialRepulse(LivingEntity a,Player p,Wave7NamedTrialActorPolicy.Attack attack){damageActions++;return true;}
+    boolean spawnNamedTrialFangCircle(LivingEntity a,Wave7NamedTrialActorPolicy.Attack attack){damageActions++;return true;}
+    boolean beginNamedTrialFangCrown(LivingEntity a){damageActions++;return true;}
+    boolean resolveNamedTrialRepulse(LivingEntity a){damageActions++;return true;}
 
     void setup(boolean marksman,long attackIndex){
         int room=marksman?2:3;
@@ -287,7 +297,38 @@ public class OccludedArchmageProbe {
         Wave7AdmissionRuntimeChecks.boot();
         var p=new OccludedArchmageProbe();String mode=args[0];
         long ordinal=mode.startsWith("occluded-ordinal-")?Long.parseLong(mode.substring(17)):0L;
+        if(mode.equals("punish-rotation"))ordinal=5L;
         p.setup(mode.equals("marksman-occluded"),ordinal);
+        if(mode.equals("punish-rotation")){
+            p.eventTickCounter=100;
+            p.visible=true;
+            p.target.location.x=p.actor.getLocation().getX()+3;
+            p.recordArchmageToolUse(p.actor,Wave7NamedTrialActorPolicy.Attack.ARCHMAGE_FANGS,p.generation);
+            require(p.tickNamedTrialActor(p.actor,p.trial),"an active punish window must not stall rotation");
+            require(p.checkpoint().attack()==Wave7NamedTrialActorPolicy.Attack.ARCHMAGE_BEAM
+                &&p.checkpoint().attackIndex()==7L,"Step must yield to the next authored spell and advance the rotation");
+            return;
+        }
+        if(mode.equals("independent-cooldowns")){
+            var crown=Wave7NamedTrialActorPolicy.Attack.ARCHMAGE_CROWN;
+            var circle=Wave7NamedTrialActorPolicy.Attack.ARCHMAGE_CIRCLE;
+            var repulse=Wave7NamedTrialActorPolicy.Attack.ARCHMAGE_REPULSE;
+            p.eventTickCounter=100;
+            p.visible=true;
+            p.target.location.x=p.actor.getLocation().getX()+2;
+            p.recordArchmageToolUse(p.actor,crown,p.generation);
+            var window=Wave7ArchmagePunishPolicy.afterMajorCast(p.eventTickCounter);
+            require(!p.archmageCastReady(p.actor,crown,p.generation,Wave7ArchmagePunishPolicy.NEVER,window),
+                "Crown must honor its own cooldown");
+            require(p.archmageCastReady(p.actor,circle,p.generation,Wave7ArchmagePunishPolicy.NEVER,window),
+                "Crown cooldown must leave Circle available");
+            require(!p.archmageCastReady(p.actor,repulse,p.generation,Wave7ArchmagePunishPolicy.NEVER,window),
+                "Repulse must leave the melee punish window open");
+            p.eventTickCounter+=Wave7ArchmagePunishPolicy.PUNISH_TICKS;
+            require(p.archmageCastReady(p.actor,repulse,p.generation,Wave7ArchmagePunishPolicy.NEVER,window),
+                "Repulse should become available again when a player is still in reach");
+            return;
+        }
         if(mode.equals("cross-room-only")){
             Bukkit.players.clear();Bukkit.players.add(new Player(Wave7AdmissionRuntimeChecks.A));
         }
@@ -381,7 +422,7 @@ public class OccludedArchmageProbe {
     "safe-step", "blocked-path", "blocked-destination", "unsafe-floor", "teleport-cancelled",
     "target-invalid", "target-quit", "stale-generation", "stale-checkpoint",
     "cross-room-only", "connected-other-room", "same-room-with-nearer-other-room",
-    "no-target", "cooldown", "marksman-occluded", "visible-normal",
+    "no-target", "cooldown", "marksman-occluded", "visible-normal", "independent-cooldowns", "punish-rotation",
 ])
 def test_archmage_repositions_under_cover_without_bypassing_admission(occluded_archmage_probe, scenario):
     result = subprocess.run(

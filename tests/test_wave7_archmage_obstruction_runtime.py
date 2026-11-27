@@ -30,13 +30,17 @@ def run_probe(probe, scenario):
 @pytest.fixture(scope="module")
 def resolve_probe(tmp_path_factory):
     directory = tmp_path_factory.mktemp("archmage-cover-runtime")
-    method = extract_method(SOURCE.read_text(encoding="utf-8"), "private boolean resolveNamedTrialAttack(")
+    source = SOURCE.read_text(encoding="utf-8")
+    method = "\n".join(extract_method(source, signature) for signature in (
+        "private static boolean isCommittedArchmageArea(",
+        "private boolean resolveNamedTrialAttack(",
+    ))
     return compile_probe(directory, "ArchmageCoverProbe", r'''
 public class ArchmageCoverProbe {
 void renderWave7AbilityEffect(Object a,Object b,String c){}
     static class Wave7NamedTrialActorPolicy {
         enum Attack { NONE, MARKSMAN_QUICK_SHOT, MARKSMAN_HEAVY_SHOT, MARKSMAN_SPREAD_SHOT,
-            MARKSMAN_SUPPORT, MARKSMAN_PAIRED_CROSSFIRE, ARCHMAGE_FANGS, ARCHMAGE_SPEAR,
+            MARKSMAN_SUPPORT, MARKSMAN_PAIRED_CROSSFIRE, MARKSMAN_SKY_HAIL, ARCHMAGE_FANGS, ARCHMAGE_SPEAR,
             ARCHMAGE_STEP, ARCHMAGE_BEAM, ARCHMAGE_CIRCLE, ARCHMAGE_CROWN, ARCHMAGE_REPULSE,
             NONE_INTERNAL }
     }
@@ -61,24 +65,30 @@ void renderWave7AbilityEffect(Object a,Object b,String c){}
     boolean spawnNamedTrialFangs(LivingEntity a,Player t,Wave7NamedTrialActorPolicy.Attack x){attacks++;return true;}
     boolean stepNamedTrialArchmage(LivingEntity a,Player p,int c){steps++;return true;}
     void resolveNamedTrialBeam(LivingEntity a,Player p,int c){attacks++;}
-    boolean spawnNamedTrialFangCircle(LivingEntity a,Player t,Wave7NamedTrialActorPolicy.Attack x){attacks++;return true;}
-    boolean beginNamedTrialFangCrown(LivingEntity a,Player t){attacks++;return true;}
-    boolean resolveNamedTrialRepulse(LivingEntity a,Player t,Wave7NamedTrialActorPolicy.Attack x){attacks++;return true;}
+    boolean spawnNamedTrialFangCircle(LivingEntity a,Wave7NamedTrialActorPolicy.Attack x){attacks++;return true;}
+    boolean beginNamedTrialFangCrown(LivingEntity a){attacks++;return true;}
+    boolean resolveNamedTrialRepulse(LivingEntity a){attacks++;return true;}
     void spawnEventParticle(Location l,Particle p,int n,double x,double y,double z,double v){}
 ''' + method + r'''
     public static void main(String[] args){
         var p=new ArchmageCoverProbe();var actor=new LivingEntity();var target=new Player();
         var attack=Wave7NamedTrialActorPolicy.Attack.valueOf(args[0]);
-        if(!p.resolveNamedTrialAttack(actor,target,attack,0))throw new AssertionError("legal blocked action should finish safely");
+        boolean area = attack==Wave7NamedTrialActorPolicy.Attack.ARCHMAGE_CIRCLE
+            || attack==Wave7NamedTrialActorPolicy.Attack.ARCHMAGE_CROWN
+            || attack==Wave7NamedTrialActorPolicy.Attack.ARCHMAGE_REPULSE;
+        boolean cast=p.resolveNamedTrialAttack(actor,area?null:target,attack,0);
         if(attack==Wave7NamedTrialActorPolicy.Attack.ARCHMAGE_STEP){
-            if(p.steps!=1)throw new AssertionError("Step must reach its own safe relocation checks when target is behind cover");
-        }else if(p.attacks!=0||p.steps!=0)throw new AssertionError("Direct attack must remain blocked by cover");
+            if(!cast||p.steps!=1)throw new AssertionError("Step must reach its safe relocation checks under cover");
+        }else if(area){
+            if(!cast||p.attacks!=1)throw new AssertionError("Committed area must release against its lock without a live target");
+        }else if(cast||p.attacks!=0||p.steps!=0)throw new AssertionError("Cover must refuse direct damage without a successful cast");
     }
 }
 ''')
 
 
-@pytest.mark.parametrize("attack", ["ARCHMAGE_STEP", "ARCHMAGE_FANGS", "ARCHMAGE_SPEAR", "ARCHMAGE_BEAM", "MARKSMAN_QUICK_SHOT"])
+@pytest.mark.parametrize("attack", ["ARCHMAGE_STEP", "ARCHMAGE_FANGS", "ARCHMAGE_SPEAR", "ARCHMAGE_BEAM", "MARKSMAN_QUICK_SHOT",
+                                    "ARCHMAGE_CIRCLE", "ARCHMAGE_CROWN", "ARCHMAGE_REPULSE"])
 def test_cover_blocks_damage_but_not_safe_tactical_step(resolve_probe, attack):
     run_probe(resolve_probe, attack)
 
@@ -176,7 +186,7 @@ public class ArchmageFangsProbe {
     // the probe reproduces that ledger: a cast with no lock spawns no fangs, and a
     // lock names exactly the victims whose lines are painted.
     record TrialAimLock(long generation,UUID event,long cast,Location point,
-            Map<UUID,Location> fangMarks){}
+            Map<UUID,Location> fangMarks,Location floor,Location casterOrigin){}
     final Map<UUID,TrialAimLock> trialAimLocks=new HashMap<>();
     Location namedTrialAim(LivingEntity a,Player p){
         TrialAimLock lock=trialAimLocks.get(a.getUniqueId());
@@ -205,7 +215,7 @@ public class ArchmageFangsProbe {
         boolean handled=p.spawnNamedTrialFangs(actor,target,Wave7NamedTrialActorPolicy.Attack.ARCHMAGE_FANGS);
         long live=p.world.spawned.values().stream().filter(Entity::isValid).count();
         if(mode.startsWith("blocked")||mode.startsWith("cancelled")){
-            if(!handled)throw new AssertionError("Blocked/cancelled fang spawn is an ordinary miss, not WAVE7_NAMED_ACTOR_RUNTIME_FAILED");
+            if(handled)throw new AssertionError("Blocked/cancelled fang spawn must not consume a successful cast");
             if(live!=0||!p.realitySplitTrialEntityUuids.isEmpty())throw new AssertionError("Partial fang cast must roll back all actors and ownership");
         }else if(mode.equals("broken-ownership")){
             if(handled||live!=0||!p.realitySplitTrialEntityUuids.isEmpty())throw new AssertionError("Failed actor ownership must still fail closed and roll back");

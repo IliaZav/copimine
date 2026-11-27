@@ -96,6 +96,12 @@ public class Wave7ReturnBootstrapProbe {
     boolean isOfficialCurrentAttempt(){return false;}
     Logger getLogger(){return Logger.getAnonymousLogger();}Server getServer(){return new Server();}
     void resetEncounterTaskRegistry(long gen){}
+    // Bootstrap restores the Last Seal arena journal first; cold-boot return
+    // routing is independent of that plan, so the fixture only needs the surface.
+    static class LastSealArenaReveal { LastSealArenaReveal(Object path){} }
+    LastSealArenaReveal lastSealArena;
+    java.io.File getDataFolder(){return new java.io.File(".");}
+    void restoreLastSealArena(){}
     void recoverHazardJournal(){}void restorePersistedGateIfNeeded(){}
     void recoverTransientSession(){recoveries++;generation++;phase=EventPhase.READY_FOR_PLAYERS;attemptLifecycle.clear();}
     void forcePhase(EventPhase value,String reason){phase=value;}

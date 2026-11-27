@@ -207,13 +207,13 @@ def test_protection_is_triggered_only_after_authoritative_real_health_damage():
     handler = declaration(source, "public void onWaveMobDamagedByPlayer(")
     authoritative = declaration(source, "public void onWaveMobPlayerDamageAuthoritative(")
 
-    assert "boolean acceptedAtDispatch = authoritative != null || !event.isCancelled()" in handler
+    assert "boolean acceptedAtDispatch = !event.isCancelled() && finalDamage > 0.0D" in handler
     assert "victim instanceof Skeleton" in handler
     assert "delta > 0.0D" in handler
     assert "respondToWaveSkeletonDamage(victimId, victimLocation, victimWave" in handler
     assert handler.index("double delta =") < handler.index("respondToWaveSkeletonDamage(")
-    assert "victim.setHealth(result.remainingHealth())" in authoritative
-    assert "authoritativeEventMobDamage.put(event, result)" in authoritative
+    assert "victim.setHealth(" not in authoritative
+    assert "authoritativeEventMobDamage" not in authoritative
 
 
 def test_wave_ai_honors_the_committed_protection_target_until_deadline():

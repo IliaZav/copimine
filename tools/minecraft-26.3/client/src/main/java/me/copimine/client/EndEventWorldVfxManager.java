@@ -278,6 +278,7 @@ public final class EndEventWorldVfxManager {
             };
             EndRiftRenderSubmission.submit(context, cameraPos, layer, (matrices, buffer) -> {
                 PoseStack.Pose entryPose = matrices.last();
+                int spellVertices = 56_000;
                 for (BeamSnapshot beam : batch) {
                     switch (pass.kind()) {
                         case CORE_OUTLINE -> drawCoreOutline(buffer, entryPose, beam, nowMillis);
@@ -286,7 +287,8 @@ public final class EndEventWorldVfxManager {
                         case CHANNEL -> drawRitualBeam(buffer, entryPose, beam, nowMillis, true);
                         case RITUAL -> drawRitualBeam(buffer, entryPose, beam, nowMillis);
                         case GLYPH -> drawSpellGlyph(buffer, matrices, cameraPos, cameraRotation, beam, nowMillis);
-                        case SPELL -> SpellVisualRenderer.draw(matrices, buffer, beam, nowMillis);
+                        case SPELL -> spellVertices -= SpellVisualRenderer.drawLegacy(
+                                matrices, buffer, beam, nowMillis, spellVertices);
                         case WAVE -> drawWaveCombatGlyph(buffer, matrices, cameraPos, cameraRotation, beam, nowMillis);
                     }
                 }

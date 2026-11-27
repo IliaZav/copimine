@@ -50,7 +50,7 @@ public class BossEdgeVolleyRuntimeProbe {
     boolean bossEdgeVolleyActive,bossChestStrikeActive,bossChestBeamActive,teleportAccepted=true,cornerAvailable=true;
     static final String CHEST_BEAM_VFX_PREFIX="boss-chest-beam-";
     void clearWorldVfxBeamsByPrefix(String prefix){}
-    BukkitTask bossCastTask;BossPhase bossPhase=BossPhase.RIFT;
+    BukkitTask bossCastTask, overloadFireRingTask;BossPhase bossPhase=BossPhase.RIFT;
     // A forced replacement or phase change also clears the fury chain, so the
     // probe needs the real runtime object; it stays inactive here.
     final me.copimine.endevent.runtime.BossFuryComboRuntime bossFuryCombo=
@@ -78,6 +78,13 @@ public class BossEdgeVolleyRuntimeProbe {
     // melee / Crushing Gravity state, so the slice needs the seam.
     void resetGuardianV5State(){}
     void clearArenaInferno(){}
+    // Owner request (V6 Phase 4): each signature spell is a once-per-HP-threshold
+    // cast for one phase generation. Leaving OVERLOAD retires both ledgers and
+    // the forge exposure deadline, so the extracted cancelBossCastForPhaseChange
+    // slice needs the real field shapes to compile.
+    final java.util.Set<Double> overloadFireRingSpentThresholds=new java.util.LinkedHashSet<>();
+    final java.util.Set<Double> infernalForgeSpentThresholds=new java.util.LinkedHashSet<>();
+    long infernalForgeVulnerableUntilTick=Long.MIN_VALUE;
     void clearVoidMarkZones(){}
     void aimBossCastAt(LivingEntity b,Location l){}
     void riftArrowVolley(LivingEntity b,Player p,String s,SkeletonCombatPolicy.ArrowProfile profile){salvos++;volleyTimes.add(tick);}

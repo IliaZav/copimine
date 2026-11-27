@@ -25,7 +25,13 @@ public class SnareCounterplay {
   static final int SLOWNESS_DEBUFF_TICKS=40, MINI_VOID_SNARE_DEBUFF_TICKS=40;
   static final double WAVE_MOB_DAMAGE_REDUCTION=0;
   static class Location { double x; Location(double x){this.x=x;} }
-  static class LivingEntity { boolean los=true; boolean hasLineOfSight(Player p){return los;} }
+  static class Vector { Vector(double x,double y,double z){} }
+  static class LivingEntity { boolean los=true; boolean hasLineOfSight(Player p){return los;}
+    Object getUniqueId(){return "caster";} }
+  // The contact cue is presentation-only; the harness records it as a no-op so
+  // the reach/LOS admission written above it stays the thing under test.
+  void publishSpellContact(String token,LivingEntity actor,Object sourceId,Location at,
+      Vector direction,double reach,double yaw,int count){}
   static class Player { double health=20; int effects; boolean eligible=true; Location p;
     Player(double x){p=new Location(x);} Location getLocation(){return p;}
     void damage(double amount,LivingEntity source){health-=amount;}

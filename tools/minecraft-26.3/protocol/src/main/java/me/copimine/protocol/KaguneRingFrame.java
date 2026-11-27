@@ -15,10 +15,11 @@ public record KaguneRingFrame(int row, int stage, double radius, double previous
     public static final double HEIGHT = 7.8681D * .62D * RIG_SCALE;
     public static final double CONTACT_RADIUS = .62D;
     public static final int MAX_INSTANCES = 192;
+    public static final double MAX_RADIUS = 96D;
 
     public KaguneRingFrame {
         if (row < 0 || row > 2 || stage < EMERGE || stage > RETRACT
-                || !bounded(radius, .5D, 64D) || !bounded(previousRadius, .5D, 64D)
+                || !bounded(radius, .5D, MAX_RADIUS) || !bounded(previousRadius, .5D, MAX_RADIUS)
                 || !bounded(rise, 0D, 1D) || !bounded(strike, 0D, 1D)
                 || gaps == null || gaps.size() < 2 || gaps.size() > 7)
             throw new IllegalArgumentException("Invalid Kagune ring frame");
@@ -37,7 +38,7 @@ public record KaguneRingFrame(int row, int stage, double radius, double previous
     }
 
     public int instances() {
-        return Math.min(MAX_INSTANCES, Math.max(24, (int) Math.ceil(Math.PI * 2D * (12.5D + row * 3.5D) / .70D)));
+        return Math.min(MAX_INSTANCES, Math.max(24, (int) Math.ceil(Math.PI * 2D * Math.max(radius, 12.5D + row * 3.5D) / .70D)));
     }
 
     public double direction(int index) { return wrap(Math.PI * 2D * index / instances()); }

@@ -610,9 +610,9 @@ def test_client_renders_the_authored_hot_core_tone_and_hero_volume() -> None:
         assert f"{flat}(false)" in geometry_text, f"{flat} must stay a single-sided decal"
 
     renderer_text = renderer.read_text(encoding="utf-8")
-    assert "SpellVisualToneMap.tone(base, stroke.brightness())" in renderer_text
-    assert "style.volumetric()" in renderer_text
-    assert "CROSS_VOLUME_INSET" in renderer_text
+    assert "SpellVisualToneMap.tone(color, stroke.brightness())" in renderer_text
+    assert "stroke.style().volumetric()" in renderer_text
+    assert "transport(normal, oldTangent, tangent)" in renderer_text
     assert "private static void ribbon(" in renderer_text
 
 
@@ -692,7 +692,19 @@ def test_the_server_emits_exactly_the_client_authored_cue_tokens() -> None:
     emitted = set(re.findall(r'broadcastSpellVisualCue\(\s*"([a-z_]+)"', server_text))
     client = set(_spell_tokens())
     assert len(client) == 12, client
-    assert emitted == client, (
-        "the server and client cue rosters drifted: "
-        f"server-only {sorted(emitted - client)}, client-only {sorted(client - emitted)}"
-    )
+    signed = set(re.findall(r'CastKey\("([a-z_]+)"', server_text))
+    signed.update(re.findall(r'publishTrialFangCast\([^,]+,[^,]+,\s*"([a-z_]+)"', server_text))
+    # Contact cues are published through the same CastKey transport but are a
+    # different family: they are pinned against SpellContactMesh below. Leaving
+    # them in the cast roster would let a contact token masquerade as a spell.
+    signed = {token for token in signed if not token.endswith("_contact")}
+    assert emitted | signed == client - {"sculk"}
+    contact = CLIENT_SRC / "me/copimine/client/SpellContactMesh.java"
+    contact_tokens = set(re.findall(r'"([a-z_]+_contact)"', contact.read_text(encoding="utf-8")))
+    emitted_contacts = set(re.findall(r'"([a-z_]+_contact)"', server_text))
+    phase_tokens = set(re.findall(r'"(phase_[a-z_]+)",',
+        (ROOT / "copimine-end-event/src/me/copimine/endevent/domain/BossPhaseTransitionCinematicPolicy.java")
+        .read_text(encoding="utf-8")))
+    assert 'cinematic.id() + "_contact"' in server_text
+    assert contact_tokens <= emitted_contacts | {token + "_contact" for token in phase_tokens}
+    assert "spellCasts.publishScoped(" in server_text

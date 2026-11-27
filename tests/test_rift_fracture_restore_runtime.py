@@ -19,15 +19,17 @@ public class FractureRestoreProbe {
  static class Block {String value="magma";boolean writes=true;String getType(){return value;}
   BlockData getBlockData(){return new BlockData(value);}}
  static class World {Block block=new Block();Block getBlockAt(int x,int y,int z){return block;}}
- static class Journal {boolean writable=true;int marks;boolean markRestored(){marks++;return writable;}
+ static class Journal {boolean writable=true,readable=true;int marks;boolean markRestored(){if(!readable)return false;marks++;return writable;}
   String path(){return "test";}}
  static class RiftFractureRuntimeState {
-  boolean restorationPending;UUID id=UUID.randomUUID();World world=new World();BlockCellKey key=new BlockCellKey(UUID.randomUUID(),5,64,6);
+  boolean restorationPending;final Journal journal=new Journal();UUID id=UUID.randomUUID();World world=new World();BlockCellKey key=new BlockCellKey(UUID.randomUUID(),5,64,6);
   Map<BlockCellKey,String> appliedSurfaces=Map.of(key,"magma");
   UUID id(){return id;}World world(){return world;}
   Map<BlockCellKey,String> originals(){return Map.of(key,"original[axis=x]");}
   List<BlockCellKey> cells(){return List.of(key);}}
- Journal hazardJournal=new Journal();String eventId="test";long generation=8,nextCurrentRiftFractureBatchTick=90;
+ String eventId="test";long generation=8,nextCurrentRiftFractureBatchTick=90,lastSuperGeyserTick,riftClusterSinceTick;
+ Set<UUID> riftClusterPair=new HashSet<>();int waveRetired;
+ void retireRiftGeyserWave(){waveRetired++;}
  int currentRiftFractureCursor=2;Map<UUID,RiftFractureRuntimeState> activeCurrentRiftFractures=new HashMap<>();
  Map<BlockCellKey,UUID> currentRiftFractureCells=new HashMap<>();
  java.util.logging.Logger getLogger(){return java.util.logging.Logger.getAnonymousLogger();}
@@ -43,19 +45,20 @@ public class FractureRestoreProbe {
   if(mode.equals("changed-to-other-fracture-surface"))s.world.block.value="cracked";
   if(mode.equals("already-original"))s.world.block.value="original[axis=x]";
   if(mode.equals("write-refused"))s.world.block.writes=false;
-  if(mode.equals("journal-refused"))p.hazardJournal.writable=false;
-  if(mode.equals("journal-missing"))p.hazardJournal=null;
+  if(mode.equals("journal-refused"))s.journal.writable=false;
+  if(mode.equals("journal-missing"))s.journal.readable=false;
   p.clearCurrentRiftFractures("probe");
+  check(p.waveRetired==1,"cleanup failed to retire the directional wave");
   boolean success=mode.equals("success")||mode.equals("already-original");
   if(success){check(p.activeCurrentRiftFractures.isEmpty()&&p.currentRiftFractureCells.isEmpty(),"restored ownership not retired");
-   check(s.world.block.value.equals("original[axis=x]")&&p.hazardJournal.marks==1,"exact restoration not committed");}
+   check(s.world.block.value.equals("original[axis=x]")&&s.journal.marks==1,"exact restoration not committed");}
   else {check(p.activeCurrentRiftFractures.containsKey(s.id)&&p.currentRiftFractureCells.containsKey(s.key),"failed restoration discarded retry ownership");
-   if(p.hazardJournal!=null&&!mode.equals("journal-refused"))check(p.hazardJournal.marks==0,"incomplete world restore marked durable success");
+   if(!mode.equals("journal-refused"))check(s.journal.marks==0,"incomplete world restore marked durable success");
    if(mode.equals("changed"))check(s.world.block.value.equals("player-chest"),"foreign edit overwritten");
    if(mode.equals("changed-to-other-fracture-surface"))
     check(s.world.block.value.equals("cracked"),"foreign edit using another fracture material overwritten");
    if(s.world==null)s.world=new World();s.world.block.writes=true;s.world.block.value="magma";
-   if(p.hazardJournal==null)p.hazardJournal=new Journal();p.hazardJournal.writable=true;
+   s.journal.readable=true;s.journal.writable=true;
    p.clearCurrentRiftFractures("retry");check(p.activeCurrentRiftFractures.isEmpty(),"retry failed");}
  }
 }

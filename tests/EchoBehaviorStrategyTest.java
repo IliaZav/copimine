@@ -29,12 +29,22 @@ public final class EchoBehaviorStrategyTest {
                 "healing and sample confidence are quantized into bounded weights");
         check(strategy.observedWaveMask() == 0b001111 && strategy.fromEventStart(),
                 "strategy retains only bounded profile provenance");
-        // Schema 2 appends the five style features (jump attack, hold distance,
-        // kite share, shield share, weapon-switch share) after the base weights.
-        check(strategy.encode().equals("2,750,250,750,250,38,750,15,1,0,500,250,250,0"),
+        // Schema 3 appends the five style features (jump attack, hold distance,
+        // kite share, shield share, weapon-switch share) and then the E-04
+        // weapon/cadence/sustain evidence after the base weights.
+        check(strategy.encode().equals("3,750,250,750,250,38,750,15,1,0,500,250,250,0,550,20,500,20,25"),
                 "strategy encoding persists only derived weights, not raw combat counts");
         check(EchoBehaviorStrategy.decode(strategy.encode()).equals(strategy),
                 "the widened schema still restores exactly");
+        // E-04 safe migration: a schema-2 record predates the weapon/cadence/
+        // sustain evidence and must restore with neutral baselines instead of
+        // failing to decode an in-progress attempt.
+        EchoBehaviorStrategy migrated = EchoBehaviorStrategy.decode(
+                "2,750,250,750,250,38,750,15,1,0,500,250,250,0");
+        check(migrated.equals(strategy),
+                "a schema-2 profile migrates to the neutral E-04 baselines");
+        expectRejected(() -> EchoBehaviorStrategy.decode("3,750,250,750,250,38,750,15,1,0,500,250,250,0"),
+                "a truncated schema-3 record is refused");
     }
 
     private static void emptyEvidenceUsesNeutralPerFeatureWeights() {

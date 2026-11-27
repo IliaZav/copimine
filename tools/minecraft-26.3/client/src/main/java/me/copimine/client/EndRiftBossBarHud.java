@@ -75,6 +75,14 @@ public final class EndRiftBossBarHud {
     private static final long DAMAGE_CHIP_MILLIS = 700L;
     /** One-shot sweep when the server accepts a new phase. */
     private static final long PHASE_SWEEP_MILLIS = 900L;
+    /**
+     * Phase 6 (LAST_SEAL) presentation: a slow breathing pulse and a coiling
+     * tentacle band, both derived from the wall clock so the HUD stays smooth
+     * independently of the server tick rate. Reduced-motion renders neither.
+     */
+    private static final long COIL_PERIOD_MILLIS = 2600L;
+    private static final int COIL_SEGMENTS = 26;
+    private static final long LAST_SEAL_PULSE_MILLIS = 1800L;
     private static String trackedBossIdentity = "";
     private static float lastProgress = Float.NaN;
     private static long lastProgressChangeMillis;
@@ -248,6 +256,13 @@ public final class EndRiftBossBarHud {
         context.blit(RenderPipelines.GUI_TEXTURED, FRAME, x, y + FRAME_Y,
                 0F, 0F, WIDTH, FRAME_HEIGHT,
                 SOURCE_WIDTH, SOURCE_HEIGHT, SOURCE_WIDTH, SOURCE_HEIGHT);
+        // Owner request: Phase 6 is the ritual finale, so the bar itself must
+        // feel alive. A slow breathing accent and a coiling tentacle ribbon are
+        // layered over the authored frame; both are wall-clock driven, bounded
+        // and fully suppressed by reduced-motion.
+        if (phase == 5) {
+            drawLastSealAccents(context, x, y, now, reduced, phaseColor);
+        }
         // Phase-specific metal, obsidian, veins and cracks. The atlas cell is
         // sampled with an explicit source rect so atlas height never stretches
         // the artwork.
@@ -288,6 +303,60 @@ public final class EndRiftBossBarHud {
                 context.fill(left, y + INNER_TOP, right, y + INNER_BOTTOM, color);
             }
         }
+    }
+
+    /**
+     * Phase 6 accents: one breathing top-edge glow and a coiling tentacle ribbon
+     * along the lower frame. Both shapes are plain filled quads, so they cost no
+     * texture bindings and cannot smear the authored frame artwork.
+     */
+    private static void drawLastSealAccents(GuiGraphicsExtractor context, int x, int y,
+                                            long nowMillis, boolean reduced, int color) {
+        if (reduced) {
+            return;
+        }
+        int innerWidth = INNER_RIGHT - INNER_LEFT;
+        float pulse = lastSealPulse(nowMillis);
+        int glow = Math.round(2.0F + pulse * 2.0F);
+        int alpha = Math.round(90.0F + pulse * 90.0F) & 0xFF;
+        context.fill(x + INNER_LEFT, y + INNER_TOP - glow - 1,
+                x + INNER_RIGHT, y + INNER_TOP - 1,
+                (alpha << 24) | (color & 0x00FFFFFF));
+        // Two offset ribbons read as a coil rather than a single wobbling line.
+        int baseY = y + FRAME_Y + FRAME_HEIGHT - 10;
+        int left = x + INNER_LEFT;
+        int stepWidth = Math.max(1, innerWidth / COIL_SEGMENTS);
+        for (int pass = 0; pass < 2; pass++) {
+            int passAlpha = pass == 0 ? 0x88 : 0x50;
+            int passColor = pass == 0 ? color : brighten(color);
+            int offset = pass == 0 ? 0 : 4;
+            for (int segment = 0; segment < COIL_SEGMENTS; segment++) {
+                int px = left + segment * stepWidth;
+                int py = baseY + offset + coilOffset(segment, nowMillis, reduced)
+                        + (pass == 0 ? 0 : 3);
+                int segmentAlpha = (int) Math.min(0xFFL,
+                        passAlpha + Math.round(Math.sin(segment * 0.7D + nowMillis / 180.0D) * 20.0D));
+                context.fill(px, py, px + stepWidth, py + 2,
+                        (segmentAlpha << 24) | (passColor & 0x00FFFFFF));
+            }
+        }
+    }
+
+    /** Breathing scale in 0..1 for the Phase 6 accent. */
+    static float lastSealPulse(long nowMillis) {
+        double phase = (nowMillis % LAST_SEAL_PULSE_MILLIS)
+                / (double) LAST_SEAL_PULSE_MILLIS;
+        return (float) (0.5D + 0.5D * Math.sin(phase * Math.PI * 2.0D));
+    }
+
+    /** Vertical offset of one coil segment; the ribbon travels slowly leftwards. */
+    static int coilOffset(int segment, long nowMillis, boolean reduced) {
+        if (reduced) {
+            return 0;
+        }
+        double travel = (nowMillis % COIL_PERIOD_MILLIS) / (double) COIL_PERIOD_MILLIS;
+        double t = (double) segment / Math.max(1, COIL_SEGMENTS - 1);
+        return (int) Math.round(Math.sin((t * 2.0D + travel) * Math.PI * 2.0D) * 3.0D);
     }
 
     private static void drawStagePips(GuiGraphicsExtractor context, int x, int y, int phase) {

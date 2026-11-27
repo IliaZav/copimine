@@ -21,7 +21,8 @@ def test_heartbeat_client_version_default_and_saved_exact_pins_are_explicit():
     reload_body = config_service.split("public void reload() {", 1)[1].split("\n    public ", 1)[0]
 
     assert 'HEARTBEAT_CAPABLE_VERSION = "0.1.3+26.3"' in policy
-    assert f'CURRENT_CLIENT_VERSION = "{pinned_client}"' in policy
+    assert f'SPELL_CAST_CLIENT_VERSION = "{pinned_client}"' in policy
+    assert 'CURRENT_CLIENT_VERSION = SPELL_CAST_CLIENT_VERSION' in policy
     assert 'DEFAULT_REQUIRED_VERSION = CURRENT_CLIENT_VERSION' in policy
     assert 'plugin.reloadConfig();' in reload_body
     assert 'readRequiredClientModVersion(root)' in reload_body
@@ -93,7 +94,7 @@ def test_copimine_client_candidate_matches_locked_build_artifact():
     artifact = lock["clientArtifact"]
     candidate = ROOT / "build/minecraft-26.3/client/libs" / artifact["filename"]
 
-    assert artifact["filename"] == "CopiMineClient-0.1.4+26.3.jar"
+    assert artifact["filename"] == "CopiMineClient-0.1.5+26.3.jar"
     assert artifact["size"] > 0
     assert len(artifact["sha512"]) == 128
     assert candidate.is_file(), "PrepareMigrationCandidates.ps1 must build CopiMineClient before profile install"

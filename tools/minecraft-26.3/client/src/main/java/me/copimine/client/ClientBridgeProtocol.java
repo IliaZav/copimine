@@ -152,6 +152,7 @@ public final class ClientBridgeProtocol {
             });
     private static final EndEventClientState END_EVENT_STATE = new EndEventClientState();
     private static final EndEventWorldVfxManager END_EVENT_WORLD_VFX = new EndEventWorldVfxManager();
+    private static final SignedSpellVisuals END_SPELL_VISUALS = new SignedSpellVisuals();
     private static final EndEventBlackFogManager END_EVENT_BLACK_FOG = new EndEventBlackFogManager();
     private static final EndEventPlayerVisualManager END_EVENT_PLAYER_VISUALS = new EndEventPlayerVisualManager();
     // The Wave 2 hunt mark drives the vanilla Enderman screen effect. It owns its own
@@ -243,6 +244,11 @@ public final class ClientBridgeProtocol {
         if (sender == BridgeRequestCodec.Sender.END_EVENT
                 && typedBody instanceof EndEventBridgeBodyCodec.Body body) {
             if (body.type() == EndEventBridgeBodyCodec.Type.CONTEXT_BIND) {
+                END_SPELL_VISUALS.bind(body, System.currentTimeMillis());
+                return;
+            }
+            if (body.type() == EndEventBridgeBodyCodec.Type.END_SPELL_CAST) {
+                END_SPELL_VISUALS.apply(body, System.currentTimeMillis());
                 return;
             }
             if (body.type() == EndEventBridgeBodyCodec.Type.CONTEXT_UNBIND) {
@@ -314,6 +320,7 @@ public final class ClientBridgeProtocol {
                 if (!"PRESENTATION_RESUME_V1".equals(payload.shaderpack()) || client.player == null
                         || client.player.isDeadOrDying() || client.level == null
                         || !client.level.dimension().identifier().getPath().equals(payload.mode())) return;
+                END_SPELL_VISUALS.resume(payload.sessionId(), payload.seq(), payload.timestampMillis());
                 END_EVENT_WORLD_VFX.resumeAfterLocalExit(payload.sessionId(), payload.seq(), payload.timestampMillis());
                 END_EVENT_BLACK_FOG.resumeAfterLocalExit(payload.sessionId(), payload.seq(), payload.timestampMillis());
                 END_EVENT_PLAYER_VISUALS.resumeAfterLocalExit(payload.sessionId(), payload.seq(),
@@ -546,6 +553,7 @@ public final class ClientBridgeProtocol {
             lastV4DiagnosticAt = now;
             CopiMineClientLogger.info(BRIDGE_V4.diagnosticSummary());
         }
+        END_SPELL_VISUALS.tickAudio(Minecraft.getInstance());
         END_EVENT_WORLD_VFX.tick(now);
         END_EVENT_BLACK_FOG.tick(now);
         WaveMusicMix.tick(client, now);
@@ -773,7 +781,13 @@ public final class ClientBridgeProtocol {
 
     public static void clearEndEventState() {
         END_EVENT_STATE.clear();
+        clearEndEventLocalPresentation();
+    }
+
+    /** Death hides local player effects while keeping signed entity model bindings. */
+    public static void clearEndEventLocalPresentation() {
         END_EVENT_WORLD_VFX.clear();
+        END_SPELL_VISUALS.suspend();
         END_EVENT_BLACK_FOG.clear();
         END_EVENT_PLAYER_VISUALS.clear();
         END_EVENT_WAVE_TWO_PHANTOM_ACTIVATIONS.clearPresentation();
@@ -785,6 +799,7 @@ public final class ClientBridgeProtocol {
     private static void resetEndEventConnection() {
         END_EVENT_STATE.clear();
         END_EVENT_WORLD_VFX.reset();
+        END_SPELL_VISUALS.reset();
         END_EVENT_BLACK_FOG.reset();
         END_EVENT_PLAYER_VISUALS.reset();
         END_EVENT_WAVE_TWO_PHANTOM_ACTIVATIONS.reset();
@@ -823,6 +838,7 @@ public final class ClientBridgeProtocol {
 
     public static void renderEndEventWorldVfx(net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext context) {
         END_EVENT_WORLD_VFX.render(context);
+        END_SPELL_VISUALS.render(context);
     }
 
     public static void renderEndEventTentacles(

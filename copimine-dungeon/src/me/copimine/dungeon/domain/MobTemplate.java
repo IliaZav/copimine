@@ -21,6 +21,7 @@ public enum MobTemplate {
     // Reusable, already-authorized elite / End Rift actor templates.
     RIFT_GIANT("rift_giant", "ZOMBIE", Category.REUSABLE_EVENT),
     RIFT_RAM("rift_ram", "RAVAGER", Category.REUSABLE_EVENT),
+    ARENA_WARDEN("arena_warden", "WARDEN", Category.REUSABLE_EVENT),
     ELITE_ZOMBIE("elite_zombie", "ZOMBIE", Category.REUSABLE_EVENT),
     ELITE_SKELETON("elite_skeleton", "SKELETON", Category.REUSABLE_EVENT),
     ELITE_ENDERMAN("elite_enderman", "ENDERMAN", Category.REUSABLE_EVENT),

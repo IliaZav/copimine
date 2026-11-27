@@ -102,6 +102,12 @@ public class Wave2ReturnBootstrapProbe {
     Logger getLogger(){return Logger.getAnonymousLogger();}
     Server getServer(){return new Server();}
     void resetEncounterTaskRegistry(long gen){}
+    // Bootstrap now restores the Last Seal arena journal before any save; the
+    // restart-routing assertions below do not depend on its site plan.
+    static class LastSealArenaReveal { LastSealArenaReveal(Object path){} }
+    LastSealArenaReveal lastSealArena;
+    java.io.File getDataFolder(){return new java.io.File(".");}
+    void restoreLastSealArena(){}
     void recoverHazardJournal(){}
     void restorePersistedGateIfNeeded(){}
     void recoverTransientSession(){generation++;phase=EventPhase.READY_FOR_PLAYERS;}

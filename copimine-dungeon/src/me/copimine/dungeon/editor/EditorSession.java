@@ -55,6 +55,7 @@ public final class EditorSession {
     }
 
     public void setWorld(String world) {
+        if (!Objects.equals(this.world, world)) clearSelection();
         this.world = world;
     }
 

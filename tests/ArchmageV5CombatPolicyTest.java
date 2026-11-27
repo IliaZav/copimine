@@ -160,15 +160,24 @@ public final class ArchmageV5CombatPolicyTest {
     }
 
     private static void timingsStayInsideTheRatifiedBands() {
-        check(ArchmageV5CombatPolicy.FANG_LINE_WARNING_TICKS >= 35
-                        && ArchmageV5CombatPolicy.FANG_LINE_WARNING_TICKS <= 50,
-                "the Fang Line warning is 0.7..1.0 s");
-        check(ArchmageV5CombatPolicy.CIRCLE_WARNING_TICKS >= 50
-                        && ArchmageV5CombatPolicy.CIRCLE_WARNING_TICKS <= 65,
-                "the Circle warning is 1.0..1.3 s");
-        check(ArchmageV5CombatPolicy.REPULSE_WARNING_TICKS >= 25
-                        && ArchmageV5CombatPolicy.REPULSE_WARNING_TICKS <= 35,
-                "the Repulse warning is 0.5..0.7 s");
+        // The contract states these windows in seconds and Minecraft runs at 20
+        // ticks per second, so the tick bounds are seconds * 20. The V6 authority
+        // W7-ARCHMAGE-03 states 0.8..1.1 s for the Fang Line, the Circle is
+        // 1.0..1.3 s and the Repulse is 0.5..0.7 s. The runtime consumes these
+        // constants directly as server ticks (Wave7NamedTrialActorPolicy
+        // .telegraphTicks, and CROWN_CHARGE_TICKS = 30 is the neighbouring
+        // "1.5 s" charge in this very class), so the old 35..50 / 50..65 /
+        // 25..35 bounds were a 50-ticks-per-second transcription and not the
+        // ratified seconds.
+        check(ArchmageV5CombatPolicy.FANG_LINE_WARNING_TICKS >= 16
+                        && ArchmageV5CombatPolicy.FANG_LINE_WARNING_TICKS <= 22,
+                "the Fang Line warning is 0.8..1.1 s (16..22 ticks at 20 tps)");
+        check(ArchmageV5CombatPolicy.CIRCLE_WARNING_TICKS >= 20
+                        && ArchmageV5CombatPolicy.CIRCLE_WARNING_TICKS <= 26,
+                "the Circle warning is 1.0..1.3 s (20..26 ticks at 20 tps)");
+        check(ArchmageV5CombatPolicy.REPULSE_WARNING_TICKS >= 10
+                        && ArchmageV5CombatPolicy.REPULSE_WARNING_TICKS <= 14,
+                "the Repulse warning is 0.5..0.7 s (10..14 ticks at 20 tps)");
         check(ArchmageV5CombatPolicy.CROWN_COOLDOWN_MIN_TICKS >= 900
                         && ArchmageV5CombatPolicy.CROWN_COOLDOWN_MAX_TICKS <= 1200,
                 "the Crown cooldown is 45..60 s");

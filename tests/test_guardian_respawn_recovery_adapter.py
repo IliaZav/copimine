@@ -113,6 +113,9 @@ public class GuardianRespawnRecoveryProbe {
     final Map<UUID,UUID> tentacleHitboxesByDisplay=new HashMap<>();
     final Map<UUID,UUID> tentacleDisplaysByHitbox=new HashMap<>();
     long generation=7, tentacleGuardianRegenerationDisabledGeneration=Long.MIN_VALUE;
+    // The escalation denominator is frozen once at phase entry; the probe models
+    // the field so the real spawn reconciler and cadence can both read it.
+    int guardianRosterOriginal;
     long tentacleActiveMillis=0, tentacleDamageWindowEndsMillis=-1;
     double tentacleGuardianRegenerationGranted, tentacleGuardianRegenerationNextStepMillis;
     double regenHeals; double bossMaxHealthValue=60;

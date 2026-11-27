@@ -120,9 +120,41 @@ def render(input_dir: Path, output_dir: Path):
     (output_dir / "guardian_music_v2_manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 
 
+def install_overload(source_path: Path, output_dir: Path):
+    source_hash = hashlib.sha256(source_path.read_bytes()).hexdigest()
+    if source_hash != "4db07e3d7c7ed1bc662cea9481b87d53ad29c105dd921d1006373242bf459b8d":
+        raise ValueError("Unexpected Heavy Boss Battle 1 source")
+    source, rate = sf.read(source_path, dtype="float32", always_2d=True)
+    audio = source[:45 * rate].copy()
+    fade = np.linspace(0, 1, round(rate * .12), dtype=np.float32)[:, None]
+    audio[:len(fade)] *= fade
+    audio[-len(fade):] *= fade[::-1]
+    audio *= min(.88 / np.max(np.abs(audio)), .115 / np.sqrt(np.mean(audio * audio)))
+    manifest_path = output_dir / "guardian_music_v2_manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    track = next(item for item in manifest["tracks"] if item["phase"] == "overload")
+    target = output_dir / track["filename"]
+    with sf.SoundFile(target, mode="w", samplerate=rate, channels=audio.shape[1],
+                      format="OGG", subtype="VORBIS") as handle:
+        for begin in range(0, len(audio), rate):
+            handle.write(audio[begin:begin + rate])
+    normalize_ogg_serial(target, int.from_bytes(hashlib.sha256(b"overload").digest()[:4], "little"))
+    decoded, _ = sf.read(target, dtype="float32")
+    track.update(source="Heavy Boss Battle 1 — MintoDog", license="CC0-1.0",
+                 sourceUrl="https://opengameart.org/content/heavy-boss-battle-1", sourceSha256=source_hash,
+                 pulseBpm=200, tempo=1.0, sha256=hashlib.sha256(target.read_bytes()).hexdigest(),
+                 peak=float(np.max(np.abs(decoded))), rms=float(np.sqrt(np.mean(decoded * decoded))))
+    manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input-dir", type=Path, required=True)
+    modes = parser.add_mutually_exclusive_group(required=True)
+    modes.add_argument("--input-dir", type=Path)
+    modes.add_argument("--overload-source", type=Path)
     parser.add_argument("--output-dir", type=Path, required=True)
     args = parser.parse_args()
-    render(args.input_dir, args.output_dir)
+    if args.overload_source:
+        install_overload(args.overload_source, args.output_dir)
+    else:
+        render(args.input_dir, args.output_dir)

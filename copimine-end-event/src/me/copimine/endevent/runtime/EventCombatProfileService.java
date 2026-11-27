@@ -247,14 +247,49 @@ public final class EventCombatProfileService {
     public EchoBehaviorStrategy echoBehaviorStrategy(UUID owner) {
         Snapshot profile = snapshot(owner);
         if (profile == null) return null;
+        // E-04: blend each noisy feature towards a competent neutral baseline by
+        // its OWN per-feature confidence, so one accidental sample cannot lock a
+        // style and a sparse sample does not erase a strong neighbouring signal.
+        int healThreshold = blendMean(profile.count(Stat.HEAL_HEALTH_PERMILLE),
+                profile.count(Stat.HEAL_USES), profile.confidence(Stat.HEAL_RATIO),
+                EchoBehaviorStrategy.NEUTRAL_HEAL_THRESHOLD_PERMILLE, 0, 1_000);
+        int swingCadence = blendMean(profile.count(Stat.ATTACK_INTERVAL_TICKS),
+                profile.count(Stat.ATTACK_INTERVAL_SAMPLES),
+                profile.confidence(Stat.ATTACK_INTERVAL_TICKS),
+                EchoBehaviorStrategy.NEUTRAL_SWING_CADENCE_TICKS, 1, 60);
+        int axeShare = blendMean(profile.count(Stat.AXE_HITS),
+                profile.count(Stat.MELEE_HITS), profile.confidence(Stat.AXE_HITS),
+                EchoBehaviorStrategy.NEUTRAL_WEAPON_PREFERENCE_PERMILLE, 0, 1_000);
+        int bowDraw = blendMean(profile.count(Stat.BOW_CHARGE_TICKS),
+                profile.count(Stat.BOW_RELEASES), profile.confidence(Stat.BOW_RELEASES),
+                EchoBehaviorStrategy.NEUTRAL_BOW_DRAW_TICKS, 0, 60);
+        int crossbowCharge = blendMean(profile.count(Stat.CROSSBOW_CHARGE_TICKS),
+                profile.count(Stat.CROSSBOW_LOADS), profile.confidence(Stat.CROSSBOW_LOADS),
+                EchoBehaviorStrategy.NEUTRAL_CROSSBOW_CHARGE_TICKS, 0, 60);
         EchoBehaviorStrategy.ProfileCounts counts = new EchoBehaviorStrategy.ProfileCounts(
                 profile.count(Stat.MELEE_HITS), profile.count(Stat.RANGED_HITS),
                 profile.count(Stat.MOVEMENT_SAMPLES), profile.count(Stat.SPRINT_SAMPLES),
                 profile.count(Stat.SHIELD_SAMPLES), profile.count(Stat.HEAL_USES),
                 profile.observedWaves(), profile.fromEventStart(), profile.confidence(),
                 profile.count(Stat.JUMP_CRITICAL_HITS), profile.count(Stat.ITEM_SWITCHES),
-                distanceHoldPermille(profile), strafeKitePermille(profile));
+                distanceHoldPermille(profile), strafeKitePermille(profile),
+                healThreshold, swingCadence, axeShare, bowDraw, crossbowCharge);
         return EchoBehaviorStrategy.from(counts);
+    }
+
+    /**
+     * E-04: blend a per-feature sample mean towards the competent neutral baseline
+     * by its own confidence. With no evidence the baseline is returned unchanged;
+     * as confidence rises the observed mean dominates. The result is clamped to the
+     * feature's legal range.
+     */
+    private static int blendMean(long sum, long count, double featureConfidence,
+                                 int baseline, int min, int max) {
+        if (count <= 0L || sum <= 0L) return baseline;
+        double mean = sum / (double) count;
+        double weight = Math.max(0.0D, Math.min(1.0D, featureConfidence));
+        double blended = baseline + (mean - baseline) * weight;
+        return (int) Math.max(min, Math.min(max, Math.round(blended)));
     }
 
     /**

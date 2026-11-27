@@ -23,9 +23,13 @@ def ability_probe(tmp_path_factory):
         "void applyRealitySplitDirectionalDamage(",
     ]
     if "boolean applyWaveAbilityDamage(" in source:
-        signatures.append("boolean applyWaveAbilityDamage(")
+        signatures.extend((
+            "boolean applyWaveAbilityDamage(LivingEntity attacker, Player target, double amount)",
+            "boolean applyWaveAbilityDamage(LivingEntity attacker, Player target, double amount,",
+        ))
     methods = "\n".join(extract(source, signature) for signature in signatures)
     methods = methods.replace("org.bukkit.potion.", "").replace("org.bukkit.FluidCollisionMode", "FluidCollisionMode")
+    methods = methods.replace("org.bukkit.damage.DamageSource", "DamageSource")
     java = output / "WaveAbilityAdmissionProbe.java"
     java.write_text(r'''
 import java.util.*;
@@ -33,6 +37,8 @@ import me.copimine.endevent.domain.WaveDamagePolicy;
 public class WaveAbilityAdmissionProbe {
     // Presentation seam: the probed methods fire the authored signature after a
     // landed cast. Visual output is not what this probe asserts.
+    void publishSpellContact(String token,LivingEntity actor,UUID id,Location at,Vector axis,double radius,double reach,int ticks){}
+    static class DamageSource {}
     void renderWave7AbilityEffect(Object a,Object b,String c){}
     static final int SLOWNESS_DEBUFF_TICKS=40, MINI_VOID_SNARE_DEBUFF_TICKS=40, MINI_ECHO_PULSE_DEBUFF_TICKS=40;
     static final double WAVE_MOB_DAMAGE_REDUCTION=0.75;
@@ -77,6 +83,7 @@ public class WaveAbilityAdmissionProbe {
         final WaveAbilityAdmissionProbe owner;int effects,impulses,damageCalls;double health=20;
         boolean cancel,observe=true,advanceGeneration,throwDamage,blocked,absorb;double absorption,y;
         Player(WaveAbilityAdmissionProbe owner){this.owner=owner;}
+        void damage(double amount,DamageSource source){throw new AssertionError("unexpected native source");}
         void damage(double amount,Entity attacker){
             damageCalls++;
             if(throwDamage)throw new IllegalStateException("injected damage failure");

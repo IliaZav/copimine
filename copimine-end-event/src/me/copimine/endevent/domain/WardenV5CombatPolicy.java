@@ -59,7 +59,7 @@ public final class WardenV5CombatPolicy {
     /** Exactly four blocks forward. */
     public static final double SWEEP_FORWARD_BLOCKS = 4.0D;
     /** 0.7..1.0 s of full-body preparation. */
-    public static final int SWEEP_PREP_TICKS = 40;
+    public static final int SWEEP_PREP_TICKS = 18;
     /** Player hitbox vertical tolerance; a legal player hitbox must intersect. */
     public static final double SWEEP_VERTICAL_BLOCKS = 2.0D;
     /** Movement stun, owned and expiring. */

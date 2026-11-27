@@ -6,43 +6,41 @@ import me.copimine.endevent.domain.BossCastAvailabilityPolicy.BusySlot;
 import me.copimine.endevent.domain.EndRiftAiPolicy;
 
 /**
- * N23-P1-11 (starvation half): a live Last Seal ring may keep exactly one
- * light, telegraphed, dodgeable spell alive and must defer every body- or
- * floor-owning cast; an ambush grab still pauses all major casts.
+ * Major Last Seal hazards leave only the two compatible ranged spells available.
  */
 public final class BossCastAvailabilityPolicyTest {
 
     public static void main(String[] args) {
-        onlyOneRingCompatibleSpell();
-        blocksAllCastsOnlyForAmbush();
+        onlyLightRingCompatibleSpells();
+        keepsLightSpellsDuringEachBusySlot();
         noneKeepsTheWholePoolInOrder();
         nullSlotBehavesLikeNone();
         ringKeepsOnlyCompatibleSpells();
-        ambushYieldsNothing();
+        ambushKeepsOnlyLightSpells();
         emptyAndNullPoolsAreEmpty();
         resultsAreImmutable();
         ringNeverLeaksABodyOwner();
         System.out.println("BossCastAvailabilityPolicyTest OK");
     }
 
-    private static void onlyOneRingCompatibleSpell() {
+    private static void onlyLightRingCompatibleSpells() {
         int compatible = 0;
         for (EndRiftAiPolicy.BossSpell spell : EndRiftAiPolicy.BossSpell.values()) {
             if (BossCastAvailabilityPolicy.compatibleWhileRing(spell)) {
                 compatible++;
-                check(spell == EndRiftAiPolicy.BossSpell.RIFT_PROJECTILE,
+                check(spell == EndRiftAiPolicy.BossSpell.RIFT_PROJECTILE || spell == EndRiftAiPolicy.BossSpell.BOSS_FIREBALL,
                         "unexpected ring-compatible spell " + spell);
             }
         }
-        check(compatible == 1,
-                "exactly one ring-compatible spell is allowed, got " + compatible);
+        check(compatible == 2,
+                "expected both light ring-compatible spells, got " + compatible);
         check(!BossCastAvailabilityPolicy.compatibleWhileRing(null),
                 "null must never be ring-compatible");
     }
 
-    private static void blocksAllCastsOnlyForAmbush() {
-        check(BossCastAvailabilityPolicy.blocksAllCasts(BusySlot.AMBUSH),
-                "an ambush grab must pause every major cast");
+    private static void keepsLightSpellsDuringEachBusySlot() {
+        check(!BossCastAvailabilityPolicy.blocksAllCasts(BusySlot.AMBUSH),
+                "an ambush leaves the light casting lane available");
         check(!BossCastAvailabilityPolicy.blocksAllCasts(BusySlot.RING),
                 "a ring must not pause every major cast");
         check(!BossCastAvailabilityPolicy.blocksAllCasts(BusySlot.NONE),
@@ -68,13 +66,14 @@ public final class BossCastAvailabilityPolicyTest {
         List<EndRiftAiPolicy.BossSpell> pool = samplePool();
         List<EndRiftAiPolicy.BossSpell> kept =
                 BossCastAvailabilityPolicy.filter(pool, BusySlot.RING);
-        check(kept.equals(List.of(EndRiftAiPolicy.BossSpell.RIFT_PROJECTILE)),
-                "RING must keep exactly the compatible projectile, got " + kept);
+        check(kept.equals(List.of(EndRiftAiPolicy.BossSpell.RIFT_PROJECTILE, EndRiftAiPolicy.BossSpell.BOSS_FIREBALL)),
+                "RING must keep both compatible projectiles, got " + kept);
     }
 
-    private static void ambushYieldsNothing() {
-        check(BossCastAvailabilityPolicy.filter(samplePool(), BusySlot.AMBUSH).isEmpty(),
-                "AMBUSH must yield an empty pool");
+    private static void ambushKeepsOnlyLightSpells() {
+        check(BossCastAvailabilityPolicy.filter(samplePool(), BusySlot.AMBUSH).equals(List.of(
+                        EndRiftAiPolicy.BossSpell.RIFT_PROJECTILE, EndRiftAiPolicy.BossSpell.BOSS_FIREBALL)),
+                "AMBUSH must preserve only the compatible light spells");
     }
 
     private static void emptyAndNullPoolsAreEmpty() {
@@ -116,6 +115,7 @@ public final class BossCastAvailabilityPolicyTest {
                 EndRiftAiPolicy.BossSpell.VOID_BLAST,
                 EndRiftAiPolicy.BossSpell.KAGUNE_ERUPTION,
                 EndRiftAiPolicy.BossSpell.RIFT_PROJECTILE,
+                EndRiftAiPolicy.BossSpell.BOSS_FIREBALL,
                 EndRiftAiPolicy.BossSpell.GROUND_SLAM));
     }
 

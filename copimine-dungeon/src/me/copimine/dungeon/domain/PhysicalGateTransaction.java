@@ -32,6 +32,19 @@ public final class PhysicalGateTransaction {
         String blockKey(int x, int y, int z);
 
         void setBlock(int x, int y, int z, String key);
+
+        default boolean mutable(int x, int y, int z) {
+            return true;
+        }
+
+        default boolean blocked(Cuboid bounds) {
+            return false;
+        }
+    }
+
+    public interface Journal {
+        List<String> load() throws java.io.IOException;
+        void write(List<String> keys) throws java.io.IOException;
     }
 
     /** Outcome of an open/close/recover request. */
@@ -47,20 +60,32 @@ public final class PhysicalGateTransaction {
     private final GateDefinition gate;
     private final GateWorld world;
     private final List<int[]> mask;
+    private final Journal storage;
     private final List<String> journal = new ArrayList<>();
-    private GateState state;
+    private GateState state = GateState.CLOSED;
     private boolean journaled;
+    private boolean loaded;
 
     public PhysicalGateTransaction(GateDefinition gate, GateWorld world) {
+        this(gate, world, new Journal() {
+            private List<String> keys = List.of();
+
+            @Override public List<String> load() {
+                return keys;
+            }
+
+            @Override public void write(List<String> snapshot) {
+                keys = List.copyOf(snapshot);
+            }
+        });
+    }
+
+    public PhysicalGateTransaction(GateDefinition gate, GateWorld world, Journal storage) {
         this.gate = Objects.requireNonNull(gate, "gate");
         this.world = Objects.requireNonNull(world, "world");
+        this.storage = Objects.requireNonNull(storage, "storage");
         this.mask = PhysicalGatePolicy.doorMask(gate);
-        this.state = gate.initialState();
-        if (this.state == GateState.OPEN && chunksLoaded()) {
-            // An initially-open gate has no snapshot yet; capture it now so a
-            // later close can restore the builder's original doorway.
-            snapshot();
-        }
+        this.state = gate.initialOpen() ? GateState.RECOVERY_REQUIRED : GateState.CLOSED;
     }
 
     public GateDefinition gate() {
@@ -88,82 +113,117 @@ public final class PhysicalGateTransaction {
         return mask.size();
     }
 
-    /** Opens the doorway, snapshotting the original blocks on first use. */
     public Result open() {
-        if (state == GateState.OPEN) {
-            return Result.ALREADY_OPEN;
-        }
+        return apply(true, List.of());
+    }
+
+    public Result close(List<int[]> occupiedBlocks) {
+        return apply(false, Objects.requireNonNull(occupiedBlocks, "occupiedBlocks"));
+    }
+
+    public Result recover() {
+        return close(List.of());
+    }
+
+    private Result apply(boolean open, List<int[]> occupied) {
         if (!chunksLoaded()) {
             state = GateState.RECOVERY_REQUIRED;
             return Result.CHUNK_UNLOADED;
         }
-        if (!journaled) {
-            snapshot();
-        }
-        for (int[] block : mask) {
-            world.setBlock(block[0], block[1], block[2], AIR);
-        }
-        state = GateState.OPEN;
-        return Result.APPLIED;
-    }
-
-    /**
-     * Closes the doorway and restores the original builder blocks. A player,
-     * mob or other occupant inside the mask defers closure instead of being
-     * suffocated, leaving the gate open in {@code BLOCKED_BY_ENTITY}.
-     */
-    public Result close(List<int[]> occupiedBlocks) {
-        Objects.requireNonNull(occupiedBlocks, "occupiedBlocks");
-        if (state == GateState.CLOSED) {
-            return Result.ALREADY_CLOSED;
-        }
-        if (!journaled) {
+        try {
+            List<String> before = readMask();
+            if (!loaded) {
+                List<String> saved = storage.load();
+                if (!saved.isEmpty()) {
+                    if (saved.size() != mask.size() || saved.stream().allMatch(PhysicalGateTransaction::isAir)) {
+                        throw new IllegalStateException("Invalid gate journal for " + gate.id());
+                    }
+                    journal.addAll(saved);
+                    journaled = true;
+                }
+                loaded = true;
+            }
+            if (!journaled) {
+                if (before.stream().allMatch(PhysicalGateTransaction::isAir)) {
+                    throw new IllegalStateException("Missing solid builder mask for " + gate.id());
+                }
+                if (!open) {
+                    state = GateState.CLOSED;
+                    return Result.ALREADY_CLOSED;
+                }
+                storage.write(before);
+                journal.addAll(before);
+                journaled = true;
+            }
+            if (!matchesJournal(before)) {
+                throw new IllegalStateException("Builder blocks changed in gate " + gate.id());
+            }
+            List<String> after = open ? java.util.Collections.nCopies(mask.size(), AIR) : journal;
+            if (before.equals(after)) {
+                state = open ? GateState.OPEN : GateState.CLOSED;
+                return open ? Result.ALREADY_OPEN : Result.ALREADY_CLOSED;
+            }
+            if (!open && (world.blocked(gate.bounds()) || PhysicalGatePolicy.occupied(mask, occupied))) {
+                state = GateState.BLOCKED_BY_ENTITY;
+                return Result.BLOCKED_BY_ENTITY;
+            }
+            replace(before, after);
+            state = open ? GateState.OPEN : GateState.CLOSED;
+            return Result.APPLIED;
+        } catch (java.io.IOException | RuntimeException error) {
             state = GateState.RECOVERY_REQUIRED;
             return Result.RECOVERY_REQUIRED;
         }
-        if (PhysicalGatePolicy.occupied(mask, occupiedBlocks)) {
-            state = GateState.BLOCKED_BY_ENTITY;
-            return Result.BLOCKED_BY_ENTITY;
-        }
-        if (!chunksLoaded()) {
-            state = GateState.RECOVERY_REQUIRED;
-            return Result.CHUNK_UNLOADED;
-        }
-        return restore();
     }
 
-    /**
-     * Reconciles a gate from its durable journal after a restart or abort. A gate
-     * with no journal is only safe when it is already closed.
-     */
-    public Result recover() {
-        if (!journaled) {
-            return state == GateState.CLOSED ? Result.ALREADY_CLOSED : Result.RECOVERY_REQUIRED;
+    private List<String> readMask() {
+        List<String> keys = new ArrayList<>(mask.size());
+        for (int[] cell : mask) {
+            if (!world.mutable(cell[0], cell[1], cell[2])) {
+                throw new IllegalStateException("Protected block in gate " + gate.id());
+            }
+            keys.add(world.blockKey(cell[0], cell[1], cell[2]));
         }
-        if (!chunksLoaded()) {
-            state = GateState.RECOVERY_REQUIRED;
-            return Result.CHUNK_UNLOADED;
-        }
-        return restore();
+        return keys;
     }
 
-    private Result restore() {
+    private boolean matchesJournal(List<String> before) {
         for (int i = 0; i < mask.size(); i++) {
-            int[] block = mask.get(i);
-            world.setBlock(block[0], block[1], block[2], journal.get(i));
+            if (!before.get(i).equals(AIR) && !before.get(i).equals(journal.get(i))) {
+                return false;
+            }
         }
-        journal.clear();
-        journaled = false;
-        state = GateState.CLOSED;
-        return Result.APPLIED;
+        return true;
     }
 
-    private void snapshot() {
-        journal.clear();
-        for (int[] block : mask) {
-            journal.add(world.blockKey(block[0], block[1], block[2]));
+    private void replace(List<String> before, List<String> after) {
+        List<Integer> attempted = new ArrayList<>();
+        try {
+            for (int index = 0; index < mask.size(); index++) {
+                if (!before.get(index).equals(after.get(index))) {
+                    attempted.add(index);
+                    set(index, after.get(index));
+                }
+            }
+        } catch (RuntimeException error) {
+            for (int index : attempted.reversed()) {
+                try {
+                    set(index, before.get(index));
+                } catch (RuntimeException rollback) {
+                    error.addSuppressed(rollback);
+                }
+            }
+            throw error;
         }
-        journaled = true;
+    }
+
+    private void set(int index, String key) {
+        int[] cell = mask.get(index);
+        world.setBlock(cell[0], cell[1], cell[2], key);
+    }
+
+    private static boolean isAir(String key) {
+        return AIR.equals(key) || "minecraft:cave_air".equals(key) || "minecraft:void_air".equals(key);
     }
 
     private boolean chunksLoaded() {

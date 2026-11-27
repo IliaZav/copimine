@@ -10,7 +10,21 @@ public final class TentacleThrowPolicyTest {
         testSocketCoincidenceUsesAFiniteLongFallback();
         testSafeLandingKeepsTheStrongestReadableThrow();
         testNoSafeLandingRejectsRatherThanApplyingAWeakThrow();
+        testAirborneThrowChecksTheWholeArc();
         System.out.println("TentacleThrowPolicyTest OK");
+    }
+
+    private static void testAirborneThrowChecksTheWholeArc() {
+        var launch = TentacleThrowPolicy.launch(0, 0, 1, 0);
+        double[] landed = {Double.NaN};
+        check(TentacleThrowPolicy.hasSafeFlight(launch, -3.5D, (x, y, z, landing) -> {
+            if (landing) landed[0] = y;
+            return true;
+        }), "clear airborne arc reaches the floor");
+        check(landed[0] == -3.5D, "landing uses the floor rather than the hand socket");
+        check(!TentacleThrowPolicy.hasSafeFlight(launch, -3.5D,
+                (x, y, z, landing) -> landing || x < 4.0D || x > 4.5D),
+                "a wall crossing blocks the throw even when the landing is clear");
     }
 
     private static void testReleaseDamageRemovesExactlyFiveHearts() throws Exception {

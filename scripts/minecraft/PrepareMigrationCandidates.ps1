@@ -190,9 +190,22 @@ try {
     # number of times. The digest pin below still rejects any wrong artifact.
     $clientBuildExit = 1
     for ($attempt = 1; $attempt -le 3; $attempt++) {
-        & $gradle --no-daemon --project-cache-dir $clientGradleProjectCache -p $clientProject test jar
-        $clientBuildExit = $LASTEXITCODE
+        $previousErrorAction = $ErrorActionPreference
+        try {
+            # Windows PowerShell can wrap redirected native stderr in ErrorRecord values.
+            $ErrorActionPreference = 'Continue'
+            $buildOutput = & $gradle --no-daemon --project-cache-dir $clientGradleProjectCache -p $clientProject test jar 2>&1 |
+                ForEach-Object { $line = [string]$_; Write-Host $line; $line }
+            $clientBuildExit = $LASTEXITCODE
+        } finally {
+            $ErrorActionPreference = $previousErrorAction
+        }
         if ($clientBuildExit -eq 0) { break }
+        $buildText = $buildOutput -join [Environment]::NewLine
+        $dependencyFailure = $buildText -match '(?i)could not (resolve|download|get|head)|could not get resource'
+        $transientFailure = $buildText -match '(?i)timed?\s*out|connection reset|temporary failure|status code (429|502|503|504)'
+        $sourceOrTestFailure = $buildText -match '(?im)^> Task :[^\r\n]*(?:test|compile\w*) FAILED\s*$|There were failing tests|Compilation failed'
+        if (-not $dependencyFailure -or -not $transientFailure -or $sourceOrTestFailure) { break }
         if ($attempt -lt 3) {
             Write-Warning ('CopiMineClient 26.3 build attempt ' + $attempt + ' failed; retrying after transient dependency resolution failure.')
             Start-Sleep -Seconds (20 * $attempt)

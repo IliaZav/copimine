@@ -81,8 +81,15 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity,
         String uuid = entity.getUUID().toString();
         bound.copimine$poseProgress(ClientBridgeProtocol.endEventState().wavePoseProgress(uuid,System.currentTimeMillis()));
         bound.copimine$bindTrialFrame(ClientBridgeProtocol.endEventState().trialFrame(uuid, System.currentTimeMillis()));
+        String visual = ClientBridgeProtocol.endEventVisualForEntity(uuid);
+        var customName = entity.getCustomName();
+        if ((visual == null || visual.isBlank()) && state instanceof WardenRenderState
+                && customName != null && customName.getContents() instanceof net.minecraft.network.chat.contents.TranslatableContents translated
+                && translated.getKey().equals("copimine.dungeon.arena_warden")) {
+            visual = "DUNGEON_ARENA_WARDEN";
+        }
         bound.copimine$bindRenderState(uuid, entity.getId(), entity instanceof EchoPlayerView,
-                ClientBridgeProtocol.endEventVisualForEntity(uuid),
+                visual,
                 ClientBridgeProtocol.endEventWavePoseForEntity(uuid),
                 ClientBridgeProtocol.endEventAnimationForEntity(uuid),
                 ClientBridgeProtocol.isBoundEndBoss(uuid),
@@ -144,11 +151,40 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity,
         copimine$activeModel = null;
     }
 
+    /**
+     * V6 Phase 5: a marked player Echo copy is submitted through the translucent
+     * entity pipeline so the alpha carried in the model tint is honoured. Every
+     * other living render state keeps vanilla's own type untouched, so a normal
+     * player, the boss and an ordinary Wave 7 echo are unaffected.
+     */
+    @Inject(method = "getRenderType", at = @At("HEAD"), cancellable = true)
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private void copimine$translucentPlayerEchoType(LivingEntityRenderState state,
+                                                     boolean visible, boolean appearsGlowing,
+                                                     boolean outline,
+                                                     CallbackInfoReturnable<RenderType> cir) {
+        if (!(state instanceof EndRiftRenderStateAccess bound) || !bound.copimine$isEcho()) return;
+        float copyAlpha = bound.copimine$echoCopyAlpha();
+        if (!(copyAlpha > 0.0F) || copyAlpha >= 1.0F) return;
+        LivingEntityRenderer raw = (LivingEntityRenderer) (Object) this;
+        cir.setReturnValue(net.minecraft.client.renderer.rendertype.RenderTypes
+                .entityTranslucent(raw.getTextureLocation(state)));
+    }
+
     @Inject(method = "getModelTint", at = @At("HEAD"), cancellable = true)
     private void copimine$tintDetachedEcho(LivingEntityRenderState state,
                                             CallbackInfoReturnable<Integer> cir) {
         if (state instanceof EndRiftRenderStateAccess bound && bound.copimine$isEcho()) {
-            cir.setReturnValue(0xff946bb8);
+            int tint = 0xff946bb8;
+            // V6 Phase 5: a RAGE player copy keeps this drained violet body, but
+            // the alpha rides in the tint ARGB so the translucent render type
+            // actually draws it semi-transparent instead of opaque.
+            float copyAlpha = bound.copimine$echoCopyAlpha();
+            if (copyAlpha > 0.0F && copyAlpha < 1.0F) {
+                tint = me.copimine.endevent.domain.Phase5EchoCopyPresentationPolicy
+                        .translucentTint(tint, copyAlpha);
+            }
+            cir.setReturnValue(tint);
         } else if (state instanceof EndRiftRenderStateAccess copy
                 && copimine$isGuardianCopy(copy.copimine$visual())) {
             // Contract 15.3 asks for a SUBTLE, learnable clue that separates a

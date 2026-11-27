@@ -1,10 +1,12 @@
 package me.copimine.dungeon.command;
 
+import org.bukkit.Bukkit;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
+import org.bukkit.plugin.Plugin;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -22,14 +24,21 @@ import me.copimine.dungeon.editor.EditorPermissions;
  */
 public final class DungeonCommand implements CommandExecutor, TabCompleter {
 
+    private final Plugin plugin;
     private final DungeonCommandDispatcher dispatcher;
 
-    public DungeonCommand(DungeonCommandDispatcher dispatcher) {
+    public DungeonCommand(Plugin plugin, DungeonCommandDispatcher dispatcher) {
+        this.plugin = plugin;
         this.dispatcher = dispatcher;
     }
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        if (!Bukkit.isPrimaryThread()) {
+            String[] commandArgs = args.clone();
+            Bukkit.getScheduler().runTask(plugin, () -> onCommand(sender, command, label, commandArgs));
+            return true;
+        }
         CommandActor actor = actorOf(sender);
         CommandResponse response = dispatcher.execute(actor, List.of(args));
         for (String line : response.lines()) {

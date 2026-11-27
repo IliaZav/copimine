@@ -33,6 +33,7 @@ public class DungeonCommandProbe {
                 .displayName(id)
                 .world("world")
                 .bounds(bounds)
+                .trigger(bounds)
                 .scalingMode(ScalingMode.FIXED)
                 .maxConcurrentEnemies(8)
                 .addWave(new WaveSpec(List.of(new EnemyGroup(MobTemplate.RIFT_BREEZE, 2)), 20))
@@ -69,10 +70,11 @@ public class DungeonCommandProbe {
                 Set.of(EditorPermissions.ADMIN), false);
 
         Rig() {
+            dispatcher.setPublicationGateway((id, enable) -> check(id.equals("rose"), "wrong publication owner"));
             EditorSession session = sessions.open(BUILDER, "Builder");
+            session.setWorld("world");
             session.setCorner1(1, 2, 3);
             session.setCorner2(4, 5, 6);
-            session.setWorld("world");
             session.selectRoom("rose");
         }
 
@@ -146,6 +148,8 @@ public class DungeonCommandProbe {
                 {"secret add rose_secret2", "secret add"},
                 {"secret style rose_secret secret", "secret style"},
                 {"secret unlock rose_secret milestone", "secret unlock"},
+                {"secret trigger rose_secret hit", "secret trigger"},
+                {"secret milestone rose_secret tulip", "secret milestone"},
                 {"spawn add rose_spawn2 rift_breeze", "spawn add"},
                 {"spawn list rose", "spawn list"},
                 {"spawn remove rose_spawn", "spawn remove"},
@@ -168,9 +172,21 @@ public class DungeonCommandProbe {
             check(route.canonicalPath().equals(entry[1]),
                     "/cmdungeon " + entry[0] + " resolved to '" + route.canonicalPath()
                             + "', expected '" + entry[1] + "'");
+            EditorSession session = rig.sessions.session(BUILDER);
+            if (entry[0].equals("reward anchor rose") || entry[0].startsWith("secret trigger ")) {
+                session.setCorner1(1, 2, 3);
+                session.setCorner2(1, 2, 3);
+            }
             CommandResponse response = rig.run(entry[0]);
             check(response.success(), "/cmdungeon " + entry[0] + " failed: " + response.lines());
+            if (entry[0].equals("reward anchor rose") || entry[0].startsWith("secret trigger "))
+                session.setCorner2(4, 5, 6);
         }
+        var trigger = rig.store.catalog().secret("rose_secret").trigger();
+        check(trigger.action() == SecretTrigger.Action.HIT && trigger.block().at(1, 2, 3)
+                && trigger.milestoneRoom().equals("tulip"), "secret trigger lost its exact cell or milestone");
+        check(rig.store.catalog().spawn("rose_reward").bounds().equals(Cuboid.of(1, 2, 3, 1, 2, 3)),
+                "reward anchor must retain the exact selected block");
         check(registry.usageLines().size() >= 60,
                 "documented tree is incomplete: " + registry.usageLines().size() + " usage lines");
         check(registry.usageLines().contains("/cmdungeon room reset <roomId> confirm"),
@@ -179,10 +195,8 @@ public class DungeonCommandProbe {
                 "usage rendering lost the gate preview form");
 
         CommandResponse publish = rig.run("room publish rose");
-        check(publish.success(), "publish dry-run failed: " + publish.lines());
-        check(String.join("\n", publish.lines()).contains("DRY-RUN"),
-                "publish must emit a dry-run receipt, never mutate the world");
-        check(rig.store.catalog().room("rose") != null, "publish must not remove the definition");
+        check(!publish.success(), "publication must reject an incomplete second wave");
+        check(rig.store.catalog().room("rose") != null, "a refused publication preserves the draft");
 
         CommandResponse reset = rig.run("room reset rose confirm");
         check(reset.success(), "reset dry-run failed: " + reset.lines());
@@ -266,8 +280,8 @@ public class DungeonCommandProbe {
                 List.of("room", "reset", "rose", "confirm"));
         check(reset.matched() && reset.requiresConfirm(),
                 "reset must require an explicit confirm token");
-        check(registry.resolve(List.of("room", "publish", "rose")).worldMutating(),
-                "publish must be flagged world-mutating (dry-run only)");
+        check(!registry.resolve(List.of("room", "publish", "rose")).worldMutating(),
+                "publication stages a real definition without touching world blocks");
 
         System.out.println("PASS dungeon permissions and safety flags");
     }

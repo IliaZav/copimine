@@ -3,6 +3,7 @@ package me.copimine.endevent.runtime.wave7;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.Map;
 import me.copimine.endevent.domain.wave7.EchoBehaviorStrategy;
 import me.copimine.endevent.domain.wave7.EchoDuelCombatPolicy;
 import me.copimine.endevent.domain.wave7.EchoLoadoutState;
@@ -21,7 +22,10 @@ public final class EchoDuelCombatRuntimeAdapter {
     private static final int RANGED_RANGE_BLOCKS = 30;
     /** A parry only makes sense against a body close enough to actually strike. */
     private static final double PARRY_RANGE_BLOCKS = 5.0D;
-    private static final int HEAL_THRESHOLD_PERMILLE = 550;
+    /** A strong recorded axe habit (this share of melee hits) swaps the held weapon. */
+    private static final int AXE_PREFERENCE_FLOOR_PERMILLE = 650;
+    /** A strong recorded sword habit (this share of melee hits) keeps the sword. */
+    private static final int SWORD_PREFERENCE_CEILING_PERMILLE = 350;
     /**
      * The "never heals" floor for the recorded sustain share. Any player who
      * healed at least once while acting clears it; a profile with no healing at
@@ -30,11 +34,99 @@ public final class EchoDuelCombatRuntimeAdapter {
     private static final int SUSTAIN_FLOOR_PERMILLE = 1;
     private static final EchoDuelCombatPolicy.Cooldowns COOLDOWNS =
             new EchoDuelCombatPolicy.Cooldowns(10, 20, 40, 32, 20, 100, 60);
+    /**
+     * E-06: structured reason for a tick that could not produce a decision
+     * because the persisted snapshot/loadout was invalid. This is an expected
+     * corruption family: fail the actor closed and let the runtime restore its
+     * last durable receipt.
+     */
+    public static final String REASON_INVALID_SNAPSHOT = "INVALID_SNAPSHOT";
+    /**
+     * E-06: structured reason for an unexpected failure. Unlike an invalid
+     * snapshot this is not normal, so it is reported and then surfaced to the
+     * runtime boundary instead of being silently swallowed as an idle tick.
+     */
+    public static final String REASON_UNEXPECTED_FAILURE = "UNEXPECTED_FAILURE";
+    /**
+     * E-05: the longest bow draw / crossbow charge a personalisation may record.
+     * The persisted charge deadline is rebased with this ceiling so a cold
+     * restart can neither invent an extra-long draw nor fire before the operator's
+     * own recorded cadence.
+     */
+    private static final long MAX_RANGED_DRAW_TICKS = 60L;
+
+    /** E-04: the owner's recorded swing cadence personalises the melee cooldown, clamped to a fair native band. */
+    private static EchoDuelCombatPolicy.Cooldowns cooldownsFor(EchoBehaviorStrategy strategy) {
+        if (strategy == null) return COOLDOWNS;
+        int cadence = Math.max(10, Math.min(40, strategy.swingCadenceTicks()));
+        if (cadence == COOLDOWNS.meleeTicks()) return COOLDOWNS;
+        return new EchoDuelCombatPolicy.Cooldowns(COOLDOWNS.sharedActionTicks(), cadence,
+                COOLDOWNS.rangedTicks(), COOLDOWNS.consumableUseTicks(),
+                COOLDOWNS.shieldHoldTicks(), COOLDOWNS.shieldCooldownTicks(),
+                COOLDOWNS.jumpCooldownTicks());
+    }
+
+    /**
+     * E-05: the owner's recorded bow draw / crossbow charge personalises the ranged
+     * cadence inside a fair native band. A copy of a player who charged a bow for
+     * fourteen ticks should not fire on the team's fixed forty-tick beat while a
+     * copy of a snap-shooter waits the same. The value is clamped to 10..60 so a
+     * sparse or extreme profile can neither beat vanilla nor stall the fight.
+     */
+    private static EchoDuelCombatPolicy.Cooldowns rangedCooldownsFor(EchoBehaviorStrategy strategy,
+            int rangedSlot, EchoLoadoutState replica) {
+        EchoDuelCombatPolicy.Cooldowns base = cooldownsFor(strategy);
+        if (strategy == null || rangedSlot < 0) return base;
+        int charge = replica.item(rangedSlot).kind() == EchoLoadoutState.Kind.CROSSBOW
+                ? strategy.crossbowChargeTicks() : strategy.bowDrawTicks();
+        int cadence = Math.max(10, Math.min(60, charge));
+        if (cadence == base.rangedTicks()) return base;
+        return new EchoDuelCombatPolicy.Cooldowns(base.sharedActionTicks(), base.meleeTicks(),
+                cadence, base.consumableUseTicks(), base.shieldHoldTicks(),
+                base.shieldCooldownTicks(), base.jumpCooldownTicks());
+    }
 
     private EchoDuelCombatRuntimeAdapter() {
     }
 
-    public enum Action { NONE, MELEE, CRITICAL, RANGED, CONSUMABLE, SHIELD, JUMP, WIND_CHARGE, SPLASH }
+    public enum Action { NONE, MELEE, CRITICAL, RANGED, RANGED_DRAW, CONSUMABLE, SHIELD, JUMP, MACE_LIFT, WIND_CHARGE, SPLASH }
+
+    /**
+     * E-06: structured observability seam for the per-tick adapter.
+     *
+     * <p>The adapter used to swallow every {@link RuntimeException} as "no
+     * action", which can hide a permanently broken actor behind a copy that
+     * silently never acts. A tick that cannot produce a decision now reports a
+     * bounded reason to the runtime instead. The runtime is responsible for
+     * throttling and for restoring the last durable receipt; this callback must
+     * stay observational and never change control flow.</p>
+     */
+    @FunctionalInterface
+    public interface Diagnostics {
+        /** A do-nothing sink for callers that do not observe the adapter. */
+        Diagnostics NONE = (scope, tick, reason, failure) -> { };
+
+        /**
+         * Called once when a tick fails. {@code reason} is one of the
+         * {@code REASON_*} constants and must never include the private
+         * inventory; only the exception type is intended for the log.
+         */
+        void tickRejected(Scope scope, long tick, String reason, RuntimeException failure);
+
+        /**
+         * Classifies a failure, reports it to {@code diagnostics}, and returns
+         * true when it is an expected invalid snapshot. Keeping the
+         * classification in one place means the catch block and its regression
+         * test cannot drift.
+         */
+        static boolean classify(Diagnostics diagnostics, Scope scope, long tick,
+                                RuntimeException failure) {
+            boolean expected = failure instanceof IllegalArgumentException;
+            (diagnostics == null ? NONE : diagnostics).tickRejected(scope, tick,
+                    expected ? REASON_INVALID_SNAPSHOT : REASON_UNEXPECTED_FAILURE, failure);
+            return expected;
+        }
+    }
 
     /** The live context must exactly match the persisted event, room, actor and duel identity. */
     public record Scope(UUID eventId, long attemptGeneration, long runtimeGeneration, int room,
@@ -68,7 +160,23 @@ public final class EchoDuelCombatRuntimeAdapter {
 
     public record Observation(long tick, double distanceSquared, boolean lineOfSight,
                               boolean onGround, boolean criticalWindow,
-                              long ownerStrikeIntervalTicks, long ticksSinceOwnerStrike) {
+                              long ownerStrikeIntervalTicks, long ticksSinceOwnerStrike,
+                              boolean ownerBlocking, boolean allowWindCharge, boolean allowSplash, boolean pendingFoodHeal,
+                              boolean maceLiftAvailable) {
+        public Observation(long tick, double distanceSquared, boolean lineOfSight,
+                           boolean onGround, boolean criticalWindow, long ownerStrikeIntervalTicks,
+                           long ticksSinceOwnerStrike, boolean ownerBlocking, boolean allowWindCharge,
+                           boolean allowSplash, boolean pendingFoodHeal) {
+            this(tick, distanceSquared, lineOfSight, onGround, criticalWindow, ownerStrikeIntervalTicks,
+                    ticksSinceOwnerStrike, ownerBlocking, allowWindCharge, allowSplash, pendingFoodHeal, false);
+        }
+        public Observation(long tick, double distanceSquared, boolean lineOfSight,
+                           boolean onGround, boolean criticalWindow, long ownerStrikeIntervalTicks,
+                           long ticksSinceOwnerStrike) {
+            this(tick, distanceSquared, lineOfSight, onGround, criticalWindow,
+                    ownerStrikeIntervalTicks, ticksSinceOwnerStrike, false, true, true, true);
+        }
+
         public Observation(long tick, double distanceSquared, boolean lineOfSight) {
             this(tick, distanceSquared, lineOfSight, true, false, -1L, -1L);
         }
@@ -119,9 +227,10 @@ public final class EchoDuelCombatRuntimeAdapter {
                     || action == Action.MELEE && (itemSlot < 0 || ammoSlot != -1 || actionItem == null)
                     || action == Action.CRITICAL && (itemSlot < 0 || ammoSlot != -1 || actionItem == null)
                     || action == Action.RANGED && (itemSlot < 0 || ammoSlot < 0 || actionItem == null)
+                    || action == Action.RANGED_DRAW && (itemSlot < 0 || ammoSlot < 0 || actionItem == null)
                     || action == Action.CONSUMABLE && (itemSlot < 0 || ammoSlot != -1 || actionItem == null)
                     || action == Action.SHIELD && (itemSlot < 0 || ammoSlot != -1 || actionItem == null)
-                    || (action == Action.WIND_CHARGE || action == Action.SPLASH)
+                    || (action == Action.WIND_CHARGE || action == Action.MACE_LIFT || action == Action.SPLASH)
                         && (itemSlot < 0 || ammoSlot != -1 || actionItem == null)
                     || action == Action.JUMP && (itemSlot != -1 || ammoSlot != -1 || actionItem != null)) {
                 throw new IllegalArgumentException("invalid Echo combat decision");
@@ -206,11 +315,46 @@ public final class EchoDuelCombatRuntimeAdapter {
      */
     static MovementIntent movementIntent(EchoBehaviorStrategy strategy, Observation observation,
                                          boolean wounded, boolean canHeal) {
+        // A caller that only knows the profile assumes the copy still carries its
+        // ranged supplies; the live tick path passes the real, finite state.
+        boolean profilePrefersRange = strategy != null
+                && strategy.rangedPermille() > strategy.meleePermille();
+        return movementIntent(strategy, observation, wounded, canHeal, profilePrefersRange);
+    }
+
+    /**
+     * @param rangedAvailable the copy still carries a usable ranged weapon and
+     *                ammunition (or a loaded crossbow). A ranged-profile copy
+     *                that has burned through its arrows must close to melee
+     *                reach instead of kiting forever from a band it can no
+     *                longer fire from - the "exhausted quiver holds range"
+     *                dead zone E-02 names.
+     */
+    static MovementIntent movementIntent(EchoBehaviorStrategy strategy, Observation observation,
+                                         boolean wounded, boolean canHeal, boolean rangedAvailable) {
+        return movementIntent(strategy, observation, wounded, canHeal, rangedAvailable, 0L);
+    }
+
+    /**
+     * @param phaseOffset E-03 actor-local phase in {@code [0, 100)}. Two copies of
+     *                the same profile used to share the global tick clock, so
+     *                they strafed, hopped and raised shields in perfect lockstep
+     *                and the owner could time a single counter around the whole
+     *                squad. The offset is derived from the persisted duel and
+     *                actor identity, so every decision stays a pure, replayable
+     *                function of durable state while each copy keeps its own
+     *                rhythm. It only shifts when a burst happens; it never adds
+     *                reach, range or a free action.
+     */
+    static MovementIntent movementIntent(EchoBehaviorStrategy strategy, Observation observation,
+                                         boolean wounded, boolean canHeal, boolean rangedAvailable,
+                                         long phaseOffset) {
         if (strategy == null || observation == null) return MovementIntent.HOLD;
         double distance = Math.sqrt(observation.distanceSquared());
         // Map 0..1000 onto a 1.5..12 block hold band inside the ranged envelope.
         double preferred = 1.5D + 10.5D * strategy.holdDistancePermille() / 1_000.0D;
-        boolean wantsRange = strategy.rangedPermille() > strategy.meleePermille();
+        boolean wantsRange = rangedAvailable
+                && strategy.rangedPermille() > strategy.meleePermille();
         // A brawler copy has to reach melee reach. The band is anchored on the
         // owner's measured distance, but its upper edge is clamped to the melee
         // envelope: a neutral 500 per mille produced a 6.75-block hold with a
@@ -224,32 +368,67 @@ public final class EchoDuelCombatRuntimeAdapter {
         // kites, so this only changes melee copies.
         if (wounded && canHeal && !wantsRange) return MovementIntent.KITE;
         if (wantsRange) {
+            if (!observation.lineOfSight() && distance <= preferred + HOLD_TOLERANCE_BLOCKS) {
+                return ((observation.tick() + phaseOffset) / 20L) % 2L == 0L
+                        ? MovementIntent.STRAFE_LEFT : MovementIntent.STRAFE_RIGHT;
+            }
             if (distance < preferred - HOLD_TOLERANCE_BLOCKS) return MovementIntent.KITE;
-            if (distance > preferred + HOLD_TOLERANCE_BLOCKS
-                    && distance > RANGED_RANGE_BLOCKS) return MovementIntent.APPROACH;
-            return lateralIntent(strategy, observation);
+            // E-02: close to the owner's hold band. The previous guard also
+            // required distance > RANGED_RANGE_BLOCKS, so a ranged copy at, for
+            // example, 20 blocks with a 5-block preference strafed forever
+            // instead of closing - a navigation dead zone between the band edge
+            // and the 30-block envelope. Approaching the band is what a real
+            // archer does when it is out of position.
+            if (distance > preferred + HOLD_TOLERANCE_BLOCKS) return MovementIntent.APPROACH;
+            return lateralIntent(strategy, observation, phaseOffset);
         }
-        if (distance > preferred + HOLD_TOLERANCE_BLOCKS) return MovementIntent.APPROACH;
-        return lateralIntent(strategy, observation);
+        if (distance > preferred + HOLD_TOLERANCE_BLOCKS || !observation.lineOfSight()) return MovementIntent.APPROACH;
+        return lateralIntent(strategy, observation, phaseOffset);
     }
 
     /**
      * BRAIN-011: weave sideways with the owner's recorded rhythm. The choice is a
-     * pure function of the tick and the profile, so it is reproducible on replay
-     * and needs no per-copy random source.
+     * pure function of the tick, the actor-local phase offset and the profile, so
+     * it is reproducible on replay and needs no per-copy random source.
+     *
+     * <p>E-03: the burst phase includes the actor-local offset. Without it every
+     * copy of the same profile shared the global tick clock and strafed in
+     * lockstep, which is the "predictable squad rhythm" the contract forbids.
+     * Each burst still commits for twelve ticks, so there is no per-tick
+     * oscillation; the side alternates every ten bursts for hysteresis.</p>
      */
-    private static MovementIntent lateralIntent(EchoBehaviorStrategy strategy, Observation observation) {
+    private static MovementIntent lateralIntent(EchoBehaviorStrategy strategy, Observation observation,
+                                                long phaseOffset) {
         int kite = strategy.kitePermille();
         int mobility = strategy.mobilityPermille();
         if (kite <= 0 || mobility <= 0) return MovementIntent.HOLD;
         // Weave in bursts: roughly every 12 ticks decide a side, weighted by how
         // often the owner strafed at all.
-        long phase = observation.tick() / 12L;
-        long window = phase % 10L;
+        long phase = Math.floorDiv(observation.tick() + phaseOffset, 12L);
+        long window = Math.floorMod(phase, 10L);
         long threshold = Math.max(1L, 10L * kite / 1_000L);
         if (window >= threshold) return MovementIntent.HOLD;
-        boolean left = (phase / 10L) % 2L == 0L;
+        boolean left = Math.floorDiv(phase, 10L) % 2L == 0L;
         return left ? MovementIntent.STRAFE_LEFT : MovementIntent.STRAFE_RIGHT;
+    }
+
+    /**
+     * E-03: a stable, actor-local phase in {@code [0, 100)} derived from the
+     * persisted duel and actor identity. Two copies summoned from the same
+     * profile therefore decorate their global-tick windows differently, while a
+     * replay of the same durable record reproduces every decision exactly. The
+     * value is a pure hash; it never consults wall time or randomness.
+     */
+    static long actorPhase(UUID duelId, UUID actorUuid) {
+        if (duelId == null || actorUuid == null) return 0L;
+        long hash = duelId.getMostSignificantBits()
+                ^ Long.rotateLeft(duelId.getLeastSignificantBits(), 17)
+                ^ Long.rotateLeft(actorUuid.getMostSignificantBits(), 31)
+                ^ Long.rotateLeft(actorUuid.getLeastSignificantBits(), 47);
+        hash ^= hash >>> 33;
+        hash *= 0xff51afd7ed558ccdL;
+        hash ^= hash >>> 33;
+        return Math.floorMod(hash, 100L);
     }
 
     /**
@@ -263,10 +442,15 @@ public final class EchoDuelCombatRuntimeAdapter {
      * replays identically and needs no random source.</p>
      */
     static boolean swapsWeaponThisTick(EchoBehaviorStrategy strategy, Observation observation) {
+        return swapsWeaponThisTick(strategy, observation, 0L);
+    }
+
+    static boolean swapsWeaponThisTick(EchoBehaviorStrategy strategy, Observation observation,
+                                       long phaseOffset) {
         if (strategy == null || observation == null) return false;
         int weight = strategy.weaponSwitchPermille();
         if (weight < WEAPON_SWITCH_FLOOR_PERMILLE) return false;
-        return inProfileWindow(observation.tick(), weight);
+        return inProfileWindow(observation.tick(), weight, phaseOffset);
     }
 
     /**
@@ -275,24 +459,53 @@ public final class EchoDuelCombatRuntimeAdapter {
      */
     public static Optional<Decision> tick(DuelRecord duel, EchoLoadoutState replica,
                                           Scope scope, Observation observation) {
+        return tick(duel, replica, scope, observation, Diagnostics.NONE);
+    }
+
+    /**
+     * E-06: identical to {@link #tick(DuelRecord, EchoLoadoutState, Scope, Observation)}
+     * but reports a bounded structured reason when the tick cannot produce a
+     * decision. The four-argument form is the unobserved default.
+     */
+    public static Optional<Decision> tick(DuelRecord duel, EchoLoadoutState replica,
+                                          Scope scope, Observation observation,
+                                          Diagnostics diagnostics) {
         if (duel == null || replica == null || scope == null || observation == null
                 || !scope.matches(duel) || duel.lifecycle() != Lifecycle.ACTIVE
                 || duel.actor().lifecycle() != ActorLifecycle.ALIVE
                 || duel.revision() >= RealitySplitEchoDuelState.MAX_COUNTER
-                || replica.revision() != duel.replicaRevision()
-                || !replica.encode().equals(duel.replicaState())) {
+                || replica.revision() != duel.replicaRevision()) {
             return Optional.empty();
         }
+        // E-06: encode the private loadout once per decision. The old guard
+        // serialised it for the identity check and then serialised it again to
+        // freeze the baseline, which is avoidable allocation on the per-tick
+        // hot path. The single snapshot is still an immutable copy, so the
+        // revision and rollback guarantees are unchanged.
+        Map<String, String> replicaSnapshot = replica.encode();
+        if (!replicaSnapshot.equals(duel.replicaState())) return Optional.empty();
 
         try {
-            EchoLoadoutState baselineReplica = EchoLoadoutState.restore(replica.encode(),
+            // E-04: the owner's recorded swing cadence personalises the melee
+            // cooldown inside a fair native band. Every other gate keeps the
+            // neutral baseline, so a sparse profile behaves exactly as before.
+            EchoDuelCombatPolicy.Cooldowns cooldowns = cooldownsFor(duel.behaviorStrategy());
+            EchoLoadoutState baselineReplica = EchoLoadoutState.restore(replicaSnapshot,
                     duel.eventId(), duel.attemptGeneration(), duel.duelId(), duel.ownerUuid(), replica.revision());
-            int meleeSlot = replica.find(EchoLoadoutState.Kind.MELEE);
+            int meleeSlot = observation.ownerBlocking()
+                    ? replica.findPreferredMelee(true) : meleeSlotFor(duel.behaviorStrategy(), replica);
+            int maceSlot = observation.maceLiftAvailable() || observation.criticalWindow()
+                    ? replica.findMace() : -1;
             int bowSlot = replica.find(EchoLoadoutState.Kind.BOW);
             int crossbowSlot = replica.find(EchoLoadoutState.Kind.CROSSBOW);
             int rangedSlot = duel.behaviorStrategy().rangedPermille() >= duel.behaviorStrategy().meleePermille()
                     ? firstUsable(crossbowSlot, bowSlot) : firstUsable(bowSlot, crossbowSlot);
             int ammoSlot = replica.find(EchoLoadoutState.Kind.AMMO);
+            // E-05: the bow/crossbow the copy actually holds sets its own cadence
+            // from the owner's recorded draw/charge time, so ranged personalisation
+            // reaches the fight and not just the profile record.
+            EchoDuelCombatPolicy.Cooldowns rangedCooldowns =
+                    rangedCooldownsFor(duel.behaviorStrategy(), rangedSlot, replica);
 
             // Audit ECHO error: an in-flight consumable resolves HERE, at its own
             // deadline, and this is the only place its health is granted. Starting
@@ -300,7 +513,7 @@ public final class EchoDuelCombatRuntimeAdapter {
             if (duel.actor().pendingUseUntilTick() > 0L
                     && observation.tick() >= duel.actor().pendingUseUntilTick()) {
                 Optional<ActorState> completed = EchoDuelCombatPolicy.completeConsumable(
-                        duel.actor(), observation.tick(), COOLDOWNS);
+                        duel.actor(), observation.tick(), cooldowns, observation.pendingFoodHeal());
                 if (completed.isPresent()) {
                     // The supply was spent when the use STARTED, so by now the slot is
                     // empty and there is no item to report. The resolution is a state
@@ -322,14 +535,60 @@ public final class EchoDuelCombatRuntimeAdapter {
             // anyway keeps the guarded copy visibly moving, and it still grants
             // no action: the shield window stays the only thing happening.
             boolean wounded = duel.actor().currentHealth() * 1_000.0D
-                    <= duel.actor().maximumHealth() * HEAL_THRESHOLD_PERMILLE;
+                    <= duel.actor().maximumHealth() * duel.behaviorStrategy().healThresholdPermille();
             // The retreat is only worth taking when the heal branch below can
             // actually fire this fight: a consumable is carried and the recorded
             // sustain habit clears the floor. Otherwise the copy would kite
             // forever without attacking, which the navigation rule forbids.
             boolean canHeal = consumableSlot >= 0
                     && duel.behaviorStrategy().sustainPermille() >= SUSTAIN_FLOOR_PERMILLE;
-            MovementIntent intent = movementIntent(duel.behaviorStrategy(), observation, wounded, canHeal);
+            // E-02: the copy may only keep its owner's ranged band while it
+            // actually has a usable ranged weapon and ammunition; otherwise it
+            // closes to melee reach instead of kiting from an unusable band.
+            boolean rangedAvailable = rangedSlot >= 0 && ammoSlot >= 0;
+            // E-03: give this actor its own phase so two copies of the same
+            // profile do not strafe, hop and guard in lockstep off the shared
+            // global tick clock.
+            long actorPhase = actorPhase(duel.duelId(), duel.actor().actorUuid());
+            MovementIntent intent = movementIntent(duel.behaviorStrategy(), observation, wounded,
+                    canHeal, rangedAvailable, actorPhase);
+            // E-05: a bow draw / crossbow load started on an earlier tick resolves
+            // HERE, at its own persisted deadline. The arrow leaves only now, so
+            // the copy can never fire a max-power shot on the tick it decided to
+            // shoot. An interrupted draw (line of sight lost, target out of band,
+            // weapon or ammunition gone) is cancelled without spending the arrow
+            // or opening the ranged cadence.
+            if (duel.actor().rangedChargeUntilTick() > 0L) {
+                boolean shotStillLegal = rangedSlot >= 0 && ammoSlot >= 0
+                        && observation.lineOfSight()
+                        && observation.distanceSquared()
+                        <= RANGED_RANGE_BLOCKS * (double) RANGED_RANGE_BLOCKS;
+                if (!shotStillLegal) {
+                    Optional<ActorState> cancelled =
+                            EchoDuelCombatPolicy.cancelRangedDraw(duel.actor());
+                    if (cancelled.isPresent()) {
+                        return decision(duel, baselineReplica, replica, scope, Action.NONE,
+                                cancelled.get(), -1, -1, null, intent);
+                    }
+                } else if (EchoDuelCombatPolicy.rangedReadyToRelease(
+                        duel.actor(), observation.tick())) {
+                    Optional<ActorState> released = EchoDuelCombatPolicy.tryReleaseRanged(
+                            duel.actor(), replica, rangedSlot, ammoSlot, replica.revision(),
+                            observation.tick(), rangedCooldowns);
+                    if (released.isPresent()) {
+                        EchoLoadoutState.Item item = replica.item(rangedSlot);
+                        if (!EchoDuelCombatPolicy.tryApplyGearWear(
+                                replica, rangedSlot, 1, replica.revision())) return Optional.empty();
+                        return decision(duel, baselineReplica, replica, scope, Action.RANGED,
+                                released.get(), rangedSlot, ammoSlot, item, intent);
+                    }
+                } else {
+                    // Still drawing: the RANGED_DRAW pose persists, and a tick that
+                    // changes nothing needs no durable checkpoint churn.
+                    return Optional.of(new Decision(scope, Action.NONE, duel, duel,
+                            baselineReplica, replica, -1, -1, null, intent));
+                }
+            }
             if (duel.actor().shieldActiveUntilTick() > observation.tick()) {
                 return Optional.of(new Decision(scope, Action.NONE, duel, duel, baselineReplica,
                         replica, -1, -1, null, intent));
@@ -344,7 +603,7 @@ public final class EchoDuelCombatRuntimeAdapter {
                 EchoLoadoutState.Item item = replica.item(consumableSlot);
                 Optional<ActorState> actor = EchoDuelCombatPolicy.tryStartConsumable(
                         duel.actor(), replica, consumableSlot, replica.revision(),
-                        observation.tick(), COOLDOWNS);
+                        observation.tick(), cooldowns);
                 if (actor.isPresent()) {
                     // Audit ECHO error: the copy used to regain health on the very
                     // tick it STARTED eating, so a visible apple never had to finish
@@ -365,7 +624,7 @@ public final class EchoDuelCombatRuntimeAdapter {
             // repositioning instead of freezing on the spot. Only a legal current
             // action is selected here, so movement never grants range and never
             // bypasses a cooldown.
-            boolean inMeleeRange = observation.distanceSquared()
+            boolean inMeleeRange = observation.lineOfSight() && observation.distanceSquared()
                     <= MELEE_RANGE_BLOCKS * (double) MELEE_RANGE_BLOCKS;
             // BRAIN-013: a copy of a player who swapped weapons constantly does
             // not lock itself to one tool. Inside its recorded switch window it
@@ -378,7 +637,7 @@ public final class EchoDuelCombatRuntimeAdapter {
                     && observation.tick() >= duel.actor().nextActionTick()
                     && observation.tick() >= duel.actor().pendingUseUntilTick();
             boolean swapsToRanged = canShootNow
-                    && swapsWeaponThisTick(duel.behaviorStrategy(), observation);
+                    && swapsWeaponThisTick(duel.behaviorStrategy(), observation, actorPhase);
 
             // Potions: a copy drinks what its owner actually carried. The buff
             // window is derived from the actor's own pending-use deadline, so a
@@ -391,7 +650,7 @@ public final class EchoDuelCombatRuntimeAdapter {
                 EchoLoadoutState.Item item = replica.item(potionSlot);
                 Optional<ActorState> actor = EchoDuelCombatPolicy.tryStartPotion(
                         duel.actor(), replica, potionSlot, replica.revision(),
-                        observation.tick(), COOLDOWNS);
+                        observation.tick(), cooldowns);
                 if (actor.isPresent()) {
                     return decision(duel, baselineReplica, replica, scope, Action.CONSUMABLE, actor.get(),
                             potionSlot, -1, item, intent);
@@ -411,7 +670,7 @@ public final class EchoDuelCombatRuntimeAdapter {
                 if (parry.isPresent()) {
                     Optional<ActorState> actor = EchoDuelCombatPolicy.tryStartReactiveShield(
                             duel.actor(), replica, shieldSlot, replica.revision(), observation.tick(),
-                            parry.get(), COOLDOWNS);
+                            parry.get(), cooldowns);
                     if (actor.isPresent()) {
                         return decision(duel, baselineReplica, replica, scope, Action.SHIELD, actor.get(),
                                 shieldSlot, -1, replica.item(shieldSlot), intent);
@@ -420,32 +679,48 @@ public final class EchoDuelCombatRuntimeAdapter {
             }
             if (shieldSlot >= 0 && observation.distanceSquared() <= RANGED_RANGE_BLOCKS * (double) RANGED_RANGE_BLOCKS
                     && !observation.incomingStrikeKnown()
-                    && inProfileWindow(observation.tick(), duel.behaviorStrategy().defensePermille())) {
+                    && inProfileWindow(observation.tick(), duel.behaviorStrategy().defensePermille(),
+                            actorPhase)) {
                 long holdTicks = 5L + 15L * duel.behaviorStrategy().defensePermille() / 1_000L;
                 Optional<ActorState> actor = EchoDuelCombatPolicy.tryStartShield(
                         duel.actor(), replica, shieldSlot, replica.revision(), observation.tick(),
-                        holdTicks, COOLDOWNS);
+                        holdTicks, cooldowns);
                 if (actor.isPresent()) {
                     return decision(duel, baselineReplica, replica, scope, Action.SHIELD, actor.get(),
                             shieldSlot, -1, replica.item(shieldSlot), intent);
                 }
             }
 
+            if (maceSlot >= 0 && observation.maceLiftAvailable() && observation.onGround()
+                    && observation.lineOfSight() && observation.distanceSquared() >= 6.25D
+                    && observation.distanceSquared() <= 16D) {
+                int charge = replica.find(EchoLoadoutState.Kind.WIND_CHARGE);
+                if (charge >= 0) {
+                    EchoLoadoutState.Item burst = replica.item(charge);
+                    var lifted = EchoDuelCombatPolicy.tryStartWindCharge(
+                            duel.actor(), replica, charge, replica.revision(), observation.tick(), cooldowns);
+                    if (lifted.isPresent()) {
+                        return decision(duel, baselineReplica, replica, scope, Action.MACE_LIFT,
+                                lifted.get(), charge, -1, burst, MovementIntent.HOLD);
+                    }
+                }
+            }
             if (inMeleeRange && !observation.onGround() && observation.criticalWindow() && meleeSlot >= 0) {
-                EchoLoadoutState.Item item = replica.item(meleeSlot);
+                int strikeSlot = maceSlot >= 0 ? maceSlot : meleeSlot;
+                EchoLoadoutState.Item item = replica.item(strikeSlot);
                 Optional<ActorState> actor = EchoDuelCombatPolicy.tryStartCriticalMelee(
-                        duel.actor(), observation.tick(), COOLDOWNS);
+                        duel.actor(), observation.tick(), cooldowns);
                 if (actor.isPresent() && EchoDuelCombatPolicy.tryApplyGearWear(
-                        replica, meleeSlot, 1, replica.revision())) {
+                        replica, strikeSlot, 1, replica.revision())) {
                     return decision(duel, baselineReplica, replica, scope, Action.CRITICAL, actor.get(),
-                            meleeSlot, -1, item, intent);
+                            strikeSlot, -1, item, intent);
                 }
             }
             if (inMeleeRange && meleeSlot >= 0 && !swapsToRanged
                     && duel.behaviorStrategy().meleePermille() >= duel.behaviorStrategy().rangedPermille()) {
                 EchoLoadoutState.Item item = replica.item(meleeSlot);
                 Optional<ActorState> actor = EchoDuelCombatPolicy.tryStartMelee(
-                        duel.actor(), observation.tick(), COOLDOWNS);
+                        duel.actor(), observation.tick(), cooldowns);
                 if (actor.isPresent() && EchoDuelCombatPolicy.tryApplyGearWear(
                         replica, meleeSlot, 1, replica.revision())) {
                     return decision(duel, baselineReplica, replica, scope, Action.MELEE, actor.get(),
@@ -456,25 +731,26 @@ public final class EchoDuelCombatRuntimeAdapter {
             if (rangedSlot >= 0 && ammoSlot >= 0 && observation.lineOfSight()
                     && observation.distanceSquared() <= RANGED_RANGE_BLOCKS * (double) RANGED_RANGE_BLOCKS) {
                 EchoLoadoutState.Item item = replica.item(rangedSlot);
-                Optional<ActorState> actor = EchoDuelCombatPolicy.tryStartRanged(
+                // E-05: begin the draw/load. Nothing is spent yet: the shot is
+                // released at the persisted charge deadline handled above, so a
+                // cancelled draw costs no arrow and no cadence.
+                Optional<ActorState> actor = EchoDuelCombatPolicy.tryStartRangedDraw(
                         duel.actor(), replica, rangedSlot, ammoSlot, replica.revision(),
-                        observation.tick(), COOLDOWNS);
+                        observation.tick(), rangedCooldowns.rangedTicks(), rangedCooldowns);
                 if (actor.isPresent()) {
-                    if (!EchoDuelCombatPolicy.tryApplyGearWear(
-                            replica, rangedSlot, 1, replica.revision())) return Optional.empty();
-                    return decision(duel, baselineReplica, replica, scope, Action.RANGED, actor.get(),
+                    return decision(duel, baselineReplica, replica, scope, Action.RANGED_DRAW, actor.get(),
                             rangedSlot, ammoSlot, item, intent);
                 }
             }
 
             // A wind charge burst is the copy's own knockback tool: it spends one
             // carried charge and keeps the fight at range the way its owner did.
-            int chargeSlot = replica.find(EchoLoadoutState.Kind.WIND_CHARGE);
+            int chargeSlot = observation.allowWindCharge() ? replica.find(EchoLoadoutState.Kind.WIND_CHARGE) : -1;
             if (chargeSlot >= 0 && observation.lineOfSight()
                     && observation.distanceSquared() <= RANGED_RANGE_BLOCKS * (double) RANGED_RANGE_BLOCKS) {
                 EchoLoadoutState.Item item = replica.item(chargeSlot);
                 Optional<ActorState> actor = EchoDuelCombatPolicy.tryStartWindCharge(
-                        duel.actor(), replica, chargeSlot, replica.revision(), observation.tick(), COOLDOWNS);
+                        duel.actor(), replica, chargeSlot, replica.revision(), observation.tick(), cooldowns);
                 if (actor.isPresent()) {
                     return decision(duel, baselineReplica, replica, scope, Action.WIND_CHARGE, actor.get(),
                             chargeSlot, -1, item, intent);
@@ -483,12 +759,12 @@ public final class EchoDuelCombatRuntimeAdapter {
 
             // A thrown splash bottle is a weapon: the copy lobs one of the bottles
             // its owner carried, never a bottle it does not have.
-            int splashSlot = replica.find(EchoLoadoutState.Kind.SPLASH_POTION);
+            int splashSlot = observation.allowSplash() ? replica.find(EchoLoadoutState.Kind.SPLASH_POTION) : -1;
             if (splashSlot >= 0 && observation.lineOfSight()
                     && observation.distanceSquared() <= RANGED_RANGE_BLOCKS * (double) RANGED_RANGE_BLOCKS) {
                 EchoLoadoutState.Item item = replica.item(splashSlot);
                 Optional<ActorState> actor = EchoDuelCombatPolicy.tryStartSplash(
-                        duel.actor(), replica, splashSlot, replica.revision(), observation.tick(), COOLDOWNS);
+                        duel.actor(), replica, splashSlot, replica.revision(), observation.tick(), cooldowns);
                 if (actor.isPresent()) {
                     return decision(duel, baselineReplica, replica, scope, Action.SPLASH, actor.get(),
                             splashSlot, -1, item, intent);
@@ -501,12 +777,13 @@ public final class EchoDuelCombatRuntimeAdapter {
             // has declined this tick and only while the copy is still outside
             // melee reach, so it never trades a swing for a jump and never
             // substitutes for a legal shot.
-            if (observation.onGround() && !inMeleeRange && meleeSlot >= 0
+            if (observation.onGround() && observation.lineOfSight() && !inMeleeRange && meleeSlot >= 0
                     && intent == MovementIntent.APPROACH
                     && duel.behaviorStrategy().jumpAttackPermille() > JUMP_ATTACK_BASELINE_PERMILLE
-                    && inProfileWindow(observation.tick(), duel.behaviorStrategy().jumpAttackPermille())) {
+                    && inProfileWindow(observation.tick(), duel.behaviorStrategy().jumpAttackPermille(),
+                            actorPhase)) {
                 Optional<ActorState> actor = EchoDuelCombatPolicy.tryStartJump(
-                        duel.actor(), observation.tick(), COOLDOWNS);
+                        duel.actor(), observation.tick(), cooldowns);
                 if (actor.isPresent()) {
                     return decision(duel, baselineReplica, replica, scope, Action.JUMP, actor.get(),
                             -1, -1, null, intent);
@@ -516,7 +793,7 @@ public final class EchoDuelCombatRuntimeAdapter {
             if (inMeleeRange && meleeSlot >= 0 && !swapsToRanged) {
                 EchoLoadoutState.Item item = replica.item(meleeSlot);
                 Optional<ActorState> actor = EchoDuelCombatPolicy.tryStartMelee(
-                        duel.actor(), observation.tick(), COOLDOWNS);
+                        duel.actor(), observation.tick(), cooldowns);
                 if (actor.isPresent() && EchoDuelCombatPolicy.tryApplyGearWear(
                         replica, meleeSlot, 1, replica.revision())) {
                     return decision(duel, baselineReplica, replica, scope, Action.MELEE, actor.get(),
@@ -536,9 +813,9 @@ public final class EchoDuelCombatRuntimeAdapter {
             // jump-attack hop above is unchanged and still sets up the falling
             // critical.
             if (observation.onGround() && inProfileWindow(
-                    observation.tick(), duel.behaviorStrategy().mobilityPermille())) {
+                    observation.tick(), duel.behaviorStrategy().mobilityPermille(), actorPhase)) {
                 Optional<ActorState> actor = EchoDuelCombatPolicy.tryStartJump(
-                        duel.actor(), observation.tick(), COOLDOWNS);
+                        duel.actor(), observation.tick(), cooldowns);
                 if (actor.isPresent()) {
                     return decision(duel, baselineReplica, replica, scope, Action.JUMP, actor.get(),
                             -1, -1, null, intent);
@@ -547,8 +824,18 @@ public final class EchoDuelCombatRuntimeAdapter {
 
             return Optional.of(new Decision(scope, Action.NONE, duel, duel, baselineReplica,
                     replica, -1, -1, null, intent));
-        } catch (RuntimeException invalidSnapshot) {
+        } catch (IllegalArgumentException expectedSnapshot) {
+            // E-06: an expected invalid snapshot is a real fault, not an idle
+            // tick. Report the bounded reason and fail this actor closed; the
+            // runtime restores the last durable receipt before the next tick.
+            Diagnostics.classify(diagnostics, scope, observation.tick(), expectedSnapshot);
             return Optional.empty();
+        } catch (RuntimeException unexpectedFailure) {
+            // E-06: never let a permanently broken actor hide behind a silent
+            // idle tick. Report the failure and surface it to the runtime
+            // boundary, which fails this tick closed and restores the receipt.
+            Diagnostics.classify(diagnostics, scope, observation.tick(), unexpectedFailure);
+            throw unexpectedFailure;
         }
     }
 
@@ -633,7 +920,8 @@ public final class EchoDuelCombatRuntimeAdapter {
                 horizon(counter, COOLDOWNS.rangedTicks(), actor.rangedCooldownUntilTick()),
                 horizon(counter, COOLDOWNS.consumableUseTicks(), actor.pendingUseUntilTick()),
                 actor.deathSerial(), shieldActiveUntil, shieldCooldownUntil,
-                horizon(counter, COOLDOWNS.jumpCooldownTicks(), actor.jumpCooldownUntilTick()));
+                horizon(counter, COOLDOWNS.jumpCooldownTicks(), actor.jumpCooldownUntilTick()),
+                horizon(counter, MAX_RANGED_DRAW_TICKS, actor.rangedChargeUntilTick()));
     }
 
     /** A saved deadline kept only while it still fits the live counter plus its own duration. */
@@ -693,7 +981,7 @@ public final class EchoDuelCombatRuntimeAdapter {
                     before.nextActionTick(), before.meleeCooldownUntilTick(),
                     before.rangedCooldownUntilTick(), before.pendingUseUntilTick(), before.deathSerial(),
                     before.shieldActiveUntilTick(), before.shieldCooldownUntilTick(),
-                    before.jumpCooldownUntilTick());
+                    before.jumpCooldownUntilTick(), before.rangedChargeUntilTick());
             DuelRecord refunded = charged.withActor(charged.runtimeGeneration(),
                     prior.ownerStartingHealth(), prior.ownerMaximumHealth(), prior.returnDeadlineMillis(),
                     refundedActor, charged.revision() + 1L, refundedReplica.revision(),
@@ -708,16 +996,39 @@ public final class EchoDuelCombatRuntimeAdapter {
         return preferred >= 0 ? preferred : fallback;
     }
 
+    /**
+     * E-04: reach for the melee weapon the owner actually used. A neutral
+     * preference keeps the first melee slot, so a sparse profile behaves exactly
+     * as before; only a strong recorded axe/sword habit switches the held weapon.
+     */
+    private static int meleeSlotFor(EchoBehaviorStrategy strategy, EchoLoadoutState replica) {
+        if (strategy == null) return replica.find(EchoLoadoutState.Kind.MELEE);
+        if (strategy.weaponPreferencePermille() >= AXE_PREFERENCE_FLOOR_PERMILLE) {
+            return replica.findPreferredMelee(true);
+        }
+        if (strategy.weaponPreferencePermille() <= SWORD_PREFERENCE_CEILING_PERMILLE) {
+            return replica.findPreferredMelee(false);
+        }
+        return replica.find(EchoLoadoutState.Kind.MELEE);
+    }
+
     private static boolean inProfileWindow(long tick, int weightPermille) {
+        return inProfileWindow(tick, weightPermille, 0L);
+    }
+
+    private static boolean inProfileWindow(long tick, int weightPermille, long phaseOffset) {
         if (tick < 0L || weightPermille <= 0 || weightPermille > 1_000) return false;
+        long shifted = tick + phaseOffset;
+        if (shifted < 0L) return false;
         long window = Math.max(1L, (weightPermille + 9L) / 10L);
-        return tick % 100L < window;
+        return Math.floorMod(shifted, 100L) < window;
     }
 
     private static ActorState withHealth(ActorState actor, double health) {
         return new ActorState(actor.actorUuid(), health, actor.maximumHealth(), actor.lifecycle(),
                 actor.revision(), actor.nextActionTick(), actor.meleeCooldownUntilTick(),
                 actor.rangedCooldownUntilTick(), actor.pendingUseUntilTick(), actor.deathSerial(),
-                actor.shieldActiveUntilTick(), actor.shieldCooldownUntilTick(), actor.jumpCooldownUntilTick());
+                actor.shieldActiveUntilTick(), actor.shieldCooldownUntilTick(),
+                actor.jumpCooldownUntilTick(), actor.rangedChargeUntilTick());
     }
 }

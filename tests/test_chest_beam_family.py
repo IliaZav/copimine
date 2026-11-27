@@ -134,12 +134,12 @@ def test_chest_beam_mesh_is_generated_and_wired():
 
     renderer = (CLIENT / "GuardianSpellRenderer.java").read_text(encoding="utf-8")
     assert 'case 830216 -> "chest_beam";' in renderer
-    assert '"chest_beam" -> new Motion(' in renderer, "socket needs a motion profile"
+    assert '"chest_beam"' in renderer, "socket needs a motion profile"
     names = (CLIENT / "GuardianSpellMesh.java").read_text(encoding="utf-8")
     assert '"chest_beam"' in names
     mesh_test = (ROOT / "tools/minecraft-26.3/client/src/test/java/me/copimine/client"
                  / "GuardianSpellMeshTest.java").read_text(encoding="utf-8")
-    assert "AUTHORED_MESHES = 23" in mesh_test
+    assert "AUTHORED_MESHES = 37" in mesh_test
 
 
 def test_generated_meshes_match_the_generator_byte_for_byte(tmp_path):

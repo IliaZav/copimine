@@ -2,8 +2,10 @@
 
 Дата: 2026-11-23. Ветка: `codex/end-rift-live-playtest-repair`.
 Деплой-кандидат (актуальный пин): `CopiMineEndEvent-26.3.jar` sha256
-`a3493d353545e8f72dbd58a80da73f341dcca59847bc9d8b124656d840d191ca`
-(size 2 796 604 B). Предыдущий кандидат —
+`716181f5d196c31900264d2b4be8afbc3672b9b8eff4111c0fb258af06fa1fa5`
+(size 2 958 162 B). Предыдущий кандидат —
+`cb48aeee067ce9979c4a0cdc6418b23495b9a0f086852f6fd972ec3c253ce1ad`
+(2 958 229 B, ещё ранее
 `22f511f347bfb3e55b71fd2713be5db71b080a19c8ab6f7f169b2dd0cad30cc5`
 (2 796 627 B, ещё ранее
 `7a6a7d570d396f3b664684ffd8eaed8d86a135caacdebe9e229e393411ea9cc5`
@@ -35,8 +37,8 @@
 1. Сервер: развёртывайте актуальный пин из строки «Деплой-кандидат»
    выше; прод на момент записи нёс предыдущий jar `084cc0f5…`
    (см. `B10_B11_B12_FIXES_AND_MATRIX_LEDGER.md` §3).
-2. Клиент: ровно `CopiMineClient-0.1.4+26.3.jar`
-   (30 685 697 B, sha512 `2c871a2fb61e839bd8d51bab7d38ce9c3fcd7bfa10ca20ea4c1b581cb48caeafeed4b8a13c0d12f9538c543120b46cbafd580b6648d578fb782a1e09beb10ab8`,
+2. Клиент: ровно `CopiMineClient-0.1.5+26.3.jar`
+   (30 769 867 B, sha512 `4be5f5e0bcea92bca7695e8a31fc9ca1d0fb7fa7dd77531b20de99c5b4d1d8eed74fedff4021738a2c2474bd65df1334756aed68e628625f4ec46b5ae01d4cf8`,
    пин `tools/minecraft-26.3/profile.lock.json`;
    перепинен повторно 2026-11-25: клиент получил пресеты плотности заклов §9.3
    (`spell_visual_quality` + `/copimineclient spell-quality full|balanced|reduced`,
@@ -56,7 +58,7 @@
    момент извержения (~1 с предупреждения, замерено 1.07 с);
    до этого — собственное тело гейзера Фазы 3 N23-P1-08, собственный луч сундука
    N23-P1-05 и финальный анимационный проход по авторским 3D-мешам заклов V5.1).
-   Сервер требует `required_client_mod_version: 0.1.4+26.3` — пара должна совпасть,
+   Сервер требует `required_client_mod_version: 0.1.5+26.3` — пара должна совпасть,
    иначе F2 недействителен (баг B-13: прошлый F2 снимался другим клиентом).
 3. Подпись V4 обязательна и активна (не отключать ключ ради теста).
 4. Снимать через `tools/end-rift-native-visual/CaptureEndRiftF2.ps1` (клиент обязан

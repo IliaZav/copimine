@@ -109,6 +109,38 @@ public final class TentacleThrowPolicy {
         return null;
     }
 
+    @FunctionalInterface
+    public interface FlightClearance {
+        boolean clear(double x, double y, double z, boolean landing);
+    }
+
+    public static boolean hasSafeFlight(Launch launch, double floorOffset, FlightClearance clearance) {
+        if (launch == null || !launch.isFinite() || !Double.isFinite(floorOffset)
+                || floorOffset > 0D || floorOffset < -12D || clearance == null
+                || launch.horizontalLength() > HORIZONTAL_SPEED + 1.0E-8D
+                || Math.abs(launch.y()) > VERTICAL_SPEED) return false;
+        double x = 0D, y = 0D, z = 0D;
+        double vx = launch.x(), vy = launch.y(), vz = launch.z();
+        for (int tick = 0; tick < 40; tick++) {
+            boolean landsThisTick = vy < 0D && y + vy <= floorOffset;
+            double fraction = landsThisTick ? (floorOffset - y) / vy : 1D;
+            int slices = Math.max(1, (int) Math.ceil(Math.max(Math.hypot(vx, vz), Math.abs(vy)) * fraction * 2D));
+            for (int slice = 1; slice <= slices; slice++) {
+                double t = fraction * slice / slices;
+                boolean landing = landsThisTick && slice == slices;
+                if (!clearance.clear(x + vx * t, landing ? floorOffset : y + vy * t, z + vz * t, landing)) return false;
+                if (landing) return true;
+            }
+            x += vx;
+            y += vy;
+            z += vz;
+            vx *= HORIZONTAL_AIR_DRAG;
+            vz *= HORIZONTAL_AIR_DRAG;
+            vy = (vy - GRAVITY_PER_TICK) * VERTICAL_AIR_DRAG;
+        }
+        return false;
+    }
+
     private static double finiteOrZero(double value) {
         return Double.isFinite(value) ? value : 0.0D;
     }

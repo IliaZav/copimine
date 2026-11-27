@@ -53,7 +53,13 @@ public class TentacleThrowProtectionProbe {
     boolean testCombatAiMode=false;
     EventPhase phase=EventPhase.BOSS_ACTIVE;
     final String eventId="event-7"; final long generation=9;
+    static class TentacleRole { boolean temporary(){return false;} }
+    static class TentacleController { TentacleRole state(UUID id){return null;} }
+    final TentacleController tentacleController=new TentacleController();
     final Map<UUID,TentacleThrowPolicy.Launch> tentacleThrowLaunches=new HashMap<>();
+    // The hold ledger is cleared before any release guard runs, so the probe
+    // must model it even though this case only exercises the protection path.
+    final Map<UUID,UUID> tentacleHeldPlayers=new HashMap<>();
     final Map<UUID,UUID> tentacleHitboxesByDisplay=new HashMap<>();
     final Map<UUID,Entity> ownedEntities=new HashMap<>();
     record Wave6AnchorFallLease(UUID worldId,long untilMillis) { }
@@ -72,6 +78,8 @@ public class TentacleThrowProtectionProbe {
     }
     boolean ownedBySession(Entity e,String event,long gen){return e.owned;}
     Location coreCombatAnchorLocation(){return new Location();}
+    void dropHeldTentaclePlayer(UUID id,String reason){safeDrops++;}
+    int safeDrops;
     TentacleThrowPolicy.Launch safeTentacleThrowLaunch(ItemDisplay d,Player p,TentacleThrowPolicy.Launch launch){return launch;}
     boolean isActiveBossParticipant(Player p){return true;}
     final LivingEntity liveBossActor=new LivingEntity();
@@ -91,11 +99,14 @@ public class TentacleThrowProtectionProbe {
         p.ownedEntities.put(d.id,d); p.ownedEntities.put(carrier.id,carrier);
         p.tentacleHitboxesByDisplay.put(d.id,carrier.id);
         target.cancelled=true;
+        p.tentacleHeldPlayers.put(d.id,target.getUniqueId());
         p.releaseTentaclePlayer(d,target);
         check(target.hp==20 && target.hurts==0 && target.impulses==0,
                 "cancelled throw bypassed protection or applied a fake impulse");
+        check(p.safeDrops==1,"a rejected throw fails to release the held player safely");
         check(p.wave6AnchorFallLeases.isEmpty(),"a refused throw created unrelated fall protection");
         target.cancelled=false;
+        p.tentacleHeldPlayers.put(d.id,target.getUniqueId());
         p.releaseTentaclePlayer(d,target);
         check(target.hp==10 && target.hurts==1 && target.impulses==1 && target.events==2,
                 "accepted throw must use one ordinary player damage transaction");
@@ -104,16 +115,23 @@ public class TentacleThrowProtectionProbe {
         var unrelated=new EntityDamageEvent(target);p.onGravityAnchorFallDamage(unrelated);
         check(!unrelated.cancelled,"throw protection leaked into an unrelated later fall");
         target.hp=20;
+        p.tentacleHeldPlayers.put(d.id,target.getUniqueId());
         p.releaseTentaclePlayer(d,target);target.onGround=true;p.retireWave6AnchorFallLeases();
         var laterFall=new EntityDamageEvent(target);p.onGravityAnchorFallDamage(laterFall);
         check(!laterFall.cancelled,"a safe first landing retained fall protection");
         target.onGround=false;
-        p.ownedEntities.remove(carrier.id); p.releaseTentaclePlayer(d,target);
+        p.ownedEntities.remove(carrier.id);
+        p.tentacleHeldPlayers.put(d.id,target.getUniqueId());
+        p.releaseTentaclePlayer(d,target);
         check(target.hp==10 && target.impulses==2,"missing carrier inflicted invisible damage");
         var manual=new TentacleThrowProtectionProbe();manual.phase=EventPhase.COLLECTING;manual.testCombatAiMode=true;
         manual.ownedEntities.put(d.id,d);manual.ownedEntities.put(carrier.id,carrier);
         manual.tentacleHitboxesByDisplay.put(d.id,carrier.id);
-        var manualTarget=new Player();manual.releaseTentaclePlayer(d,manualTarget);
+        var manualTarget=new Player();
+        manual.releaseTentaclePlayer(d,manualTarget);
+        check(manualTarget.events==0 && manualTarget.impulses==0,"a throw without an owned hold ran");
+        manual.tentacleHeldPlayers.put(d.id,manualTarget.getUniqueId());
+        manual.releaseTentaclePlayer(d,manualTarget);
         check(manualTarget.hp==10 && manualTarget.events==1 && manualTarget.impulses==1,
                 "command-spawned boss threw without its accepted damage transaction");
     }

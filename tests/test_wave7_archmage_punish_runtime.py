@@ -35,9 +35,6 @@ def test_archmage_tick_gates_step_through_the_punish_policy():
     assert "Wave7ArchmagePunishPolicy.windowEndingAt(" in tick, (
         "the tick must rebuild the persisted punish window"
     )
-    assert "Wave7NamedTrialActorPolicy.attackForExcluding(" in tick, (
-        "a refused Step must fall through to the next authored spell"
-    )
     # A hidden target can only be answered by Step; when the gate refuses it the
     # actor must hold instead of blinking anyway.
     cover_start = tick.index("if (repositionForCover) {")

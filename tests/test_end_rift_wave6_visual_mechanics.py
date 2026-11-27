@@ -66,7 +66,7 @@ def test_authoritative_health_consumer_rechecks_its_own_casters_guards_before_da
     # order cannot be used as a guarantee before a direct setHealth transaction.
     body = method('public void onWaveMobPlayerDamageAuthoritative(')
     assert 'blockRitualCasterShieldHit(event, victim)' in body
-    assert body.index('blockRitualCasterShieldHit(event, victim)') < body.index('EventRealHealthDamagePolicy.apply(')
+    assert body.index('blockRitualCasterShieldHit(event, victim)') < body.index('Player attacker = waveDamageOwner(event)')
     gate = method('private boolean blockRitualCasterShieldHit(')
     assert 'ritualGuardsByCaster.getOrDefault(caster.getUniqueId()' in gate
     assert 'ritualGuardCasters.get(guardId)' in gate
@@ -74,10 +74,10 @@ def test_authoritative_health_consumer_rechecks_its_own_casters_guards_before_da
     assert 'event.setCancelled(true)' in gate
 
 
-def test_accepted_guard_hit_sets_alarm_before_the_native_damage_is_cancelled():
-    body = method('public void onWaveMobPlayerDamageAuthoritative(')
+def test_accepted_guard_hit_sets_alarm_only_after_damage_admission():
+    body = method('public void onWaveMobDamagedByPlayer(')
     assert 'alertRitualGuardGroup(victim, attacker)' in body
-    assert body.index('alertRitualGuardGroup(victim, attacker)') < body.index('EventRealHealthDamagePolicy.apply(')
+    assert body.index('if (acceptedAtDispatch)') < body.index('alertRitualGuardGroup(victim, attacker)')
     alert = method('private void alertRitualGuardGroup(')
     assert 'isCurrentRitualGuard(guard)' in alert
     assert 'ritualGuardCasters.get(guardId)' in alert
@@ -357,6 +357,13 @@ public final class RaisedPrisonerAbilityFixture {
         enum Ability { HEAL,BATTLE_SURGE,GUARDIAN_LINK,TURNCOAT }
     }
     String worldName="CopiMine"; int arenaMinX=-12,arenaMaxX=28,arenaMinY=65,arenaMaxY=71,arenaMinZ=-59,arenaMaxZ=-19;
+    // The arena test now consults the Last Seal reveal first, so the fixture
+    // models that collaborator's two queries with a neutral stub.
+    static final class LastSealArenaReveal {
+        boolean protects(Location at,long generation) { return false; }
+        boolean contains(Location at,long generation) { return false; }
+    }
+    LastSealArenaReveal lastSealArena; long generation=7L;
     Player prisoner; Location ritualPrisonerAnchor; boolean wave6PrisonBroken;
     boolean isConfigured() { return true; }
     boolean isCurrentRitualPrisoner(Player p) { return p==prisoner; }

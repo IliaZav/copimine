@@ -181,18 +181,26 @@ public final class RiftEventSkeletonModel extends SkeletonModel<SkeletonRenderSt
         head.addOrReplaceChild("marksman_sight", cube(48, 16,
                         -2.0F, -10.0F, -4.25F, 4.0F, 2.0F, 0.75F),
                 PartPose.ZERO);
-        body.addOrReplaceChild("marksman_quiver", cube(40, 20,
-                        1.8F, 1.0F, 1.9F, 2.4F, 8.0F, 2.0F),
+        body.addOrReplaceChild("marksman_quiver", ModelUvBounds.boxes(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                        new ModelUvBounds.Box(40, 20, 1.8F, 1F, 1.9F, 2.4F, 8F, 2F),
+                        new ModelUvBounds.Box(45, 23, 1.48F, .45F, 1.7F, 3.1F, 1.2F, 2.45F),
+                        new ModelUvBounds.Box(48, 16, 2F, -2.3F, 2.2F, .52F, 3F, 1F),
+                        new ModelUvBounds.Box(48, 16, 3.25F, -3.2F, 2.8F, .52F, 3.85F, 1F)),
                 PartPose.ZERO);
         head.addOrReplaceChild("spire_crown", ModelUvBounds.boxes(TEXTURE_WIDTH, TEXTURE_HEIGHT,
                 new ModelUvBounds.Box(42, 0, -4.4F, -9F, -3F, 8.8F, 2F, 2F),
                 new ModelUvBounds.Box(50, 4, -4.5F, -13F, -2.5F, 2F, 5F, 2F),
-                new ModelUvBounds.Box(54, 4, 2.5F, -11.5F, -2.5F, 2F, 3.5F, 2F)),
+                new ModelUvBounds.Box(52, 4, -4.1F, -14.75F, -2.1F, 1.2F, 2F, 1.2F),
+                new ModelUvBounds.Box(54, 4, 2.5F, -11.5F, -2.5F, 2F, 3.5F, 2F),
+                new ModelUvBounds.Box(48, 16, -.8F, -10.1F, -4.35F, 1.6F, 2.8F, 1.6F)),
                 PartPose.ZERO);
         body.addOrReplaceChild("spire_pauldrons", ModelUvBounds.boxes(TEXTURE_WIDTH, TEXTURE_HEIGHT,
                 new ModelUvBounds.Box(36, 8, -7F, -.75F, -2.8F, 4F, 3F, 5.6F),
                 new ModelUvBounds.Box(36, 8, 3F, -.75F, -2.8F, 4F, 4F, 5.6F),
-                new ModelUvBounds.Box(52, 16, -1F, 2F, -2.8F, 2F, 7F, 1F)),
+                new ModelUvBounds.Box(52, 16, -1F, 2F, -2.8F, 2F, 7F, 1F),
+                new ModelUvBounds.Box(40, 20, 1.8F, 1.1F, 2F, 2.6F, 8F, 2F),
+                new ModelUvBounds.Box(48, 16, 2.1F, -2.2F, 2.45F, .65F, 4.4F, 1F),
+                new ModelUvBounds.Box(48, 16, 3.45F, -3.0F, 2.45F, .65F, 5.2F, 1F)),
                 PartPose.ZERO);
         root.getChild("right_arm").getChild("right_forearm").addOrReplaceChild("spire_bow",
                 ModelUvBounds.boxes(TEXTURE_WIDTH, TEXTURE_HEIGHT,
@@ -303,11 +311,20 @@ public final class RiftEventSkeletonModel extends SkeletonModel<SkeletonRenderSt
                 rightArm.xRot = -1.45F + head.xRot;
                 leftArm.xRot = -1.20F + head.xRot;
                 leftForearm.xRot = -.75F;
+                leftArm.yRot = .42F;
+                rightArm.yRot = -.32F;
+                body.yRot += .10F;
                 spireBow.zRot = .18F;
             } else if ("WAVE_RELEASE".equals(wavePose)) {
                 rightArm.xRot = -1.62F + head.xRot;
                 leftForearm.xRot = -.22F;
+                leftArm.yRot = .66F;
+                rightForearm.xRot = -.18F;
+                body.yRot -= .12F;
                 spireBow.zRot = -.15F;
+            } else if ("WAVE_RECOVER".equals(wavePose)) {
+                rightForearm.xRot = -.34F;
+                spireBow.zRot = .12F;
             }
         }
     }

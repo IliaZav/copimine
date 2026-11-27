@@ -96,11 +96,15 @@ public final class Wave7ArchmageModel extends EntityModel<EvokerRenderState> {
                 CubeListBuilder.create().texOffs(48, 42)
                         .addBox(-2.0F, 2.0F, -2.0F, 4.0F, 4.0F, 4.0F),
                 PartPose.offset(0.0F, 3.0F, 0.0F));
-        // A flat ring around the staff head: the readable "this is a spellcaster"
-        // cue at medium range, and the piece that grows while a spell winds up.
+        // Four open ribs bracket the focus with a second tier of suspended facets.
         rightArm.addOrReplaceChild("rift_sigil_ring",
                 CubeListBuilder.create().texOffs(12, 54)
-                        .addBox(-4.0F, 1.5F, -4.0F, 8.0F, 0.4F, 8.0F),
+                        .addBox(-3.5F, 1.4F, -4F, 7F, 0.65F, 0.65F)
+                        .texOffs(12, 54).addBox(-3.5F, 1.4F, 3.35F, 7F, 0.65F, 0.65F)
+                        .texOffs(12, 54).addBox(-4F, 1.4F, -3.5F, 0.65F, 0.65F, 7F)
+                        .texOffs(12, 54).addBox(3.35F, 1.4F, -3.5F, 0.65F, 0.65F, 7F)
+                        .texOffs(48, 42).addBox(-4.3F, 0.65F, -4.3F, 1.6F, 2.15F, 1.6F)
+                        .texOffs(48, 42).addBox(2.7F, 0.65F, 2.7F, 1.6F, 2.15F, 1.6F),
                 PartPose.offsetAndRotation(0.0F, 3.0F, 0.0F, 0.0F, 0.0F, 0.0F));
 
         PartDefinition leftArm = root.addOrReplaceChild("left_arm",

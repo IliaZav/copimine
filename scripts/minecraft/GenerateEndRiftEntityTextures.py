@@ -111,15 +111,15 @@ SPECS: tuple[Spec, ...] = (
     ),
     Spec(
         name="end_rift_spire_harbinger",
-        stops=(rgb("#0B0A12"), rgb("#2A2634"), rgb("#6E6653"), rgb("#C9BFA6"), rgb("#EFE7CF")),
+        stops=(rgb("#0D0816"), rgb("#2D1A36"), rgb("#66556A"), rgb("#BC9D89"), rgb("#F3D8AE")),
         seed=0x5A1BE,
         motif="bone",
-        accent=rgb("#FF7AE0"),
-        accent2=rgb("#B98CFF"),
-        contrast=1.08,
-        pattern=0.14,
-        runes=5,
-        rim=0.24,
+        accent=rgb("#FFD78F"),
+        accent2=rgb("#D581FA"),
+        contrast=1.26,
+        pattern=0.19,
+        runes=3,
+        rim=0.31,
     ),
     Spec(
         name="end_rift_wave7_warden",
@@ -486,10 +486,38 @@ def boss_stage(master: Image.Image, stage: int) -> Image.Image:
 # Entry point.
 # --------------------------------------------------------------------------
 
+def paint_spire_atlas(atlas: Image.Image) -> Image.Image:
+    """Paint the skull front, faulted ribs and crown trim in the rig's UV islands."""
+    pixels = atlas.load()
+
+    def stroke(points: tuple[tuple[int, int], ...], color: str, strength: float) -> None:
+        pigment = rgb(color)
+        for x, y in points:
+            r, g, b, alpha = pixels[x, y]
+            if alpha > 8:
+                pixels[x, y] = (*mix((r, g, b), pigment, strength), alpha)
+
+    stroke(((9, 9), (10, 9), (13, 9), (14, 9), (9, 10), (14, 10), (11, 11), (12, 11)),
+           "#140A1C", .94)
+    stroke(((10, 10), (13, 10)), "#FFDCA0", .98)
+    stroke(((10, 12), (13, 12), (9, 13), (14, 13), (10, 14), (11, 14), (12, 14), (13, 14)),
+           "#CE956F", .67)
+    stroke(((12, 8), (11, 9), (12, 10), (11, 12), (12, 13)), "#A250CF", .77)
+    for y in (6, 9, 12):
+        stroke(((20, y), (21, y), (22, y + 1), (25, y + 1), (26, y), (27, y)),
+               "#BF9A83", .60)
+    stroke(((24, 5), (24, 6), (23, 7), (24, 8), (24, 9), (23, 10), (24, 11), (24, 12), (23, 13)),
+           "#CA75EA", .83)
+    stroke(((50, 5), (51, 6), (53, 6), (55, 5), (56, 6), (58, 7), (54, 8), (52, 8)),
+           "#F6C174", .81)
+    return atlas
+
+
 def all_outputs() -> dict[str, Image.Image]:
     outputs: dict[str, Image.Image] = {}
     for spec in SPECS:
-        outputs[spec.name] = paint(Image.open(SOURCES[spec.name]), spec)
+        atlas = paint(Image.open(SOURCES[spec.name]), spec)
+        outputs[spec.name] = paint_spire_atlas(atlas) if spec.name == "end_rift_spire_harbinger" else atlas
 
     master = paint(Image.open(SOURCES["end_rift_user_boss"]), BOSS)
     for stage in range(6):

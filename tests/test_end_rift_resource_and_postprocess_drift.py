@@ -88,7 +88,7 @@ def test_client_artifact_pin_agrees_across_every_site() -> None:
     filename = artifact["filename"]
     size = artifact["size"]
     sha512 = artifact["sha512"]
-    assert artifact["version"] == "0.1.4+26.3", artifact["version"]
+    assert artifact["version"] == "0.1.5+26.3", artifact["version"]
     assert re.fullmatch(r"[0-9a-f]{128}", sha512), "client sha512 is malformed"
 
     # docs/minecraft-26.3/README.md quotes the same filename, size and hash.

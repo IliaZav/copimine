@@ -35,6 +35,7 @@ public final class CommandNode {
         FILE,
         GATE_STYLE,
         UNLOCK_MODE,
+        SECRET_TRIGGER,
         SCALING_MODE,
         REWARD_MODE,
         DIRECTION,

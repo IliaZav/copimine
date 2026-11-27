@@ -38,6 +38,7 @@ public final class BossHazardBudget {
         BOSS_FIREBALL(1, false),
         MELEE_SWIPE(1, false),
         CHEST_STRIKE(1, false),
+        GEYSER_WAVE(2, false),
         GROUND_SLAM(2, false),
         REPOSITION(0, false),
         RECOVER(0, false);

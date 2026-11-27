@@ -9,6 +9,7 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 import me.copimine.endevent.domain.BossImpactGeometryPolicy;
 import me.copimine.endevent.domain.BossImpactGeometryPolicy.Kind;
+import me.copimine.endevent.domain.ArenaMergeCinematicPolicy;
 import me.copimine.endevent.domain.SpellVfxLodPolicy;
 import org.bukkit.Color;
 import org.bukkit.Location;
@@ -138,6 +139,91 @@ final class BossPresentationEffects {
             }
         }.runTaskTimer(plugin, 0, 8L);
         register.accept(task);
+    }
+
+    /**
+     * The directed RAGE → LAST SEAL arena-merge scene.
+     *
+     * <p>One bounded task plays all five shots of
+     * {@code ArenaMergeCinematicPolicy} in place: the chest fracture, the falling
+     * square walls, the colliding worlds, the rising cocoon and the igniting
+     * overhead sigil. Each shot draws its own world-space rig in its own accent
+     * colour and voices its own onset sound. Every time a new shot begins, the
+     * optional {@code beatHook} is called once so the runtime can post the
+     * banner, the authored cue and the single ordered physical reveal — the
+     * presentation itself never touches a block, a player or damage.</p>
+     */
+    static void playArenaMerge(JavaPlugin plugin, LivingEntity boss, Location anchor,
+            double radius, Consumer<ArenaMergeCinematicPolicy.Beat> beatHook,
+            java.util.function.LongSupplier serverTick, BooleanSupplier stillOwned, Supplier<List<Player>> audience,
+            BiPredicate<Player, Location> viewerAllowed, Consumer<BukkitTask> register) {
+        if (boss == null || anchor == null || anchor.getWorld() == null) return;
+        Location origin = anchor.clone();
+        long startTick = serverTick.getAsLong();
+        long total = ArenaMergeCinematicPolicy.totalMillis();
+        BukkitTask task = new BukkitRunnable() {
+            ArenaMergeCinematicPolicy.Beat lastBeat;
+            @Override public void run() {
+                long elapsed = Math.max(0L, serverTick.getAsLong() - startTick) * 50L;
+                if (!plugin.isEnabled() || !stillOwned.getAsBoolean() || !boss.isValid() || boss.isDead()
+                        || !boss.getWorld().equals(origin.getWorld())
+                        || elapsed >= total) { cancel(); return; }
+                ArenaMergeCinematicPolicy.Beat beat = ArenaMergeCinematicPolicy.beatAt(elapsed);
+                boolean firstFrameOfBeat = lastBeat == null || lastBeat.shot() != beat.shot();
+                lastBeat = beat;
+                var points = BossImpactGeometryPolicy.arenaMerge(beat.signature(), radius,
+                        beat.progress(elapsed));
+                List<Player> viewers = admittedViewers(audience.get(), origin, viewerAllowed);
+                int budget = SpellVfxLodPolicy.framePointBudget(Math.max(1, viewers.size()));
+                Particle.DustOptions primary = new Particle.DustOptions(
+                        Color.fromRGB(beat.rgb()), 1.35F);
+                Color color = Color.fromRGB(beat.rgb());
+                Particle.DustOptions accent = new Particle.DustOptions(Color.fromRGB(
+                        (color.getRed() + 240) / 2, (color.getGreen() + 224) / 2,
+                        (color.getBlue() + 255) / 2), 1.0F);
+                // The beat onset is a scene-level event: voice it and notify the
+                // runtime exactly once, before any per-viewer geometry.
+                if (firstFrameOfBeat) {
+                    Sound sound = mergeSound(beat.soundKey());
+                    if (sound != null) {
+                        for (Player viewer : viewers) {
+                            viewer.playSound(origin, sound, SoundCategory.HOSTILE, 0.9F, 0.7F);
+                        }
+                    }
+                    if (beatHook != null) beatHook.accept(beat);
+                }
+                int spent = 0;
+                for (Player viewer : viewers) {
+                    if (spent >= budget) continue;
+                    int stride = SpellVfxLodPolicy.sampleStride(SpellVfxLodPolicy.lodForViewer(
+                            Math.sqrt(viewer.getLocation().distanceSquared(origin)), viewers.size()));
+                    for (int i = 0; i < points.size() && spent < budget; i += stride) {
+                        var point = points.get(i);
+                        Location at = origin.clone().add(point.x(), point.y(), point.z());
+                        if (point.layer() == 2) {
+                            viewer.spawnParticle(Particle.END_ROD, at, 1, 0.02, 0.02, 0.02, 0);
+                        } else {
+                            viewer.spawnParticle(Particle.DUST, at, 1, 0.05, 0.035, 0.05, 0,
+                                    point.layer() == 0 ? primary : accent);
+                        }
+                        spent++;
+                    }
+                }
+            }
+        }.runTaskTimer(plugin, 0L, 2L);
+        register.accept(task);
+    }
+
+    private static Sound mergeSound(String key) {
+        if (key == null) return null;
+        return switch (key) {
+            case "guardian_fracture" -> Sound.ENTITY_ENDER_DRAGON_HURT;
+            case "guardian_wall_collapse" -> Sound.ENTITY_GENERIC_EXPLODE;
+            case "guardian_two_worlds" -> Sound.BLOCK_END_PORTAL_SPAWN;
+            case "guardian_ascend" -> Sound.ENTITY_WARDEN_ROAR;
+            case "guardian_last_seal_ignite" -> Sound.ENTITY_ENDER_DRAGON_GROWL;
+            default -> null;
+        };
     }
 
     /**

@@ -130,14 +130,14 @@ public class ScriptedLaunchProbe {
         boolean coincident=args[0].startsWith("coincident");if(coincident)target.eyeX=0;
         boolean launched=p.launchNamedTrialArrow(actor,target,attack,1.25F,0.0F,false,spear);
         if(coincident){
-            if(!launched||world.earlyLaunches!=0||p.wave7Admission.trackedScopes()!=0)
+            if(launched||world.earlyLaunches!=0||p.wave7Admission.trackedScopes()!=0)
                 throw new AssertionError("coincident origin/target must finish as a harmless miss, not spawn NaN velocity");
             return;
         }
         if(world.earlyLaunches!=1)throw new AssertionError("one physical launch expected");
         if(cancelled){
-            if(!launched||!p.realitySplitTrialEntityUuids.isEmpty()||p.wave7Admission.trackedScopes()!=0)
-                throw new AssertionError("cancelled Paper spawn must resolve harmlessly without authorization or aborting the trial");
+            if(launched||!p.realitySplitTrialEntityUuids.isEmpty()||p.wave7Admission.trackedScopes()!=0)
+                throw new AssertionError("cancelled Paper spawn must refuse the shot without authorizing a projectile");
         }else{
             if(!launched)throw new AssertionError("valid cast should launch");
             if(p.wave7Admission.damage(world.spawned.id,actor.id,target.id)!=Decision.ALLOW)

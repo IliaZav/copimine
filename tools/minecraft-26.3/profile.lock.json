@@ -17,10 +17,10 @@
     "size": 41483720
   },
   "clientArtifact": {
-    "filename": "CopiMineClient-0.1.4+26.3.jar",
-    "version": "0.1.4+26.3",
-    "size": 30685697,
-    "sha512": "2c871a2fb61e839bd8d51bab7d38ce9c3fcd7bfa10ca20ea4c1b581cb48caeafeed4b8a13c0d12f9538c543120b46cbafd580b6648d578fb782a1e09beb10ab8"
+    "filename": "CopiMineClient-0.1.5+26.3.jar",
+    "version": "0.1.5+26.3",
+    "size": 30705791,
+    "sha512": "136bcdee73cc290b3903d467563b34bdd0684f6b5c47d72022764e20b0d806ca8b5d117aae9e0fd161e13b7f1e1f69fff6966d68ecb3e2dc776310b8b5fe9418"
   },
   "paper": {
     "build": 205,
@@ -47,9 +47,9 @@
     "clientPortComplete": true
   },
   "resourcePackMigration": {
-    "legacyPackSha256": "c466df569030e045890d2c2bcbffa6ce653ad9ede39996aeb88c2d759345455f",
-    "candidateSha256": "98d7950558e7da38e37b641d340b7fe89dc0310cbce6ad0671be62432d627176",
-    "legacyPackSize": 27938837,
-    "candidateSize": 34373458
+    "legacyPackSha256": "580cc84f3a5e1072a67053290b9a9720b82c4e1d198411a8afa87cb3e1901a83",
+    "candidateSha256": "112dd60568a19c940baff981991c175746301de814ab1c9e95d774a9e0a1786d",
+    "legacyPackSize": 27862402,
+    "candidateSize": 34297023
   }
 }

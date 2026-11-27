@@ -34,6 +34,10 @@ public final class EchoBehaviorPersonalisationTest {
         differentStylesChooseDifferentActions();
         aMovingCopyStillShoots();
         profileEncodingIsNotDecorative();
+        healThresholdIsPersonalised();
+        weaponPreferencePicksTheRecordedBlade();
+        swingCadencePersonalisesMeleeCooldown();
+        rangedCadencePersonalisesRangedCooldown();
         System.out.println("EchoBehaviorPersonalisationTest OK assertions=" + assertions);
     }
 
@@ -49,23 +53,24 @@ public final class EchoBehaviorPersonalisationTest {
 
         check(near.action() == Action.MELEE || near.action() == Action.CRITICAL,
                 "a melee original must swing in melee range, got " + near.action());
-        check(far.action() == Action.RANGED,
-                "a ranged original must shoot from its own band, got " + far.action());
+        check(far.action() == Action.RANGED_DRAW,
+                "a ranged original must start a draw from its own band, got " + far.action());
 
         Decision cornered = decide(kiter, 90L, 1.0D);
         check(cornered.intent() == MovementIntent.KITE,
                 "a ranged original must open the gap when its owner steps into reach, got "
                         + cornered.intent());
 
-        // The shield/heal original defends inside its own recorded window, which is
-        // derived from its defence weight rather than a shared constant. Defence
-        // 200 opens the first ticks of every hundred-tick window.
-        Decision defended = decide(warden, 2L, 9.0D);
-        check(defended.action() == Action.SHIELD,
-                "a defensive original must raise its shield in its own window, got "
-                        + defended.action());
-        Decision defendedLater = decide(warden, 60L, 9.0D);
-        check(defendedLater.action() != Action.SHIELD,
+        // The shield/heal original defends inside its own recorded window, derived
+        // from its defence weight (200 per mille = 20 ticks per 100-tick cycle) and
+        // its actor-local phase (E-03). The window must fire and must be bounded.
+        int shieldTicks = 0;
+        for (long t = 0L; t < 100L; t++) {
+            if (decide(warden, t, 9.0D).action() == Action.SHIELD) shieldTicks++;
+        }
+        check(shieldTicks > 0,
+                "a defensive original must raise its shield in its own window");
+        check(shieldTicks < 100,
                 "the shield window is bounded, not a permanent defence percentage");
 
         check(near.action() != far.action() || near.intent() != far.intent(),
@@ -81,7 +86,7 @@ public final class EchoBehaviorPersonalisationTest {
         Decision moving = decide(kiter, 90L, 16.0D);
         check(moving.intent() == MovementIntent.KITE,
                 "the copy must intend to open the gap, got " + moving.intent());
-        check(moving.action() == Action.RANGED,
+        check(moving.action() == Action.RANGED_DRAW,
                 "BRAIN-005: repositioning must not disable the committed action, got "
                         + moving.action());
     }
@@ -110,10 +115,109 @@ public final class EchoBehaviorPersonalisationTest {
                 0b111_1111, true, 250, hold, 400, defense, 250);
     }
 
-    private record Decision(Action action, MovementIntent intent) { }
+    /** E-04: the same profile plus the weapon/cadence/sustain evidence. */
+    private static EchoBehaviorStrategy tuned(int melee, int ranged, int mobility, int defense,
+                                              int sustain, int confidence, int hold,
+                                              int healThreshold, int cadence, int weaponPreference) {
+        return new EchoBehaviorStrategy(melee, ranged, mobility, defense, sustain, confidence,
+                0b111_1111, true, 250, hold, 400, defense, 250,
+                healThreshold, cadence, weaponPreference, 20, 25);
+    }
+
+    /**
+     * E-04: the recorded healing threshold, not a fixed 55%, decides when the copy
+     * heals. At 70% health a cautious owner (heals at 90%) eats; a brave one
+     * (heals at 30%) keeps swinging.
+     */
+    private static void healThresholdIsPersonalised() {
+        EchoBehaviorStrategy cautious = tuned(900, 100, 0, 0, 900, 700, 40, 900, 20, 500);
+        EchoBehaviorStrategy brave = tuned(900, 100, 0, 0, 900, 700, 40, 300, 20, 500);
+        Decision eat = decide(cautious, 100L, 9.0D, 14.0D);
+        Decision fight = decide(brave, 100L, 9.0D, 14.0D);
+        check(eat.action() == Action.CONSUMABLE,
+                "a cautious healer eats at 70% health, got " + eat.action());
+        check(fight.action() != Action.CONSUMABLE,
+                "a brave fighter keeps swinging at 70% health, got " + fight.action());
+    }
+
+    /** E-04: a strong recorded axe/sword habit swaps the melee weapon the copy holds. */
+    private static void weaponPreferencePicksTheRecordedBlade() {
+        EchoBehaviorStrategy axeOwner = tuned(900, 100, 0, 0, 500, 700, 40, 550, 20, 900);
+        EchoBehaviorStrategy swordOwner = tuned(900, 100, 0, 0, 500, 700, 40, 550, 20, 100);
+        Decision axe = decide(axeOwner, 100L, 9.0D, 20.0D, dualMelee());
+        Decision sword = decide(swordOwner, 100L, 9.0D, 20.0D, dualMelee());
+        check(axe.action() == Action.MELEE && axe.itemSlot() == 6,
+                "an axe owner's copy swings the axe, got slot " + axe.itemSlot());
+        check(sword.action() == Action.MELEE && sword.itemSlot() == 0,
+                "a sword owner's copy swings the sword, got slot " + sword.itemSlot());
+    }
+
+    /** E-04: the recorded swing cadence personalises the melee action cooldown. */
+    private static void swingCadencePersonalisesMeleeCooldown() {
+        EchoBehaviorStrategy fast = tuned(900, 100, 0, 0, 500, 700, 40, 550, 12, 500);
+        EchoBehaviorStrategy slow = tuned(900, 100, 0, 0, 500, 700, 40, 550, 30, 500);
+        Decision fastSwing = decide(fast, 100L, 9.0D, 20.0D, dualMelee());
+        Decision slowSwing = decide(slow, 100L, 9.0D, 20.0D, dualMelee());
+        check(fastSwing.meleeCooldownUntilTick() == 112L,
+                "a fast swinger's melee cooldown is 12 ticks, got " + fastSwing.meleeCooldownUntilTick());
+        check(slowSwing.meleeCooldownUntilTick() == 130L,
+                "a slow swinger's melee cooldown is 30 ticks, got " + slowSwing.meleeCooldownUntilTick());
+    }
+
+    /**
+     * E-05: the owner's recorded bow draw / crossbow charge personalises the
+     * ranged cadence, so a snap-shooter copy fires faster than a heavy-draw copy
+     * under the identical observation. Both are clamped inside the fair 10..60
+     * native band, so the value is evidence, not an exploit.
+     */
+    private static void rangedCadencePersonalisesRangedCooldown() {
+        EchoBehaviorStrategy snapShooter = tunedRanged(12, 25);
+        EchoBehaviorStrategy heavyDraw = tunedRanged(55, 25);
+        Decision quick = decide(snapShooter, 100L, 400.0D);
+        Decision heavy = decide(heavyDraw, 100L, 400.0D);
+        check(quick.action() == Action.RANGED_DRAW,
+                "a ranged original must start a draw from its band, got " + quick.action());
+        check(quick.rangedChargeUntilTick() == 112L,
+                "a snap-shooter's bow draw completes in 12 ticks, got " + quick.rangedChargeUntilTick());
+        check(heavy.action() == Action.RANGED_DRAW,
+                "a heavy-draw original must start a draw from its band, got " + heavy.action());
+        check(heavy.rangedChargeUntilTick() == 155L,
+                "a heavy-draw shooter's bow draw completes in 55 ticks, got " + heavy.rangedChargeUntilTick());
+    }
+
+    /** E-05: a ranged-heavy profile with a specific bow draw / crossbow charge time. */
+    private static EchoBehaviorStrategy tunedRanged(int bowDraw, int crossbowCharge) {
+        return new EchoBehaviorStrategy(100, 900, 0, 0, 0, 700,
+                0b111_1111, true, 250, 40, 400, 0, 250,
+                550, 20, 500, bowDraw, crossbowCharge);
+    }
+
+    /** A sword in slot 0 and an axe in slot 6, with no ranged or shield to pre-empt melee. */
+    private static Map<Integer, EchoLoadoutState.Item> dualMelee() {
+        Map<Integer, EchoLoadoutState.Item> overrides = new LinkedHashMap<>();
+        overrides.put(2, EchoLoadoutState.Item.empty());
+        overrides.put(3, EchoLoadoutState.Item.empty());
+        overrides.put(4, EchoLoadoutState.Item.empty());
+        overrides.put(6, new EchoLoadoutState.Item("IRON_AXE", 1, 250, 0, Map.of(), "", false));
+        return overrides;
+    }
+
+    private record Decision(Action action, MovementIntent intent, int itemSlot,
+                            long meleeCooldownUntilTick, long rangedCooldownUntilTick,
+                            long rangedChargeUntilTick) { }
+
+    private static Decision decide(EchoBehaviorStrategy strategy, long tick, double distanceSquared) {
+        return decide(strategy, tick, distanceSquared, 18.0D, Map.of());
+    }
+
+    private static Decision decide(EchoBehaviorStrategy strategy, long tick, double distanceSquared,
+                                   double health) {
+        return decide(strategy, tick, distanceSquared, health, Map.of());
+    }
 
     /** One identical observation and one identical loadout for every profile. */
-    private static Decision decide(EchoBehaviorStrategy strategy, long tick, double distanceSquared) {
+    private static Decision decide(EchoBehaviorStrategy strategy, long tick, double distanceSquared,
+                                   double health, Map<Integer, EchoLoadoutState.Item> overrides) {
         RealitySplitTrialController controller = new RealitySplitTrialController();
         var assignment = me.copimine.endevent.domain.ChamberIsolationPolicy.assign(
                 List.of(id(1), id(2), id(3), id(4)));
@@ -134,11 +238,12 @@ public final class EchoBehaviorPersonalisationTest {
         items.set(3, new EchoLoadoutState.Item("BOW", 1, 384, 0, Map.of(), "", false));
         items.set(4, new EchoLoadoutState.Item("ARROW", 2, 0, 0, Map.of(), "", false));
         items.set(5, new EchoLoadoutState.Item("BREAD", 1, 0, 0, Map.of(), "", false));
+        for (var entry : overrides.entrySet()) items.set(entry.getKey(), entry.getValue());
         EchoLoadoutState supplies = EchoLoadoutState.create(EVENT, ATTEMPT,
                 planned.duelId(), owner, items, 0);
-        ActorState actor = new ActorState(id(701), 18.0D, 20.0D,
+        ActorState actor = new ActorState(id(701), health, 20.0D,
                 ActorLifecycle.ALIVE, 0, 0, 0, 0, 0, 0);
-        DuelRecord duel = planned.withActor(RUNTIME, 18.0D, 20.0D, 0L, actor,
+        DuelRecord duel = planned.withActor(RUNTIME, health, 20.0D, 0L, actor,
                 1L, supplies.revision(), supplies.encode(), strategy);
 
         EchoLoadoutState replica = EchoLoadoutState.restore(duel.replicaState(), duel.eventId(),
@@ -152,7 +257,11 @@ public final class EchoBehaviorPersonalisationTest {
             throw new AssertionError("a legal duel must always yield a decision");
         }
         assertions++;
-        return new Decision(decision.get().action(), decision.get().intent());
+        return new Decision(decision.get().action(), decision.get().intent(),
+                decision.get().itemSlot(),
+                decision.get().nextDuel().actor().meleeCooldownUntilTick(),
+                decision.get().nextDuel().actor().rangedCooldownUntilTick(),
+                decision.get().nextDuel().actor().rangedChargeUntilTick());
     }
 
     private static UUID id(long value) {

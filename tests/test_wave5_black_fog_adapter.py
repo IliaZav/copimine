@@ -18,6 +18,8 @@ def probe(tmp_path_factory):
     source = SOURCE.read_text("utf-8")
     methods = "\n".join(extract(source, signature) for signature in [
         "void tickBlackFogObjective(long now)",
+        "void armBlackFogPhase(long now, long durationMillis)",
+        "long blackFogPhaseRemainingMillis()",
         # The FOG branch refreshes the frozen-pose lease each heartbeat, so the
         # probe compiles that real helper and the real lease policy below.
         "void refreshFrozenFogLeases(long now)",
@@ -272,7 +274,17 @@ public final class BlackFogAdapterProbe {
     int activeWave = 5, currentFogCycle, currentFogZoneCount, currentFogZoneSide, currentFogZoneSetupAttempts;
     int waveSpawnGroupIndex = 1, waveSpawnEntityOffset, liveWaveMobCount, refillPacks;
     int waveObjectiveLastSecond = -1;
-    long eventTickCounter, blackFogLastNoCoreLogTick;
+    long eventTickCounter, blackFogLastNoCoreLogTick, blackFogPhaseDeadlineTick;
+
+    void tickAt(long now) {
+        eventTickCounter = Math.max(eventTickCounter, (now + 49L) / 50L);
+        tickBlackFogObjective(now);
+    }
+
+    void setDeadline(long now) {
+        blackFogPhaseDeadlineMillis = now;
+        blackFogPhaseDeadlineTick = (now + 49L) / 50L;
+    }
     long blackFogHeartbeatAtMillis;
     BlackFogPhase blackFogPhaseHeartbeat;
     int spawnLimit = Integer.MAX_VALUE;
@@ -418,20 +430,20 @@ public final class BlackFogAdapterProbe {
     void advanceToFog() {
         core.world.floorsBlocked = false;
         blackFogPhase = BlackFogPhase.SAFE;
-        blackFogPhaseDeadlineMillis = 100L;
+        setDeadline(100L);
         currentSafeZoneCells.add(new HazardPlanner.Point(1, 1));
         currentSafeZoneCenters.put(0, new HazardPlanner.Point(1, 1));
-        tickBlackFogObjective(100L);
+        tickAt(100L);
     }
     public static void main(String[] args) {
         var p = new BlackFogAdapterProbe();
         switch (args[0]) {
             case "safe-room-evacuation" -> {
                 p.blackFogPhase = BlackFogPhase.SAFE;
-                p.blackFogPhaseDeadlineMillis = 10_000L;
+                p.setDeadline(10_000L);
                 p.currentSafeZoneCells.add(new HazardPlanner.Point(1, 1));
                 p.currentSafeZoneCenters.put(0, new HazardPlanner.Point(1, 1));
-                p.tickBlackFogObjective(100L);
+                p.tickAt(100L);
                 check(p.shelterEvacuations == 1, "safe rooms must evict mobs during the approach window too");
             }
             case "wire-cycle" -> {
@@ -458,26 +470,26 @@ public final class BlackFogAdapterProbe {
             }
             case "pre-fog-refill" -> {
                 Bukkit.world = p.core.world;
-                p.blackFogPhaseDeadlineMillis = 20_000L;
-                p.tickBlackFogObjective(10_000L);
+                p.setDeadline(20_000L);
+                p.tickAt(10_000L);
                 check(p.refillPacks == 1 && p.liveWaveMobCount == 13,
                         "an empty pre-first-fog combat phase starts one bounded Wave 5 refill pack");
                 check(p.wave5PreFogRefillAtMillis == 15_000L,
                         "a successful refill stores its retry deadline");
                 p.liveWaveMobCount = 0;
-                p.tickBlackFogObjective(14_999L);
+                p.tickAt(14_999L);
                 check(p.refillPacks == 1, "refill does not repeat before its retry deadline");
-                p.tickBlackFogObjective(15_000L);
+                p.tickAt(15_000L);
                 check(p.refillPacks == 2, "a second full clear before the first fog receives another pack");
                 p.liveWaveMobCount = 0;
                 p.currentFogCycle = 2;
                 p.wave5PreFogRefillAtMillis = 0L;
-                p.tickBlackFogObjective(15_001L);
+                p.tickAt(15_001L);
                 check(p.refillPacks == 3,
                         "a later fog cycle also replenishes an empty combat segment");
                 p.liveWaveMobCount = 0;
                 p.wave5PreFogRefillAtMillis = 0L;
-                p.tickBlackFogObjective(15_002L);
+                p.tickAt(15_002L);
                 check(p.refillPacks == 3, "three clear-triggered refills exhaust this cycle's finite budget");
             }
             case "post-fog-pack" -> {
@@ -496,10 +508,10 @@ public final class BlackFogAdapterProbe {
                 // fog, telegraph and safe phases. The fifth fog is the one that
                 // used to be skipped.
                 long packNow = 40_000L;
-                p.blackFogPhaseDeadlineMillis = packNow;
+                p.setDeadline(packNow);
                 for (int step = 0; step < 400 && p.wave5PostFogPacksSpawned < 1; step++) {
                     if (p.blackFogPhase == BlackFogPhase.SAFE) p.liveWaveMobCount = 0;
-                    p.tickBlackFogObjective(packNow);
+                    p.tickAt(packNow);
                     packNow += 1_000L;
                 }
                 check(p.wave5PostFogPacksSpawned == 1,
@@ -540,6 +552,17 @@ public final class BlackFogAdapterProbe {
                 check(p.liveWaveMobCount >= 10 && p.liveWaveMobCount <= 15,
                         "pack size after the unrelated death, was " + p.liveWaveMobCount);
             }
+            case "stalled-server" -> {
+                p.blackFogPhase = BlackFogPhase.FOG;
+                p.armBlackFogPhase(1_000L, 5_000L);
+                p.tickBlackFogObjective(100_000L);
+                check(p.blackFogPhase == BlackFogPhase.FOG && p.currentFogCycle == 0,
+                        "wall time alone cannot skip the fog window");
+                p.eventTickCounter = 100L;
+                p.tickBlackFogObjective(100_050L);
+                check(p.currentFogCycle == 1 && p.blackFogPhase == BlackFogPhase.COMBAT,
+                        "the full tick window advances exactly one cycle");
+            }
             case "three-cycles" -> {
                 // Superseded 2026-10-31 (WP-C): the wave runs exactly FIVE fog
                 // cycles, not three. The scenario name is kept so the parameter
@@ -551,19 +574,19 @@ public final class BlackFogAdapterProbe {
                 // four, shrinkSteps is c*2/3, so 2-0=2, 2-0=2, 2-1=1.
                 int[] expectedSides = {3, 3, 2, 2, 2, 2};
                 long now = 40_000L;
-                p.blackFogPhaseDeadlineMillis = now;
+                p.setDeadline(now);
                 for (int cycle = 0; cycle < totalCycles; cycle++) {
-                    p.tickBlackFogObjective(now);
+                    p.tickAt(now);
                     check(p.blackFogPhase == BlackFogPhase.COMBAT
                                     && p.fogSafeZoneTelegraphActive,
                             "due combat must telegraph the safe area first");
                     long safeAt = now + 3_000L;
-                    p.tickBlackFogObjective(safeAt);
+                    p.tickAt(safeAt);
                     check(p.blackFogPhase == BlackFogPhase.SAFE, "telegraph must reveal a safe area");
                     check(p.currentFogZoneSide == expectedSides[cycle],
                             "four-player safe zones must shrink by the player-count policy");
                     long safeDeadline = p.blackFogPhaseDeadlineMillis;
-                    p.tickBlackFogObjective(safeDeadline);
+                    p.tickAt(safeDeadline);
                     check(p.blackFogPhase == BlackFogPhase.FOG && p.frozen,
                             "safe-zone deadline must enter fog and hold mob AI");
                     // SUPERSEDED 2026-11-03 (user request): the fog window was
@@ -572,13 +595,13 @@ public final class BlackFogAdapterProbe {
                     // probe cannot disagree with the authored duration again.
                     long fogDeadline = safeDeadline
                             + BlackFogTimingPolicy.fogSeconds(cycle, totalCycles) * 1_000L;
-                    p.tickBlackFogObjective(fogDeadline);
+                    p.tickAt(fogDeadline);
                     check(!p.frozen, "fog end must release its AI hold");
                     if (cycle < totalCycles - 1) {
                         check(p.currentFogCycle == cycle + 1 && p.blackFogPhase == BlackFogPhase.COMBAT,
                                 "each fog window before the last must resume combat for the next cycle");
                         now = fogDeadline + (long) BlackFogTimingPolicy.combatSeconds(cycle) * 1_000L;
-                        p.blackFogPhaseDeadlineMillis = now;
+                        p.setDeadline(now);
                     }
                 }
                 check(p.currentFogCycle == totalCycles && p.blackFogPhase == BlackFogPhase.SAFE
@@ -587,19 +610,19 @@ public final class BlackFogAdapterProbe {
             }
             case "setup-retry" -> {
                 p.core.world.floorsBlocked = true;
-                p.blackFogPhaseDeadlineMillis = 40_000L;
-                p.tickBlackFogObjective(40_000L);
+                p.setDeadline(40_000L);
+                p.tickAt(40_000L);
                 check(p.setupCalls == 1 && p.currentFogZoneSetupAttempts == 1
                                 && p.currentFogZoneSetupRetryAtMillis == 42_000L
                                 && p.blackFogPhase == BlackFogPhase.COMBAT,
                         "first missing zone must schedule the two-second retry without entering fog");
-                p.tickBlackFogObjective(41_999L);
+                p.tickAt(41_999L);
                 check(p.setupCalls == 1, "retry must not run before its deadline");
-                p.tickBlackFogObjective(42_000L);
+                p.tickAt(42_000L);
                 check(p.setupCalls == 2 && p.currentFogZoneSetupAttempts == 2
                                 && p.blackFogPhase == BlackFogPhase.COMBAT,
                         "second missing zone must remain fail-closed");
-                p.tickBlackFogObjective(44_000L);
+                p.tickAt(44_000L);
                 check(p.setupCalls == 3 && p.phase == EventPhase.RECOVERY_REQUIRED
                                 && p.blackFogPhase != BlackFogPhase.FOG,
                         "third missing zone must abort to recovery without applying fog");
@@ -610,12 +633,12 @@ public final class BlackFogAdapterProbe {
                 p.eligiblePlayers.clear();
                 for (int i = 0; i < 20; i++) p.eligiblePlayers.add(new Player());
                 p.liveWaveMobCount = 3;
-                p.blackFogPhaseDeadlineMillis = 40_000L;
-                p.tickBlackFogObjective(40_000L);
+                p.setDeadline(40_000L);
+                p.tickAt(40_000L);
                 check(p.blackFogPhase == BlackFogPhase.COMBAT
                                 && p.fogSafeZoneTelegraphActive,
                         "twenty-player setup must telegraph the safe area first");
-                p.tickBlackFogObjective(43_000L);
+                p.tickAt(43_000L);
                 check(p.blackFogPhase == BlackFogPhase.SAFE
                                 && p.currentFogZoneSide == 3 && p.currentFogZoneCount == 7,
                         "twenty eligible players must receive twenty one-cell safe zones before fog");
@@ -633,42 +656,42 @@ public final class BlackFogAdapterProbe {
                 p.eligiblePlayers.clear();
                 for (int i = 0; i < 2; i++) p.eligiblePlayers.add(new Player());
                 p.liveWaveMobCount = 3;
-                p.blackFogPhaseDeadlineMillis = 40_000L;
-                p.tickBlackFogObjective(40_000L);
+                p.setDeadline(40_000L);
+                p.tickAt(40_000L);
                 check(p.blackFogPhase == BlackFogPhase.COMBAT
                                 && p.fogSafeZoneTelegraphActive
                                 && p.currentSafeZoneCells.size() == 18,
                         "initial safe-zone setup must fit the two currently eligible players");
-                p.tickBlackFogObjective(43_000L);
+                p.tickAt(43_000L);
                 check(p.blackFogPhase == BlackFogPhase.SAFE,
                         "the initial telegraph must activate the safe area");
                 long firstSafeDeadline = p.blackFogPhaseDeadlineMillis;
                 // Return enough owners to exceed the new two-zone initial
                 // capacity (18); a smaller return no longer needs re-journaling.
                 for (int i = 0; i < 18; i++) p.eligiblePlayers.add(new Player());
-                p.tickBlackFogObjective(firstSafeDeadline);
+                p.tickAt(firstSafeDeadline);
                 check(p.blackFogPhase == BlackFogPhase.SAFE
                                 && p.currentFogZoneSide == 3 && p.currentFogZoneCount == 3
                                 && p.currentSafeZoneCells.size() == 27,
                         "returned eligible owners receive sufficient capacity before fog");
                 check(p.hazardJournal.prepareCalls == 2,
                         "capacity refresh restores and re-journals owned floor changes");
-                p.tickBlackFogObjective(p.blackFogPhaseDeadlineMillis);
+                p.tickAt(p.blackFogPhaseDeadlineMillis);
                 check(p.blackFogPhase==BlackFogPhase.FOG,"validated refreshed refuge can activate");
             }
             case "empty-eligible-retries" -> {
                 p.eligiblePlayers.clear();
                 p.liveWaveMobCount = 3;
-                p.blackFogPhaseDeadlineMillis = 40_000L;
-                p.tickBlackFogObjective(40_000L);
+                p.setDeadline(40_000L);
+                p.tickAt(40_000L);
                 check(p.blackFogPhase == BlackFogPhase.COMBAT
                                 && p.currentFogZoneSetupAttempts == 0
                                 && p.currentFogZoneSetupRetryAtMillis == 42_000L,
                         "an empty eligible roster must defer setup without consuming an attempt");
-                p.tickBlackFogObjective(41_999L);
+                p.tickAt(41_999L);
                 check(p.setupCalls == 0 && p.hazardJournal.prepareCalls == 0,
                         "empty-roster retry must not attempt placement before its deadline");
-                p.tickBlackFogObjective(42_000L);
+                p.tickAt(42_000L);
                 check(p.currentFogZoneSetupAttempts == 0
                                 && p.currentFogZoneSetupRetryAtMillis == 44_000L
                                 && p.blackFogPhase == BlackFogPhase.COMBAT,
@@ -679,10 +702,10 @@ public final class BlackFogAdapterProbe {
                 for (int i = 0; i < 20; i++) p.eligiblePlayers.add(new Player());
                 p.liveWaveMobCount = 3;
                 p.core.world.floorsBlocked = true;
-                p.blackFogPhaseDeadlineMillis = 40_000L;
+                p.setDeadline(40_000L);
                 for (int attempt = 0; attempt < 3; attempt++) {
                     long now = 40_000L + attempt * 2_000L;
-                    p.tickBlackFogObjective(now);
+                    p.tickAt(now);
                     check(p.core.world.blockMutationCount == 0
                                     && p.hazardJournal.prepareCalls == 0
                                     && p.hazardJournal.markAppliedCalls == 0
@@ -803,7 +826,7 @@ public final class BlackFogAdapterProbe {
             }
             case "restore-failure-does-not-advance" -> {
                 p.blackFogPhase = BlackFogPhase.FOG;
-                p.blackFogPhaseDeadlineMillis = 1L;
+                p.setDeadline(1L);
                 p.currentSafeZoneCells.add(new HazardPlanner.Point(1, 1));
                 p.currentSafeZoneCenters.put(0, new HazardPlanner.Point(1, 1));
                 p.currentTemporaryBlockOriginals.put(new HazardPlanner.Point(1, 1), "minecraft:stone");
@@ -814,7 +837,7 @@ public final class BlackFogAdapterProbe {
                         new HazardMutationJournal.Entry(1, 0, 1, "minecraft:stone", "", true, false)));
                 p.restoreThrows = true;
                 Bukkit.restoreThrows = true;
-                p.tickBlackFogObjective(1L);
+                p.tickAt(1L);
                 check(Bukkit.restoreBlockAttempts == 1,
                         "injected failure must reach the actual block restoration boundary");
                 check(p.currentFogCycle == 0 && p.phase == EventPhase.RECOVERY_REQUIRED,
@@ -866,7 +889,7 @@ public final class BlackFogAdapterProbe {
 
 
 @pytest.mark.parametrize("scenario", [
-    "safe-room-evacuation", "three-cycles", "pre-fog-refill", "post-fog-pack", "post-fog-partial-rollback",
+    "safe-room-evacuation", "three-cycles", "stalled-server", "pre-fog-refill", "post-fog-pack", "post-fog-partial-rollback",
     "pack-not-shortened-by-unrelated-death", "setup-retry", "invalid-journal", "mark-restored-failure",
     "restore-failure-does-not-advance", "invalid-original-data",
 ])

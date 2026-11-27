@@ -24,6 +24,11 @@ public final class ItemPresentationComponents {
         return true;
     }
 
+    /** Older Paper versions can still show the legacy model id. */
+    public static void setVisualFloats(ItemMeta meta, List<Float> floats) {
+        if (READ_DATA != null) setFloats(meta, floats);
+    }
+
     /** A missing transport must cancel the rig cast before it can authorize contact. */
     public static void setFloats(ItemMeta meta, List<Float> floats) {
         if (READ_DATA == null) throw new UnsupportedOperationException("ITEM_FLOAT_COMPONENT_UNAVAILABLE");

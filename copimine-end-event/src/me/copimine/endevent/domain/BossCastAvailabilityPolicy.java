@@ -32,12 +32,12 @@ public final class BossCastAvailabilityPolicy {
      * design — the ring must not become a second major-cast owner.
      */
     public static boolean compatibleWhileRing(EndRiftAiPolicy.BossSpell spell) {
-        return spell == EndRiftAiPolicy.BossSpell.RIFT_PROJECTILE;
+        return spell == EndRiftAiPolicy.BossSpell.RIFT_PROJECTILE || spell == EndRiftAiPolicy.BossSpell.BOSS_FIREBALL;
     }
 
     /** True when this slot pauses every major cast rather than a subset. */
     public static boolean blocksAllCasts(BusySlot slot) {
-        return slot == BusySlot.AMBUSH;
+        return false;
     }
 
     /**
@@ -53,9 +53,6 @@ public final class BossCastAvailabilityPolicy {
         }
         if (slot == null || slot == BusySlot.NONE) {
             return List.copyOf(pool);
-        }
-        if (slot == BusySlot.AMBUSH) {
-            return List.of();
         }
         return pool.stream().filter(BossCastAvailabilityPolicy::compatibleWhileRing).toList();
     }

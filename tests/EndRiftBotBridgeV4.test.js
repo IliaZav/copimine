@@ -143,7 +143,7 @@ test('local test client registers the legacy and V4 channels together', () => {
   attachLocalClientModHandshake(bot, {
     host: '127.0.0.1',
     port: 25566,
-    version: '0.1.4+26.3',
+    version: require('../tools/minecraft-26.3/profile.lock.json').clientArtifact.version,
   })
   bot.emit('login')
 

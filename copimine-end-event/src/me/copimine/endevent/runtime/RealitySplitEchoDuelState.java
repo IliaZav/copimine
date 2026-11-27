@@ -69,7 +69,24 @@ public final class RealitySplitEchoDuelState {
                              long meleeCooldownUntilTick, long rangedCooldownUntilTick,
                              long pendingUseUntilTick, long deathSerial,
                              long shieldActiveUntilTick, long shieldCooldownUntilTick,
-                             long jumpCooldownUntilTick) {
+                             long jumpCooldownUntilTick, long rangedChargeUntilTick) {
+        /**
+         * Source-compatible constructor for pre-v6 fixtures and zeroed legacy action
+         * state. A zero {@code rangedChargeUntilTick} means no bow draw / crossbow
+         * load is in flight, which is the neutral state every earlier snapshot has.
+         */
+        public ActorState(UUID actorUuid, double currentHealth, double maximumHealth,
+                          ActorLifecycle lifecycle, long revision, long nextActionTick,
+                          long meleeCooldownUntilTick, long rangedCooldownUntilTick,
+                          long pendingUseUntilTick, long deathSerial,
+                          long shieldActiveUntilTick, long shieldCooldownUntilTick,
+                          long jumpCooldownUntilTick) {
+            this(actorUuid, currentHealth, maximumHealth, lifecycle, revision, nextActionTick,
+                    meleeCooldownUntilTick, rangedCooldownUntilTick, pendingUseUntilTick,
+                    deathSerial, shieldActiveUntilTick, shieldCooldownUntilTick,
+                    jumpCooldownUntilTick, 0L);
+        }
+
         /** Source-compatible constructor for pre-v5 fixtures and zeroed legacy action state. */
         public ActorState(UUID actorUuid, double currentHealth, double maximumHealth,
                           ActorLifecycle lifecycle, long revision, long nextActionTick,
@@ -77,7 +94,7 @@ public final class RealitySplitEchoDuelState {
                           long pendingUseUntilTick, long deathSerial) {
             this(actorUuid, currentHealth, maximumHealth, lifecycle, revision, nextActionTick,
                     meleeCooldownUntilTick, rangedCooldownUntilTick, pendingUseUntilTick,
-                    deathSerial, 0L, 0L, 0L);
+                    deathSerial, 0L, 0L, 0L, 0L);
         }
 
         public ActorState {
@@ -93,6 +110,7 @@ public final class RealitySplitEchoDuelState {
             requireCounter(shieldActiveUntilTick, "shield active deadline");
             requireCounter(shieldCooldownUntilTick, "shield cooldown");
             requireCounter(jumpCooldownUntilTick, "jump cooldown");
+            requireCounter(rangedChargeUntilTick, "ranged charge");
             if (shieldActiveUntilTick > shieldCooldownUntilTick) {
                 throw new IllegalArgumentException("Echo shield active deadline exceeds its cooldown");
             }
@@ -112,7 +130,7 @@ public final class RealitySplitEchoDuelState {
             return new ActorState(actorUuid, 0.0D, maximumHealth, ActorLifecycle.DEAD,
                     revision + 1L, nextActionTick, meleeCooldownUntilTick,
                     rangedCooldownUntilTick, pendingUseUntilTick, serial, shieldActiveUntilTick,
-                    shieldCooldownUntilTick, jumpCooldownUntilTick);
+                    shieldCooldownUntilTick, jumpCooldownUntilTick, 0L);
         }
     }
 

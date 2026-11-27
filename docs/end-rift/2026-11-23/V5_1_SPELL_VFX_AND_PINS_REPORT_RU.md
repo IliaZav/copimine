@@ -99,6 +99,39 @@ skipped**. CI на новых SHA (после `41500fc3`) поставлен в 
 hazard-journal допускает одну живую пачку) — это остаётся открытым, а не
 «сделано».
 
+Дополнение (2026-11-27, шестое, **финальный релизный инкремент**): закрыт реальный
+дефект презентации дождя стрел Wave 7 / последней печати — спавненные падающие
+стрелы получали `Arrow#setVisibleByDefault(true)`, поэтому клиент больше не
+скрывает часть снарядов, и весь залп читается как плотный авторский поток, а не
+как «обрезанный». Заодно пересобраны и заново запинованы все загрязнённые
+артефакты, поэтому **текущий (действующий) пин** теперь:
+
+| Поле | Значение |
+|---|---|
+| файл | `CopiMineClient-0.1.5+26.3.jar` |
+| размер | **30 769 867** байт |
+| SHA-256 | `f9f87f78e5354c461fea5400fec6c1534a77d86fb7af4120acfd68b45e1b0105` |
+| SHA-512 | `4be5f5e0bcea92bca7695e8a31fc9ca1d0fb7fa7dd77531b20de99c5b4d1d8eed74fedff4021738a2c2474bd65df1334756aed68e628625f4ec46b5ae01d4cf8` |
+
+Этот пин заменил `30 685 728 / 03620f76…` (§1.19) и подтверждён полным локальным
+гейтом `tests/RunEndRiftEventChecks.ps1` (Temurin 25.0.4.1, Gradle 9.8.1,
+offline): **«End Rift current local checks passed»**, `GATE_EXIT=0`, включая
+**436 тестов 26.3-клиента, `FAIL=0 ERR=0 SKIP=0`**. Серверный кандидат
+`CopiMineEndEvent-26.3.jar` — **2 958 162 B / sha256
+`716181f5d196c31900264d2b4be8afbc3672b9b8eff4111c0fb258af06fa1fa5` / sha512
+`75064ce138efda2342179d08953d92c1e1e58edbaf8bc308d203b51cc304cefd11ce7f7999055a1f5df65b34e87b0ef74d59a17bbc0346c0cd292b32feb9c322`**
+(предыдущий `cb48aeee…` добавлен в начало `replaceSha256`). Синхронизированы
+`OWN_PLUGIN_INVENTORY.json` (Dungeon `f447404b…` / 280 467 B, EndEvent
+`716181f5…` / 2 958 162 B, Narcotics `f85402bd…` / 379 551 B),
+`server-plugins.lock.json`, оба литерала
+`tests/test_minecraft_migration_server_plugins.py` и шапка F2-чек-листа. Модпак
+пересобран: `CopiMineMods.zip` — 27 407 027 B / sha256 `2e305722…` / sha1
+`f1c21e03…`, стадированный клиент — `928e577b…`. Честная граница не меняется:
+нативного GUI-клиента нет (F2/звук — `NATIVE_BLOCKED`), V7-27 остаётся
+`NOT_MEASURED` (только детерминированная модель), V7-15 (`CopiMine_Wave7_V4.zip`)
+на этой машине отсутствует. PROD на момент этой правки не развёрнут: кандидаты
+по-прежнему `nativeVerified: false`.
+
 ## 1. Что сделано
 
 ### 1.1 Транспорт авторского каста и клиентская реконструкция меша (SOURCE + AUTO)
@@ -807,20 +840,17 @@ durable-формата журнала и нативной приёмки — э�
 
 ## 2. Проверки (AUTO)
 
-- Полный локальный гейт `tests/RunEndRiftEventChecks.ps1`: **все шаги сборки и
-  тестов зелёные** (EndEvent, 1.21.1-клиент, ресурспак, все Python- и
-  Java-наборы, включая `SpellVisualGeometry`-пробники). Итоговый `GATE_EXIT=1`
-  получен **только** из завершающего шага «Diff hygiene» (repo-wide
-  `git diff --check`), который помечает
-  `copimine-dungeon/src/me/copimine/dungeon/runtime/DungeonRuntime.java:802:
-  new blank line at EOF` в **постороннем незакоммиченном** инкременте подземелья.
-  Эта работа пользователя в коммит не входит и не трогалась; мой staged-диф
-  (`git diff --cached --check`) чист (`exit 0`). Поэтому шаг гигиены не выдаю за
-  зелёный — он честно красный из-за чужого грязного файла.
-- 26.3-клиент (поставляемое дерево): **435 тестов, `FAIL=0 ERR=0 SKIP=0`**, включая
-  `SpellVisualGeometryTest` (21/21, в том числе новый
-  `geyserCarriesEveryAuthoredNineD01Component`), `SpellVisualMotionPolicyTest` (4/4),
-  `SpellVisualToneMapTest` (6/6), `SpellVisualSoundRuntimeTest` (5/5) и
+- Полный локальный гейт `tests/RunEndRiftEventChecks.ps1` (2026-11-27, Temurin
+  25.0.4.1, Gradle 9.8.1, offline): **все шаги сборки и тестов зелёные**
+  (EndEvent, Dungeon, AuthEffects, 1.21.1-клиент, ресурспак, позы босса, модпак,
+  все Python- и Java-наборы, включая `SpellVisualGeometry`-пробники). Итог —
+  **«End Rift current local checks passed»**, `GATE_EXIT=0`; шаг «Diff hygiene»
+  (`git diff --check`) чист, литеральные пины инвентаря/лока совпадают с
+  собранными артефактами.
+- 26.3-клиент (поставляемое дерево): **436 тестов, `FAIL=0 ERR=0 SKIP=0`**,
+  включая `SpellVisualGeometryTest` (21/21, в том числе
+  `geyserCarriesEveryAuthoredNineD01Component`), `SpellVisualMotionPolicyTest`
+  (4/4), `SpellVisualToneMapTest` (6/6), `SpellVisualSoundRuntimeTest` (5/5) и
   `SpellVisualEnvelopeTest` (7/7).
 - **Ужесточены гарантии уровней §9A.04 в собственной батарее 26.3-клиента**
   (только тесты; в jar не попадают, пин не меняется): в
@@ -939,14 +969,15 @@ durable-формата журнала и нативной приёмки — э�
 | Слой | Что покрывает |
 |---|---|
 | `SOURCE` | Правки кода: серверные подсказки, 26.3-клиент (мешь/рендерер/проводка), 1.21.1-зеркало, перепины и тесты. |
-| `AUTO` | Локальный гейт: все шаги сборки/тестов зелёные (единственный красный — repo-wide `git diff --check` на постороннем незакоммиченном файле подземелья, вне коммита), **435 тестов 26.3-клиента** (`FAIL=0 ERR=0 SKIP=0`, включая `geyserCarriesEveryAuthoredNineD01Component`), локальная батарея превью+презентация+N23-P2-15+аудио+N23-P1-07-харнесс+pin-профиль — **74 passed / 1 skipped**; двойная байт-воспроизводимая пересборка нового пина (**30 685 728 / `03620f76…`**, §1.19), `--check`/`--check-gif` — 12 листов и 12 GIF совпадают с исходником; **предыдущий пин 30 684 452 / `4e70f379…` подтверждён зелёным run [`45511745562`](https://github.com/IliaZav/copimine/actions/runs/45511745562)** (шаг 12 воспроизвёл его из исходников, шаг 17 — success, нативные гейты — **skipped**, честно не passed); **CI для нового пина на момент правки ещё в очереди** (пул раннеров забит), поэтому зелёный для нового SHA не заявлен — доказательство пока локальное: две идентичные сборки + детерминированные превью. |
+| `AUTO` | Локальный гейт: все шаги сборки/тестов зелёные, `GATE_EXIT=0`, «End Rift current local checks passed»; **436 тестов 26.3-клиента** (`FAIL=0 ERR=0 SKIP=0`, включая `geyserCarriesEveryAuthoredNineD01Component`), локальная батарея превью+презентация+N23-P2-15+аудио+N23-P1-07-харнесс+pin-профиль — **74 passed / 1 skipped**; двойная байт-воспроизводимая пересборка нового пина (**30 769 867 / `f9f87f78…`**, sha512 `4be5f5e0…`, §1.19/дополнение 2026-11-27), `--check`/`--check-gif` — 12 листов и 12 GIF совпадают с исходником; пины инвентаря (`OWN_PLUGIN_INVENTORY.json`), `server-plugins.lock.json`, модпака и `thirdparty` совпадают с реальными артефактами; **CI для нового SHA на момент правки ещё не запущен** — доказательство пока локальное: две идентичные сборки + детерминированные превью. |
 | `NATIVE_BLOCKED` | F2 нативный визуал; измерения нагрузки N23-P1-07 при 2/5/10/11/20 игроках. |
 | `PROD` | Не выполнялось. |
 
 ## 5. Передача
 
-- Собранный клиент: `build/minecraft-26.3/client/libs/CopiMineClient-0.1.4+26.3.jar`
-  (**30 685 728** байт, sha512 `03620f76…05c811`; текущий пин — §1.19).
+- Собранный клиент: `build/minecraft-26.3/client/libs/CopiMineClient-0.1.5+26.3.jar`
+  (**30 769 867** байт, sha256 `f9f87f78…`, sha512 `4be5f5e0…01d4cf8`;
+  текущий пин — дополнение 2026-11-27).
 - Чек-лист для нативного прогона: `docs/end-rift/2026-11-23/NATIVE_F2_VISUAL_CHECKLIST.md`
   (шапка уже указывает на новый хэш клиента).
 - Одностраничные арт-листы по §9A.02:
@@ -960,3 +991,40 @@ durable-формата журнала и нативной приёмки — э�
 - Играть/смотреть визуал можно только после нативного F2 (нужен подписанный
   клиент + живой сервер). До этого — статически и автотестами проверено, нативно
   не подтверждено.
+
+## Дополнение 2026-11-27 (7-е): исправление кросс-версионной компиляции и перепин EndEvent
+
+### Причина перепина
+CI ран `45926049281` (коммит `7f9c9e3f`) отказал на шаге **java-plugins → Run shared Java plugin release gate** с ошибкой компиляции:
+```
+CopiMineEndEvent.java:7238: cannot find symbol: EntityType.SPLASH_POTION
+CopiMineEndEvent.java:7239: cannot find symbol: EntityType.LINGERING_POTION
+```
+Paper 26.3 (`26.3.build.205-stable`) разделяет `EntityType.SPLASH_POTION`/`LINGERING_POTION`, а legacy 1.21.1 API (`1.21.1-R0.1-SNAPSHOT`, sha256 `b8df3e7f…`, 2 344 886 B), под которым `RunJavaPluginCi.ps1` компилирует плагин, содержит только `EntityType.POTION`.
+
+### Исправление
+Классификация ударной воронки (area/splash) заменена на версионезависимый предикат:
+```java
+boolean area = projectile instanceof org.bukkit.entity.ThrownPotion;
+```
+`ThrownPotion extends ThrowableProjectile extends Projectile` существует в обоих API и покрывает splash и lingering potions. Однотипные deprecation warnings (EntityKnockbackEvent, EntityEffect.HURT, Sound.valueOf) не затрагивались — они не блокируют компиляцию.
+
+Локальная проверка: `PAPER_API_JAR=…/paper-api-1.21.1-…128.jar build-plugin.ps1 -CompileOnly` → **BUILD SUCCESSFUL** (только deprecation warnings).
+
+### Перепин
+- **Старый кандидат**: 2 958 229 B, sha256 `cb48aeee…`, sha512 `a7837232…`
+- **Новый кандидат**: 2 958 162 B, sha256 `716181f5…`, sha512 `75064ce1…`
+- Байт-воспроизводимость: две чистые сборки Gradle `migrationPlugins` (JDK 25, Gradle 9.8.1) дали идентичный jar (**sha256 `716181f5…`**, размер **2 958 162**, sha512 `75064ce1…`; 29–30 с каждая).
+- `cb48aeee…` добавлен в начало `replaceSha256`.
+
+### Обновлённые пины и тесты
+- `tools/minecraft-26.3/server-plugins.lock.json` — sha256, size, sha512, replaceSha256.
+- `docs/end-rift/final-26.3/OWN_PLUGIN_INVENTORY.json` — candidateSha256.
+- `tests/test_minecraft_migration_server_plugins.py` — 2 набора утверждений (sha256, size, sha512, replaceSha256[:6]).
+- `docs/end-rift/2026-11-23/NATIVE_F2_VISUAL_CHECKLIST.md` — шапка.
+- `docs/end-rift/2026-11-23/V5_1_SPELL_VFX_AND_PINS_REPORT_RU.md` — данный раздел.
+
+Pin-тесты (pytest): **7 passed in 1.41 s**.
+
+### PROD
+Новый jar — непринятый кандидат (`nativeVerified: false`). Развёртывание запланировано после зелёного CI.

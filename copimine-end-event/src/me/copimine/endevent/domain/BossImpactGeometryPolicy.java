@@ -192,4 +192,131 @@ public final class BossImpactGeometryPolicy {
         }
         return List.copyOf(points);
     }
+
+    /**
+     * The directed RAGE → LAST SEAL arena-merge rig, one shape per shot of
+     * {@code ArenaMergeCinematicPolicy}: the chest fracture that cracks the
+     * square open, the falling wall slabs, the two colliding worlds with
+     * converging streamers, the cocoon assembling around the rising Guardian,
+     * and the igniting overhead sigil shockfront.
+     *
+     * <p>Progress is the shot's own local progress, not the scene's, so each
+     * shot animates over its own bounded window. Unknown signatures draw
+     * nothing.</p>
+     */
+    public static List<Point> arenaMerge(String signature, double radius, double progress) {
+        if (signature == null || signature.isBlank() || !Double.isFinite(radius) || radius <= 0
+                || !Double.isFinite(progress)) return List.of();
+        double r = Math.min(32, radius);
+        double t = Math.max(0, Math.min(1, progress));
+        List<Point> points = new ArrayList<>(220);
+        switch (signature.trim().toLowerCase(Locale.ROOT)) {
+            case "merge-fracture" -> {
+                // The outer plates shed and a fault lattice races out of the chest.
+                for (int spoke = 0; spoke < 9; spoke++) {
+                    double angle = spoke * Math.PI * 2 / 9 + (spoke % 2 == 0 ? 0.07 : -0.07);
+                    double reach = r * 0.95 * (0.35 + 0.65 * t);
+                    for (int step = 1; step <= 7; step++) {
+                        double distance = reach * step / 7.0;
+                        double jitter = Math.sin(step * 2.3 + spoke) * 0.35;
+                        double a = angle + jitter * 0.08;
+                        points.add(new Point(Math.sin(a) * distance + Math.cos(a) * jitter,
+                                0.06 + (step % 2) * 0.06,
+                                Math.cos(a) * distance - Math.sin(a) * jitter, step % 2));
+                    }
+                }
+                for (int i = 0; i < 16; i++) {
+                    double h = i / 15.0;
+                    points.add(new Point(Math.sin(i * 2.1) * 0.25, 0.4 + h * 5.0,
+                            Math.cos(i * 1.7) * 0.25, 2));
+                }
+            }
+            case "merge-collapse" -> {
+                // Big slabs tilt and travel outward; only the outer ring falls.
+                for (int quadrant = 0; quadrant < 8; quadrant++) {
+                    double angle = quadrant * Math.PI / 4 + 0.15;
+                    double distance = r * (0.62 + 0.5 * t);
+                    double drop = 1.4 - 1.1 * t;
+                    for (int slabX = -2; slabX <= 2; slabX++) {
+                        for (int slabY = 0; slabY <= 2; slabY++) {
+                            double lateral = slabX * 0.5;
+                            double a = angle + lateral * 0.045;
+                            points.add(new Point(Math.sin(a) * distance + Math.cos(a) * lateral,
+                                    Math.max(0.05, drop - slabY * 0.35),
+                                    Math.cos(a) * distance - Math.sin(a) * lateral, slabY % 2));
+                        }
+                    }
+                }
+                for (int i = 0; i < 32; i++) {
+                    double angle = i * Math.PI / 16;
+                    points.add(new Point(Math.sin(angle) * r * (0.5 + 0.5 * t), 0.05,
+                            Math.cos(angle) * r * (0.5 + 0.5 * t), 2));
+                }
+            }
+            case "merge-collide" -> {
+                // Streamers spiral into the Core while the round hall surfaces.
+                for (int strand = 0; strand < 4; strand++) for (int i = 0; i < 22; i++) {
+                    double h = i / 21.0;
+                    double angle = strand * Math.PI / 2 + h * Math.PI * 4 - t * Math.PI * 2.4;
+                    double distance = r * (1.0 - 0.86 * h);
+                    points.add(new Point(Math.sin(angle) * distance, 0.2 + h * 4.4,
+                            Math.cos(angle) * distance, strand % 2));
+                }
+                for (int island = 0; island < 6; island++) {
+                    double base = island * Math.PI * 2 / 6 + 0.3;
+                    for (int i = 0; i < 6; i++) {
+                        double a = base + (i - 2.5) * 0.16;
+                        double distance = r * (0.78 + 0.06 * (i % 3)) * (0.7 + 0.3 * t);
+                        points.add(new Point(Math.sin(a) * distance, 0.09 + (i % 2) * 0.12,
+                                Math.cos(a) * distance, 2));
+                    }
+                }
+            }
+            case "merge-ascend" -> {
+                // The living cocoon winds up around the rising spine.
+                for (int wrap = 0; wrap < 3; wrap++) for (int i = 0; i < 26; i++) {
+                    double h = i / 25.0;
+                    double angle = wrap * Math.PI * 2 / 3 + h * Math.PI * 5 + t * Math.PI * 1.6;
+                    double distance = 1.3 + 0.9 * Math.sin(h * Math.PI);
+                    points.add(new Point(Math.sin(angle) * distance, 0.4 + h * 7.0,
+                            Math.cos(angle) * distance, wrap % 2));
+                }
+                for (int arm = 0; arm < 6; arm++) {
+                    double angle = arm * Math.PI / 3;
+                    for (int i = 1; i <= 6; i++) {
+                        double s = i / 6.0;
+                        double distance = 0.6 + s * 2.4;
+                        points.add(new Point(Math.sin(angle) * distance, 0.3 + s * 3.0,
+                                Math.cos(angle) * distance, 2));
+                    }
+                }
+            }
+            case "merge-ignite" -> {
+                // Overhead sigil with rotating planes plus one rising radial front.
+                for (int plane = 0; plane < 3; plane++) {
+                    double distance = 4.6 + plane * 0.7;
+                    double phase = t * Math.PI * 2 + plane * 0.9;
+                    for (int i = 0; i < 28; i++) {
+                        double angle = i * Math.PI / 14 + phase;
+                        points.add(new Point(Math.sin(angle) * distance, 8.0 + plane * 0.4,
+                                Math.cos(angle) * distance, plane == 1 ? 1 : 0));
+                    }
+                }
+                for (int i = 0; i < 40; i++) {
+                    double angle = i * Math.PI / 20;
+                    double distance = r * (0.25 + 0.75 * t);
+                    points.add(new Point(Math.sin(angle) * distance, 0.06 + t * 0.4,
+                            Math.cos(angle) * distance, 2));
+                }
+                for (int i = 0; i < 10; i++) {
+                    double h = i / 9.0;
+                    points.add(new Point(0.0, 0.4 + h * 8.4, 0.0, 2));
+                }
+            }
+            default -> {
+                // Unknown merge signature: draw nothing.
+            }
+        }
+        return List.copyOf(points);
+    }
 }

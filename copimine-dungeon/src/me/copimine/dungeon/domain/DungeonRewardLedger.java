@@ -2,7 +2,6 @@ package me.copimine.dungeon.domain;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Objects;
 
 /**
  * Pure reward receipt ledger (spec OV4.10 {@code DungeonRewardLedger};
@@ -23,7 +22,8 @@ public final class DungeonRewardLedger {
         GRANTED,
         ALREADY_CLAIMED,
         STALE_GENERATION,
-        INVALID
+        INVALID,
+        DELIVERY_PENDING
     }
 
     public enum Status {
@@ -37,6 +37,7 @@ public final class DungeonRewardLedger {
 
     private final Map<String, Receipt> receipts = new LinkedHashMap<>();
     private final Map<String, Long> latestGeneration = new LinkedHashMap<>();
+    private final java.util.Set<String> inFlight = new java.util.HashSet<>();
 
     private static String key(String roomId, long generation, String playerId) {
         return roomId + '\u0000' + generation + '\u0000' + playerId;
@@ -49,6 +50,12 @@ public final class DungeonRewardLedger {
      * {@link Decision#STALE_GENERATION}.
      */
     public Decision claim(String roomId, long generation, String playerId, RewardMode mode) {
+        return claim(roomId, generation, playerId, mode, () -> true);
+    }
+
+    /** A receipt is recorded only after the delivery adapter commits the payload. */
+    public Decision claim(String roomId, long generation, String playerId, RewardMode mode,
+                          java.util.function.BooleanSupplier commitDelivery) {
         if (isBlank(roomId) || isBlank(playerId) || mode == null || generation < 0) {
             return Decision.INVALID;
         }
@@ -56,16 +63,24 @@ public final class DungeonRewardLedger {
         if (generation < latest) {
             return Decision.STALE_GENERATION;
         }
-        if (generation > latest) {
-            latestGeneration.put(roomId, generation);
-        }
-        Receipt existing = receipts.get(key(roomId, generation, playerId));
+        String receiptKey = key(roomId, generation, playerId);
+        Receipt existing = receipts.get(receiptKey);
         if (existing != null && existing.status() == Status.GRANTED) {
             return Decision.ALREADY_CLAIMED;
         }
-        receipts.put(key(roomId, generation, playerId),
-                new Receipt(roomId, generation, playerId, mode, Status.GRANTED));
-        return Decision.GRANTED;
+        if (!inFlight.add(receiptKey)) {
+            return Decision.DELIVERY_PENDING;
+        }
+        try {
+            if (!commitDelivery.getAsBoolean()) {
+                return Decision.DELIVERY_PENDING;
+            }
+            latestGeneration.merge(roomId, generation, Math::max);
+            receipts.put(receiptKey, new Receipt(roomId, generation, playerId, mode, Status.GRANTED));
+            return Decision.GRANTED;
+        } finally {
+            inFlight.remove(receiptKey);
+        }
     }
 
     /**

@@ -40,6 +40,7 @@ public final class Wave7ActorAnimator {
             }
             float draw = switch(frame.stage()) {
                 case WINDUP, EMERGE -> smooth;
+                case CHANNEL -> .92F;
                 case RELEASE -> 1-smooth*.7F;
                 case RECOVERY -> .3F*(1-smooth);
                 default -> 0;
@@ -57,7 +58,14 @@ public final class Wave7ActorAnimator {
                 rotate(body, .06F*draw, -.18F*draw, 0);
                 translate(left, 0, 0, strike*2.8F);
                 rotate(head, -.05F*draw, .10F*draw, 0);
+                ModelPart bowArm = part(root, "right_arm/right_forearm");
+                ModelPart stringArm = part(root, "left_arm/left_forearm");
+                rotate(stringArm, -.38F*draw+.56F*strike, .25F*draw, 0);
+                if (frame.stage() == Wave7AnimationFrame.Stage.RECOVERY) {
+                    rotate(stringArm, -.55F*(float)Math.sin(p*Math.PI), 0, -.28F*(1-smooth));
+                }
                 if (action.equals("MARKSMAN_HEAVY_SHOT")) {
+                    rotate(bowArm, -.15F*draw+.35F*strike, 0, -.18F*strike);
                     rotate(body, -.12F*draw+.25F*strike, -.16F*draw, 0);
                     translate(right, 0, 0, strike*2);
                 } else if (action.equals("MARKSMAN_SPREAD_SHOT") || action.equals("MARKSMAN_PAIRED_CROSSFIRE")) {
@@ -77,6 +85,26 @@ public final class Wave7ActorAnimator {
                         rotate(left, -.9F*draw, .3F*draw, .7F*draw);
                         translate(right, 0, 0, -4.5F*strike);
                         rotate(body, .15F*strike, -.3F*draw, 0);
+                    }
+                    case ARCHMAGE_CIRCLE -> {
+                        rotate(right, -1.8F*draw+.55F*strike, -.22F*draw, -.28F*draw);
+                        rotate(left, -1.9F*draw+.8F*strike, .52F*draw, .62F*draw);
+                        rotate(body, .24F*strike, 0, -.08F*draw);
+                        translate(left, 0, 0, -2.5F*strike);
+                    }
+                    case ARCHMAGE_CROWN -> {
+                        float pulse = frame.stage() == Wave7AnimationFrame.Stage.CHANNEL
+                                ? (float)Math.sin((frame.elapsedMillis() % 750) * Math.PI / 750)*.2F : 0;
+                        rotate(right, -2.8F*draw+.25F*strike, -.2F*draw, -.32F*draw);
+                        rotate(left, -1.35F*draw, .58F*draw, .9F*draw + pulse);
+                        rotate(body, -.18F*draw+.08F*pulse, .12F*draw, 0);
+                        rotate(head, -.21F*draw, -.07F*draw, 0);
+                    }
+                    case ARCHMAGE_REPULSE -> {
+                        rotate(right, -1.21F*draw+1.77F*strike, -.62F*draw+.92F*strike, -.18F*draw);
+                        rotate(left, -.68F*draw, .5F*draw, .44F*draw);
+                        rotate(body, .41F*strike, -.25F*draw+.52F*strike, 0);
+                        translate(root, 0, 1.1F*strike, 0);
                     }
                     case ARCHMAGE_BEAM -> {
                         rotate(right, -1.5F*draw, -.25F*draw, -.38F*draw);
@@ -110,6 +138,12 @@ public final class Wave7ActorAnimator {
                         rotate(left, -.65F*draw, 0, .7F*draw);
                         rotate(body, -.12F*draw+.5F*strike, 0, 0);
                         rotate(head, -.15F*draw, 0, 0);
+                    }
+                    case WARDEN_SCULK_TRACE -> {
+                        rotate(head, .35F*draw-.18F*strike, .21F*draw, -.31F*draw);
+                        rotate(body, .16F*draw+.27F*strike, .17F*draw, 0);
+                        rotate(right, -.68F*draw-1.01F*strike, .18F*draw, -.47F*draw);
+                        rotate(left, -.62F*draw-.78F*strike, -.18F*draw, .47F*draw);
                     }
                     case WARDEN_SLAM -> {
                         rotate(right, -2.6F*draw+2.5F*strike, 0, -.2F*draw);

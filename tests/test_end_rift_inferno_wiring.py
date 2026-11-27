@@ -41,8 +41,12 @@ def test_phase_four_drives_the_contract_policy():
     assert "InfernoArenaLifecyclePolicy.mayRestart(" in ingest, (
         "the inferno must honour the contract restart cooldown"
     )
-    assert "InfernoArenaLifecyclePolicy.safeCells(" in ingest, (
-        "cooling surfaces must come from the policy, not be invented per cast"
+    # V7-19: safe/live cells may be selected by InfernoArenaLifecyclePolicy or
+    # by InfernoDecayPolicy (which owns the HP-dependent decay schedule).
+    has_surface_policy = ("InfernoArenaLifecyclePolicy.safeCells(" in ingest
+                         or "InfernoDecayPolicy.selectCovering(" in ingest)
+    assert has_surface_policy, (
+        "cooling surfaces must come from a policy, not be invented per cast"
     )
     assert "InfernoArenaLifecyclePolicy.durationTicks(" in ingest
 
@@ -100,7 +104,9 @@ def test_every_exit_path_cleans_the_arena_up():
 
 def test_leaving_phase_four_always_clears_the_inferno():
     text = source()
-    assert "if (bossPhase != BossPhase.OVERLOAD) clearArenaInferno();" in text, (
+    # White-space-tolerant check: normalise and look for the guard.
+    normalised = text.replace(" ", "").replace("\n", "").replace("\r", "")
+    assert "if(bossPhase!=BossPhase.OVERLOAD){clearArenaInferno();" in normalised, (
         "a phase change out of OVERLOAD must never leave the arena burning"
     )
 

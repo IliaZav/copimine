@@ -87,6 +87,10 @@ public class BossPathBudgetProbe {
     static class Data {void set(Object key,Object type,String value){}}
     static class PersistentDataType {static final Object STRING=new Object();}
     enum BossPhase { HUNT }enum Tactic { PURSUE }
+    // The melee-opening branch now also requires an idle ability state, so the
+    // probe models the same enum surface production reads.
+    enum BossAbilityState { NONE, TELEGRAPHING, EXECUTING, RECOVERY }
+    BossAbilityState bossAbilityState=BossAbilityState.NONE;
     static class CombatTacticsPolicy {
         // The melee-opening branch compares against the real tactic constant, so
         // the probe models the same enum surface production exposes.

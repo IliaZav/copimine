@@ -25,6 +25,19 @@ ritual:
   # fraction of real time instead of snapping to zero when a player steps out.
   portal-capture-decay-rate: 0.5
 
+# Set only after checking the exact live layout with /cmend arena reveal-preview.
+# The independently reviewed, site-specific manifest is last-seal-arena.tsv.
+last-seal-reveal:
+  # Inclusive [x1, y1, z1, x2, y2, z2] from the approved builder survey.
+  concealed-corridor: []
+  protected-safe-zone: []
+  approved-plan-sha256: ''
+
+official-site:
+  # Bound by the builder after checking the actual published dungeon and portal room.
+  dungeon-room: ""
+  portal-volume: []
+
 arena:
   world: CopiMine
   radius: 20.0
@@ -313,6 +326,18 @@ event-loot-rolls:
     ENDER_PEARL: {chance: 1.0, min: 1, max: 1}
 
 boss:
+  # V7 provisional techniques are opt-in. Durations are clamped by the cast policy.
+  geyser-wave:
+    warning-ticks: 14
+    section-interval-ticks: 5
+    section-duration-ticks: 10
+    section-size: 3.0
+    cooldown-ticks: 280
+    max-distance: 42.0
+  copy-cooperation:
+    mirror_substitution: {enabled: false, cooldown-ticks: 600}
+    coordinated_salvo: {enabled: false, cooldown-ticks: 500}
+    reflection_chain: {enabled: false, cooldown-ticks: 1000}
   # Base value for the two-player event. The current flow freezes the real entity
   # max health from BossHealthPolicy before the boss is spawned:
   # 2=5000, 3=6000, 4=7000, 5=8500, 6=9500, 7=10500, 8=11500,

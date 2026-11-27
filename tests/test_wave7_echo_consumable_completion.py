@@ -61,18 +61,21 @@ def test_the_completion_handler_persists_and_projects_the_heal():
     # The healed actor is registered and made durable before it is projected.
     register = handler.index("registerPersonalEchoDuel(next)")
     persist = handler.index("saveStateSync()")
-    heal = handler.index("carrier.setHealth(restored)")
-    assert register < persist < heal
-    # The heal only ever raises the body toward the completed checkpoint.
-    assert "restored <= carrier.getHealth()" in handler
-    assert "restored > carrier.getMaxHealth()" in handler
-    # A body that refuses the heal must not roll the completed use back.
-    assert 'getLogger().fine("W7 echo completion heal refused: "' in handler
+    project = handler.index("applyEchoActionCompletion(")
+    assert register < persist < project
+    completion = _method(source, "private void applyEchoActionCompletion(")
+    # The shared completion only raises the body toward the completed checkpoint.
+    assert "restored <= carrier.getHealth()" in completion
+    assert "restored > carrier.getMaxHealth()" in completion
+    assert "carrier.setHealth(restored)" in completion
+    assert 'getLogger().fine("Echo completion heal refused: "' in completion
+    rage = _method(source, "private void tickOneRageEcho(")
+    assert rage.index("session.commit(accepted)") < rage.index("applyEchoActionCompletion(")
 
 
 def test_the_eat_start_does_not_demand_a_health_increase():
     source = EVENT.read_text(encoding="utf-8")
-    execute = _method(source, "private boolean executeNamedEchoCombatAction(")
+    execute = _method(source, "private boolean executeEchoCombatAction(")
     consumable = execute[
         execute.index("case CONSUMABLE -> {") : execute.index("case SHIELD -> {")
     ]
@@ -80,9 +83,7 @@ def test_the_eat_start_does_not_demand_a_health_increase():
     # The start of the use carries no heal, so a guard that rejects an equal
     # health value rejects every legitimate start.
     assert "expectedHealth <= carrier.getHealth()" not in consumable
-    assert "expectedHealth > carrier.getHealth()" in consumable
-    # It still defends the two real invariants: finite and never above maximum.
-    assert "!Double.isFinite(expectedHealth)" in consumable
-    assert "expectedHealth > carrier.getMaxHealth()" in consumable
-    # The buff potion stays an animation, not a heal, on this same action.
-    assert "return executeNamedEchoPotionDrink(owner, carrier, decision);" in consumable
+    assert "carrier.setHealth(" not in consumable and "addPotionEffect(" not in consumable
+    assert "until <= eventTickCounter" in consumable
+    assert "namedEchoPotionEffects(decision.actionItem()).isEmpty()" in consumable
+    assert "echoPendingUses.put(carrier.getUniqueId(), new EchoUse(" in consumable

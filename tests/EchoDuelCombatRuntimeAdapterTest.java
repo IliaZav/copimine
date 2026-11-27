@@ -18,8 +18,8 @@ import me.copimine.endevent.runtime.wave7.EchoDuelCombatRuntimeAdapter.Action;
 import me.copimine.endevent.runtime.wave7.EchoDuelCombatRuntimeAdapter.Decision;
 import me.copimine.endevent.runtime.wave7.EchoDuelCombatRuntimeAdapter.MovementIntent;
 import me.copimine.endevent.runtime.wave7.EchoDuelCombatRuntimeAdapter.Observation;
+import me.copimine.endevent.runtime.wave7.EchoDuelCombatRuntimeAdapter.Diagnostics;
 import me.copimine.endevent.runtime.wave7.EchoDuelCombatRuntimeAdapter.Scope;
-
 /** Adapter-level regressions for the official named Echo five-tick runtime seam. */
 public final class EchoDuelCombatRuntimeAdapterTest {
     private static final UUID EVENT = id(100);
@@ -37,13 +37,17 @@ public final class EchoDuelCombatRuntimeAdapterTest {
         rejectedNativeEffectsRestoreSuppliesAndCooldowns();
         rejectForeignOrIncompleteRuntimeContexts();
         carriedCapabilitiesAreActuallyUsed();
+        maceLiftSpendsOnlyTheAcceptedCarrierCharge();
         shieldParriesTheMeasuredStrike();
         meleeCopiesCloseIntoMeleeReach();
+        rangedCopiesCloseIntoTheirOwnHoldBand();
+        exhaustedQuiverSwitchesRangedCopyToMelee();
         jumpAttackOwnersHopWhileClosingIntoTheFallingCrit();
         frequentWeaponSwitchersTradeASwingForAShot();
         sprintHeavyCopiesAttackBeforeTheyHop();
         woundedCopyWithoutFoodKeepsFighting();
         restoredDuelDeadlinesRebaseOntoFreshCounter();
+        diagnosticsClassifyAndReportBoundedReasons();
         System.out.println("EchoDuelCombatRuntimeAdapterTest OK assertions=" + assertions);
     }
 
@@ -52,19 +56,24 @@ public final class EchoDuelCombatRuntimeAdapterTest {
         EchoLoadoutState replica = restore(fixture.duel());
         Scope scope = scope(fixture.duel(), true, true, true, true);
 
-        Decision shot = EchoDuelCombatRuntimeAdapter.tick(fixture.duel(), replica, scope,
+        // E-05: the first tick only STARTS the bow draw. The arrow is not spent
+        // and no cadence opens until the draw completes at its persisted deadline.
+        Decision draw = EchoDuelCombatRuntimeAdapter.tick(fixture.duel(), replica, scope,
                 new Observation(100, 100.0D, true)).orElseThrow();
-        check(shot.action() == Action.RANGED, "the official adapter selects a ranged action");
-        check(replica.remaining(4) == 1, "ranged decision stages exactly one duel-local arrow");
-        check(replica.item(3).damage() == 1, "ranged decision stages wear on the duel-local bow");
-        check(shot.nextDuel().actor().rangedCooldownUntilTick() == 140,
-                "ranged decision stages its cooldown in the actor checkpoint");
-        check(shot.nextDuel().replicaRevision() == replica.revision()
-                        && shot.nextDuel().replicaState().equals(replica.encode()),
-                "the staged duel carries finite supplies and their revision for atomic persistence");
+        check(draw.action() == Action.RANGED_DRAW,
+                "the official adapter starts a bow draw, got " + draw.action());
+        check(replica.remaining(4) == 2, "starting a draw stages no arrow cost");
+        check(replica.item(3).damage() == 0, "starting a draw stages no bow wear");
+        check(draw.nextDuel().actor().rangedChargeUntilTick() == 120,
+                "the draw stages its completion deadline in the actor checkpoint");
+        check(draw.nextDuel().actor().rangedCooldownUntilTick() == 0,
+                "the draw opens no ranged cadence yet");
+        check(draw.nextDuel().replicaRevision() == replica.revision()
+                        && draw.nextDuel().replicaState().equals(replica.encode()),
+                "the staged draw carries finite supplies and their revision for atomic persistence");
 
-        check(fixture.controller().registerPersonalEchoDuel(shot.nextDuel()),
-                "official controller accepts the exact resource and cooldown checkpoint");
+        check(fixture.controller().registerPersonalEchoDuel(draw.nextDuel()),
+                "official controller accepts the exact draw checkpoint");
         check(!fixture.controller().registerPersonalEchoDuel(fixture.duel()),
                 "official controller rejects a stale pre-action snapshot");
         NamedData savedData = fixture.controller().namedSnapshot();
@@ -72,15 +81,39 @@ public final class EchoDuelCombatRuntimeAdapterTest {
                 RealitySplitTrialSnapshot.encodeNamed(savedData), EVENT, ATTEMPT, RUNTIME);
         DuelRecord restoredDuel = restoredData.personalEchoDuels().get(fixture.room()).get(fixture.owner());
         EchoLoadoutState restoredReplica = restore(restoredDuel);
-        check(restoredReplica.remaining(4) == 1 && restoredReplica.item(3).damage() == 1
-                        && restoredDuel.actor().rangedCooldownUntilTick() == 140,
-                "snapshot restore keeps the accepted shot, finite arrow, bow wear and cooldown together");
+        check(restoredReplica.remaining(4) == 2 && restoredDuel.actor().rangedChargeUntilTick() == 120,
+                "snapshot restore keeps the in-flight draw and its deadline together");
 
-        Decision cooldown = EchoDuelCombatRuntimeAdapter.tick(restoredDuel, restoredReplica,
-                scope(restoredDuel, true, true, true, true), new Observation(105, 100.0D, true))
+        // A tick inside the draw holds the aim and spends nothing.
+        Decision holding = EchoDuelCombatRuntimeAdapter.tick(restoredDuel, restoredReplica,
+                scope(restoredDuel, true, true, true, true), new Observation(119, 100.0D, true))
                 .orElseThrow();
-        check(cooldown.action() == Action.NONE && restoredReplica.remaining(4) == 1,
-                "the five-tick official loop cannot replay a shot during its cooldown");
+        check(holding.action() == Action.NONE, "a tick inside the draw holds the aim");
+        check(holding.nextDuel().actor().rangedChargeUntilTick() == 120,
+                "holding a draw leaves the charge deadline untouched");
+
+        // The release fires exactly at the charge deadline, and only then.
+        Decision release = EchoDuelCombatRuntimeAdapter.tick(restoredDuel, restore(restoredDuel),
+                scope(restoredDuel, true, true, true, true), new Observation(120, 100.0D, true))
+                .orElseThrow();
+        check(release.action() == Action.RANGED,
+                "the release fires at the charge deadline, got " + release.action());
+        check(release.replica().remaining(4) == 1, "the release stages exactly one duel-local arrow");
+        check(release.replica().item(3).damage() == 1, "the release stages wear on the duel-local bow");
+        check(release.nextDuel().actor().rangedCooldownUntilTick() == 120,
+                "the release records the shared gate, not a duplicated ranged lockout");
+        check(release.nextDuel().actor().rangedChargeUntilTick() == 0,
+                "the release clears the persisted charge");
+        check(release.nextDuel().replicaRevision() == release.replica().revision()
+                        && release.nextDuel().replicaState().equals(release.replica().encode()),
+                "the released duel carries finite supplies and their revision for atomic persistence");
+
+        // A shot during the ranged cooldown is refused, so the loop cannot replay it.
+        Decision cooldown = EchoDuelCombatRuntimeAdapter.tick(release.nextDuel(), release.replica(),
+                scope(release.nextDuel(), true, true, true, true), new Observation(125, 100.0D, true))
+                .orElseThrow();
+        check(cooldown.action() == Action.NONE && release.replica().remaining(4) == 1,
+                "the official loop cannot replay a shot during its cooldown");
     }
 
     private static void meleeWearAndConsumableHealingAreCheckpoints() {
@@ -249,7 +282,7 @@ public final class EchoDuelCombatRuntimeAdapterTest {
         String duelKey = "reality-split-trial.echo.duel." + fixture.room() + "." + fixture.owner();
         String[] duel = schemaFour.get(duelKey).split("\\|", -1);
         String[] actor = duel[11].split(":", -1);
-        check(actor.length == 13, "current Echo checkpoints encode all bounded action deadlines");
+        check(actor.length == 14, "current Echo checkpoints encode all bounded action deadlines and ranged charge");
         duel[11] = String.join(":", java.util.Arrays.copyOf(actor, 10));
         schemaFour.put(duelKey, String.join("|", duel));
 
@@ -257,7 +290,8 @@ public final class EchoDuelCombatRuntimeAdapterTest {
                 .personalEchoDuels().get(fixture.room()).get(fixture.owner());
         check(upgraded.actor().shieldActiveUntilTick() == 0L
                         && upgraded.actor().shieldCooldownUntilTick() == 0L
-                        && upgraded.actor().jumpCooldownUntilTick() == 0L,
+                        && upgraded.actor().jumpCooldownUntilTick() == 0L
+                        && upgraded.actor().rangedChargeUntilTick() == 0L,
                 "known schema-four duels gain zeroed, canonical action deadlines without rerolling state");
         check(upgraded.duelId().equals(fixture.duel().duelId())
                         && upgraded.replicaState().equals(fixture.duel().replicaState()),
@@ -399,6 +433,25 @@ public final class EchoDuelCombatRuntimeAdapterTest {
      * permanent wall. The guard comes up for an imminent strike and stays down
      * while the next strike is still far away.
      */
+    private static void maceLiftSpendsOnlyTheAcceptedCarrierCharge() {
+        Fixture fixture = activeFixture(18D, meleeStrategy(), Map.of(
+                0, new EchoLoadoutState.Item("MACE", 1, 500, 0, Map.of(), "", false),
+                6, new EchoLoadoutState.Item("WIND_CHARGE", 2, 0, 0, Map.of(), "", false)));
+        var duel = fixture.duel();
+        var scope = scope(duel, true, true, true, true);
+        var clear = new Observation(100, 10D, true, true, false, -1, -1,
+                false, false, false, true, true);
+        var blocked = new Observation(100, 10D, true, true, false, -1, -1,
+                false, false, false, true, false);
+        var lift = EchoDuelCombatRuntimeAdapter.tick(duel, restore(duel), scope, clear).orElseThrow();
+        check(lift.action() == Action.MACE_LIFT, "a mace carrier with headroom uses its wind charge");
+        check(lift.previousReplica().remaining(6) == 2 && lift.replica().remaining(6) == 1,
+                "the accepted lift spends a single charge in the proposal only");
+        var refusal = EchoDuelCombatRuntimeAdapter.tick(duel, restore(duel), scope, blocked).orElseThrow();
+        check(refusal.action() != Action.MACE_LIFT && refusal.replica().remaining(6) == 2,
+                "a blocked launch cannot consume a charge");
+    }
+
     private static void shieldParriesTheMeasuredStrike() {
         Fixture fixture = activeFixture(18.0D, meleeStrategy());
         EchoLoadoutState imminentReplica = restore(fixture.duel());
@@ -464,6 +517,56 @@ public final class EchoDuelCombatRuntimeAdapterTest {
     }
 
     /**
+     * E-02: a ranged copy that is out of position must close to its owner's
+     * hold band, not strafe in a dead zone.
+     *
+     * <p>Before the fix the ranged APPROACH branch also required
+     * {@code distance > RANGED_RANGE_BLOCKS} (30). A copy of an archer whose
+     * measured band was ~5 blocks therefore held/strafed at 20 blocks forever:
+     * it was outside its band, yet the only branch that closed the gap refused
+     * to fire because it was still inside the 30-block envelope.</p>
+     */
+    private static void rangedCopiesCloseIntoTheirOwnHoldBand() {
+        var archer = new me.copimine.endevent.domain.wave7.EchoBehaviorStrategy(
+                100, 900, 500, 0, 0, 1_000, 0, true,
+                0, 330, 500, 0, 0);
+        Fixture fixture = activeFixture(18.0D, archer);
+        // 20 blocks out: beyond the ~5-block band edge (6.5) and inside the
+        // 30-block envelope. This is the dead zone the old guard created.
+        Decision closing = EchoDuelCombatRuntimeAdapter.tick(fixture.duel(),
+                restore(fixture.duel()),
+                scope(fixture.duel(), true, true, true, true),
+                new Observation(24, 400.0D, true)).orElseThrow();
+        check(closing.intent() == MovementIntent.APPROACH,
+                "an out-of-position archer copy closes to its hold band instead of strafing, got "
+                        + closing.intent());
+    }
+
+    /**
+     * E-02: a ranged-profile copy with an empty quiver has no ranged option left
+     * and must close to melee reach instead of kiting from a band it cannot use.
+     *
+     * <p>{@code wantsRange} used to be derived from the profile alone, so a copy
+     * whose owner preferred range kept strafing at range after its arrows were
+     * gone and never initiated the melee its sword could still win.</p>
+     */
+    private static void exhaustedQuiverSwitchesRangedCopyToMelee() {
+        var archer = new me.copimine.endevent.domain.wave7.EchoBehaviorStrategy(
+                100, 900, 0, 0, 0, 1_000, 0, true,
+                0, 950, 400, 0, 0);
+        Fixture fixture = activeFixture(18.0D, archer,
+                Map.of(4, EchoLoadoutState.Item.empty()));
+        Decision closing = EchoDuelCombatRuntimeAdapter.tick(fixture.duel(),
+                restore(fixture.duel()),
+                scope(fixture.duel(), true, true, true, true),
+                new Observation(100, 100.0D, true)).orElseThrow();
+        check(closing.intent() == MovementIntent.APPROACH,
+                "a ranged copy with no arrows closes to melee reach, got " + closing.intent());
+        check(closing.action() != Action.RANGED && closing.action() != Action.RANGED_DRAW,
+                "a copy with an empty quiver cannot draw or fire, got " + closing.action());
+    }
+
+    /**
      * `jumpAttackPermille` was recorded and persisted but never read, so no copy
      * ever set up the falling critical its owner actually played. A copy of an
      * owner whose jump-attack rate is above the legacy baseline now hops while
@@ -526,11 +629,11 @@ public final class EchoDuelCombatRuntimeAdapterTest {
         Decision shot = EchoDuelCombatRuntimeAdapter.tick(fixture.duel(), replica,
                 scope(fixture.duel(), true, true, true, true),
                 new Observation(200, 9.0D, true)).orElseThrow();
-        check(shot.action() == Action.RANGED,
-                "a frequent swapper shoots from inside melee reach instead of only swinging, got "
+        check(shot.action() == Action.RANGED_DRAW,
+                "a frequent swapper starts a draw from inside melee reach instead of only swinging, got "
                         + shot.action());
-        check(replica.remaining(4) == 1 && shot.itemSlot() == 3,
-                "the swap spends the owner's real arrow from the bow it reached for");
+        check(replica.remaining(4) == 2 && shot.itemSlot() == 3,
+                "the swap reaches for the owner's real bow without spending the arrow before the release");
 
         var anchored = new me.copimine.endevent.domain.wave7.EchoBehaviorStrategy(
                 900, 100, 0, 0, 0, 1_000, 0, true,
@@ -663,8 +766,8 @@ public final class EchoDuelCombatRuntimeAdapterTest {
         Decision acts = EchoDuelCombatRuntimeAdapter.tick(recovered, restore(recovered),
                 scope(recovered, true, true, true, true), new Observation(100, 100.0D, true))
                 .orElseThrow();
-        check(acts.action() == Action.RANGED,
-                "a re-based copy shoots again within one cooldown window, got " + acts.action());
+        check(acts.action() == Action.RANGED_DRAW,
+                "a re-based copy begins a draw again within one cooldown window, got " + acts.action());
 
         // A deadline saved earlier on the SAME boot already fits its own window,
         // so a rebase must hand it back unchanged: a running cooldown is never
@@ -680,6 +783,55 @@ public final class EchoDuelCombatRuntimeAdapterTest {
                         + untouched.pendingUseUntilTick() + "/" + untouched.shieldActiveUntilTick()
                         + "/" + untouched.shieldCooldownUntilTick() + "/"
                         + untouched.jumpCooldownUntilTick());
+    }
+
+    /**
+     * E-06: the adapter must not silently swallow a broken actor. An expected
+     * invalid snapshot is classified as such, an unexpected failure is
+     * classified separately and surfaced, and both report exactly one bounded
+     * structured reason to the runtime.
+     */
+    private static void diagnosticsClassifyAndReportBoundedReasons() {
+        Fixture fixture = activeFixture(18.0D);
+        Scope scope = scope(fixture.duel(), true, true, true, true);
+
+        List<String> reasons = new ArrayList<>();
+        List<RuntimeException> failures = new ArrayList<>();
+        Diagnostics recording = (reportedScope, tick, reason, failure) -> {
+            check(reportedScope == scope, "the adapter reports the live scope");
+            check(tick == 100L, "the adapter reports the failing tick, got " + tick);
+            reasons.add(reason);
+            failures.add(failure);
+        };
+
+        IllegalArgumentException expected =
+                new IllegalArgumentException("invalid bounded replica receipt");
+        check(Diagnostics.classify(recording, scope, 100L, expected),
+                "an IllegalArgumentException is an expected invalid snapshot");
+        check(reasons.size() == 1
+                        && EchoDuelCombatRuntimeAdapter.REASON_INVALID_SNAPSHOT.equals(reasons.get(0)),
+                "an invalid snapshot reports INVALID_SNAPSHOT, got " + reasons);
+        check(failures.get(0) == expected, "the exact failure is handed to the runtime");
+
+        IllegalStateException unexpected = new IllegalStateException("adapter invariant");
+        check(!Diagnostics.classify(recording, scope, 100L, unexpected),
+                "a non-IllegalArgumentException is an unexpected failure");
+        check(reasons.size() == 2
+                        && EchoDuelCombatRuntimeAdapter.REASON_UNEXPECTED_FAILURE.equals(reasons.get(1)),
+                "an unexpected failure reports UNEXPECTED_FAILURE, got " + reasons);
+
+        // Neither a null sink nor the shared NONE sink may change control flow.
+        Diagnostics.classify(null, scope, 100L, expected);
+        Diagnostics.NONE.tickRejected(scope, 100L,
+                EchoDuelCombatRuntimeAdapter.REASON_INVALID_SNAPSHOT, expected);
+
+        // The four-argument tick form remains the unobserved default and must
+        // never touch a caller's diagnostics.
+        int before = reasons.size();
+        EchoDuelCombatRuntimeAdapter.tick(fixture.duel(), restore(fixture.duel()), scope,
+                new Observation(100, 100.0D, true));
+        check(reasons.size() == before,
+                "the unobserved tick overload never invokes a diagnostics sink");
     }
 
     private static me.copimine.endevent.domain.wave7.EchoBehaviorStrategy meleeStrategy() {

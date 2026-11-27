@@ -91,6 +91,10 @@ public final class DungeonEncounterPlanPolicy {
             if (!room.world().isBlank() && !anchor.world().equalsIgnoreCase(room.world())) {
                 continue;
             }
+            if (room.bounds() != null
+                    && !room.bounds().contains(anchor.bounds())) {
+                continue;
+            }
             usable.add(anchor);
         }
         // Stable order independent of catalogue insertion order.
@@ -110,6 +114,10 @@ public final class DungeonEncounterPlanPolicy {
         for (int waveIndex = 0; waveIndex < room.waves().size(); waveIndex++) {
             WaveSpec spec = room.waves().get(waveIndex);
             int target = schedule.waves().get(waveIndex).enemyCount();
+            if (target <= 0) {
+                return new Plan(players, cap, room.waves().size(), false,
+                        "wave " + waveIndex + " has no enemies", List.of(), false);
+            }
             int[] counts = distribute(spec, room.scalingMode(), players, target);
             int ordinal = 0;
             for (int groupIndex = 0; groupIndex < counts.length; groupIndex++) {
@@ -137,23 +145,25 @@ public final class DungeonEncounterPlanPolicy {
         if (groups == 0 || target <= 0) {
             return counts;
         }
-        int[] raw = new int[groups];
+        long[] raw = new long[groups];
         long rawSum = 0L;
         for (int i = 0; i < groups; i++) {
             EnemyGroup group = spec.group().get(i);
-            raw[i] = mode == ScalingMode.FIXED ? group.count() : group.count() * players;
+            raw[i] = mode == ScalingMode.FIXED ? group.count() : (long) group.count() * players;
             rawSum += raw[i];
         }
         if (rawSum <= 0L) {
             return counts;
         }
         if (rawSum <= target) {
-            System.arraycopy(raw, 0, counts, 0, groups);
+            for (int i = 0; i < groups; i++) {
+                counts[i] = (int) raw[i];
+            }
             return counts;
         }
         int assigned = 0;
         for (int i = 0; i < groups; i++) {
-            counts[i] = (int) ((long) raw[i] * target / rawSum);
+            counts[i] = (int) (raw[i] * target / rawSum);
             assigned += counts[i];
         }
         int remainder = target - assigned;

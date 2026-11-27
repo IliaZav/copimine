@@ -34,14 +34,24 @@ def test_ring_runtime_is_wired_into_the_live_boss_spell_path():
 
 def test_rows_advance_in_order_and_the_cast_is_bounded():
     runtime = RUNTIME.read_text("utf-8")
-    assert "elapsed / ROW_TICKS" in runtime, "the row index must come from elapsed ticks"
+    # The row length is derived from the real arena travel, not the retired
+    # fixed sketch: emerge + real travel + retract + gap.
     assert "ROW_TICKS = EMERGE_TICKS + TRAVEL_TICKS + RETRACT_TICKS + GAP_TICKS" in runtime
-    assert "CAST_TICKS = ROW_TICKS * KaguneRingGapPolicy.ROW_COUNT" in runtime, (
-        "the cast length must be derived from the policy is three rows"
+    assert "travelBlocks = outerRadius - innerRadius" in runtime, (
+        "row travel must come from the real usable arena radius"
     )
-    assert "elapsed >= CAST_TICKS" in runtime, "the cast must end instead of running forever"
-    assert "int row = (int) (elapsed / ROW_TICKS)" in runtime, (
+    assert "rowTicks = EMERGE_TICKS + travelTicks + RETRACT_TICKS + GAP_TICKS" in runtime, (
+        "the per-row clock must include the arena-derived travel ticks"
+    )
+    # Rows advance one at a time from that clock and the cast still ends.
+    assert "int row = (int) (elapsed / rowTicks)" in runtime, (
         "rows advance one at a time from the clock, never all at once"
+    )
+    assert "elapsed >= rowTicks * KaguneRingGapPolicy.ROW_COUNT" in runtime, (
+        "the cast must end instead of running forever"
+    )
+    assert "CAST_TICKS = ROW_TICKS * KaguneRingGapPolicy.ROW_COUNT" in runtime, (
+        "the documented cast length stays derived from the three policy rows"
     )
 
 

@@ -312,7 +312,30 @@ public final class EndEventBridgeV4Sender implements EndEventBridgeV4Access, Plu
                                 context.maxX(), context.maxY(), context.maxZ()))) {
             return false;
         }
+        if (bodyType == EndEventBridgeBodyCodec.Type.END_SPELL_CAST) {
+            if (!ClientModHandshakePolicy.SPELL_CAST_CLIENT_VERSION.equals(state.sessionVersion)) {
+                return false;
+            }
+            try {
+                var cast = me.copimine.endevent.domain.SpellCastPacketCodec.decode(
+                        java.util.Base64.getUrlDecoder().decode(body.clearPolicy()));
+                if (!cast.phase().name().equals(body.visualId())
+                        || cast.generation() != context.generation()
+                        || !context.dimension().equals(body.subjectOrMode())
+                        || !me.copimine.endevent.domain.SpellCastPacketCodec.inside(cast,
+                                context.minX(), context.minY(), context.minZ(),
+                                context.maxX(), context.maxY(), context.maxZ())) return false;
+            } catch (IllegalArgumentException error) {
+                return false;
+            }
+        }
         return sendApplication(player, state, body);
+    }
+
+    @Override
+    public synchronized boolean supportsSpellCasts(UUID playerUuid) {
+        PlayerState state = players.get(playerUuid);
+        return state != null && ClientModHandshakePolicy.SPELL_CAST_CLIENT_VERSION.equals(state.sessionVersion);
     }
 
     @Override
@@ -830,6 +853,14 @@ public final class EndEventBridgeV4Sender implements EndEventBridgeV4Access, Plu
             boolean sent = sendApplicationNow(player, state, body);
             if (sent && body.type() != EndEventBridgeBodyCodec.Type.END_FOG_STATE) stream.sentSnapshots.clear();
             return sent;
+        }
+        if (body.type() == EndEventBridgeBodyCodec.Type.END_SPELL_CAST) {
+            stream.pendingApplications.removeIf(queued -> queued.type() == body.type()
+                    && queued.instanceId().equals(body.instanceId()));
+            // A warning or clear may arrive ahead of queued decorative snapshots.
+            if (acquireCriticalSlot(stream, now)) return sendApplicationNow(player, state, body);
+            stream.refusedApplications++;
+            return false;
         }
         var key = snapshotKey(body);
         if (key != null) {

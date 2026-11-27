@@ -82,16 +82,14 @@ def test_the_fog_is_violet_black_not_a_cold_teal_screen():
     distinguishes a correct fog from a stale one - hence an explicit assertion.
     """
     shader = SHADER.read_text(encoding='utf-8')
-    match = re.search(r'vec3 ink = mix\((vec3\([^)]*\)), (vec3\([^)]*\)),', shader)
-    assert match, 'the volumetric ink palette is missing from the fog shader'
+    palette = re.findall(r'vec3 (?:charcoal|coalAsh|violet) = (vec3\([^)]*\));', shader)
+    assert len(palette) == 3, 'the volumetric ink palette is missing from the fog shader'
     def triple(text):
         # Strip the vec3( marker first, or its "3" is read as a channel value.
         body = re.search(r'vec3\(([^)]*)\)', text).group(1)
         return [float(v) for v in re.findall(r'[0-9.]+', body)]
 
-    inner = triple(match.group(1))
-    outer = triple(match.group(2))
-    for name, rgb in (('ink base', inner), ('ink highlight', outer)):
+    for name, rgb in zip(('charcoal', 'muddy brown', 'violet'), map(triple, palette), strict=True):
         assert len(rgb) == 3, name + ' must be an rgb triple'
         blue_minus_red = rgb[2] - rgb[0]
         # Violet means blue and red lead green together; a cold fog lets blue
@@ -106,7 +104,7 @@ def test_the_fog_is_violet_black_not_a_cold_teal_screen():
         # Still a dark fog: nothing here may become a bright wash.
         assert max(rgb) < 0.35, name + ' must stay dark'
     # The soul highlight is the only bright accent, and it must stay violet.
-    soul = re.search(r'soul \* vec3\(([^)]*)\)', shader)
+    soul = re.search(r'wispCore \* vec3\(([^)]*)\)', shader)
     assert soul, 'the soul highlight is missing'
     s = [float(v) for v in re.findall(r'[0-9.]+', soul.group(1))]
     assert s[2] - s[0] <= 0.06, 'the soul highlight leans teal'

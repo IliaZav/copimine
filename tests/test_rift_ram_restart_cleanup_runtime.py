@@ -9,7 +9,7 @@ SOURCE = ROOT / "copimine-end-event/src/me/copimine/endevent/CopiMineEndEvent.ja
 DOMAIN = ROOT / "copimine-end-event/src/me/copimine/endevent/domain"
 
 
-@pytest.mark.parametrize("scenario", ["alive", "corrupt"])
+@pytest.mark.parametrize("scenario", ["alive", "corrupt", "pending-swarm"])
 def test_restart_cleanup_preserves_required_actor_ids(tmp_path, scenario):
     source = SOURCE.read_text("utf-8")
     if "private boolean clearRiftRamRestartPresentation()" in source:
@@ -25,6 +25,13 @@ public class RamRestartCleanupProbe {
     static class Entity {UUID id=UUID.randomUUID();boolean valid=true;int wave=6;
         UUID getUniqueId(){return id;}boolean isValid(){return valid;}void remove(){valid=false;}}
     static class Ravager extends Entity {}
+    static class Endermite extends Entity {boolean belongsToPersistedSwarm;}
+    static class RiftRamEncounter {
+        static boolean isPersistedSwarm(Entity entity, Map<String,String> checkpoint) {
+            return entity instanceof Endermite swarm && swarm.belongsToPersistedSwarm
+                    && checkpoint.containsKey("ram.swarm.1");
+        }
+    }
     Map<UUID,Entity> ownedEntities=new LinkedHashMap<>();Map<String,String> riftRamCheckpoint=new HashMap<>();
     Object keyWave=new Object();boolean recovery;
     int readInt(Entity e,Object key,int fallback){return e.wave;}
@@ -40,10 +47,16 @@ public class RamRestartCleanupProbe {
             "ram.uuid",ram.id.toString(),"ram.skeleton",guard.id.toString(),
             "ram.pillar-id",UUID.randomUUID().toString(),"ram.pillar-impacts","1","ram.complete","false"));
         if(args[0].equals("corrupt"))p.riftRamCheckpoint.put("ram.skeleton","invalid-uuid");
+        var swarm=new Endermite();swarm.belongsToPersistedSwarm=true;
+        if(args[0].equals("pending-swarm")) {
+            p.ownedEntities.put(swarm.id,swarm);
+            p.riftRamCheckpoint.put("ram.swarm.1","3.5,64,7.5,2,0");
+        }
         boolean accepted=p.clearRiftRamRestartPresentation();
         check(ram.valid&&guard.valid&&otherWave.valid,"restart cleanup removed a required/scope-foreign actor");
-        if(args[0].equals("alive"))check(accepted&&!stale.valid,"stale presentation was not removed");
-        else check(!accepted&&p.recovery&&stale.valid,"corrupt ownership mutated actors instead of recovering");
+        if(args[0].equals("corrupt"))check(!accepted&&p.recovery&&stale.valid,"corrupt ownership mutated actors instead of recovering");
+        else check(accepted&&!stale.valid,"stale presentation was not removed");
+        if(args[0].equals("pending-swarm"))check(swarm.valid,"a deferred swarm actor was deleted before adoption");
     }
 }
 ''', encoding="utf-8")

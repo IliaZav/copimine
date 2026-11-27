@@ -80,7 +80,10 @@ public class WaveFogLifecycleProbe {
  static class EntityDamageByEntityEvent extends EntityDamageEvent {}
  static class ProjectileHitEvent {boolean isCancelled(){return false;}}
  void removeEliteProjectileVisual(UUID id,String why){}
- int spellImpactBursts;
+ static final double VOID_BURST_DAMAGE_RADIUS_BLOCKS=2.5D;
+ int spellImpactBursts, signedContacts;
+ void publishSpellContact(String id,LivingEntity caster,UUID contact,Location origin,
+                          Vector facing,double radius,double reach,int ticks){signedContacts++;}
  void spawnEliteSpellImpactBurst(Location p,String abilityId){spellImpactBursts++;}
  void applyEliteSpellImpactBurst(Location p,EliteAbilityPolicy.Ability ability){if(ability!=null&&ability!=EliteAbilityPolicy.Ability.WEB_SHOT)spellImpactBursts++;}
  void applyEliteVoidBurst(LivingEntity s,Location p,EliteProjectileImpactPolicy.Impact i){impactEffects++;}
@@ -323,6 +326,7 @@ public class WaveFogLifecycleProbe {
     if(args[0].equals("impact-cleaned-resume")){h.clearDragonBreathCloudsForFog();h.blackFogPhase=BlackFogPhase.COMBAT;}
     h.resolveEliteProjectileImpact(shot.id,m.id,null,true,new Location(),EliteAbilityPolicy.Ability.DRAGON_BREATH,5,h.eventId,expected,null);
     check(h.impactEffects==(args[0].equals("impact-resume")?1:0),"queued elite impact escaped cleanup/phase/generation fence");
+    check(h.signedContacts==(args[0].equals("impact-resume")?1:0),"queued visual contact escaped the same fence");
    }
    case "local-arrow-ready", "local-side-ready", "local-arrow-fog", "local-side-fog", "local-arrow-stale", "local-side-stale", "local-arrow-session", "local-side-session" -> {
     h.phase=EventPhase.READY_FOR_PLAYERS;h.testCombatAiMode=false;

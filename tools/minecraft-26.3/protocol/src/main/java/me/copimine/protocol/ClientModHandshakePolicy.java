@@ -7,7 +7,8 @@ public final class ClientModHandshakePolicy {
     public static final String MOD_ID = "copimineclient";
     public static final String CHALLENGE_MESSAGE_TYPE = "client_mod_challenge";
     public static final String HEARTBEAT_CAPABLE_VERSION = "0.1.3+26.3";
-    public static final String CURRENT_CLIENT_VERSION = "0.1.4+26.3";
+    public static final String SPELL_CAST_CLIENT_VERSION = "0.1.5+26.3";
+    public static final String CURRENT_CLIENT_VERSION = SPELL_CAST_CLIENT_VERSION;
     public static final String DEFAULT_REQUIRED_VERSION = CURRENT_CLIENT_VERSION;
     public static final int PROTOCOL_VERSION = 3;
 
@@ -22,6 +23,7 @@ public final class ClientModHandshakePolicy {
     /** Explicitly supported metadata versions; arbitrary version prefixes remain invalid. */
     public static boolean isHeartbeatCapableVersion(String clientVersion) {
         return Objects.equals(HEARTBEAT_CAPABLE_VERSION, clientVersion)
+                || Objects.equals("0.1.4+26.3", clientVersion)
                 || Objects.equals(CURRENT_CLIENT_VERSION, clientVersion);
     }
 

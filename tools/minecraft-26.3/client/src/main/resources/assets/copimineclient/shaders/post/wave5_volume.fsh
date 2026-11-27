@@ -89,15 +89,36 @@ void main() {
         if (nearGain <= 0.0001) continue;
         vec3 point = EyeTime.xyz + direction * distanceAlongRay;
         if (any(lessThan(point, ArenaMin.xyz)) || any(greaterThan(point, ArenaMax.xyz))) continue;
-        // World-locked three-dimensional rolling eddies, not screen-space grain or particles.
-        vec3 drift = vec3(EyeTime.w * 0.065, -EyeTime.w * 0.025, EyeTime.w * 0.04);
-        float eddy = 0.72 * cloudNoise(point * 0.54 + drift)
-                + 0.28 * cloudNoise(point * 1.47 - drift * 1.6);
-        float density = VolumeState.y * mix(0.72, 1.38, eddy) * nearGain;
+        // Floor ash, eye-height streamers and a broader upper veil share a world-space flow.
+        // The field stays coherent when the camera turns or crosses a chunk boundary.
+        float height = max(0.0, point.y - ArenaMin.y);
+        vec3 drift = vec3(EyeTime.w * 0.045, 0.0, -EyeTime.w * 0.070);
+        float ash = cloudNoise(point * vec3(0.45, 2.0, 0.52) + drift);
+        float veil = cloudNoise(point * vec3(0.24, 0.38, 0.21) - drift * 0.55);
+        float streamer = cloudNoise(point * vec3(1.32, 0.76, 0.53) + drift * 2.05);
+        float floorLayer = exp(-height * 1.4) * smoothstep(0.20, 0.74, ash);
+        float shear = sin(point.x * 0.24 + point.z * 0.18 + EyeTime.w * 0.31 + veil * 3.2);
+        float eyeLayer = exp(-abs(height - (1.32 + shear * 0.26)) * 1.48)
+                * smoothstep(0.45, 0.77, streamer);
+        float upperLayer = smoothstep(1.1, 2.75, height) * smoothstep(0.12, 0.78, veil);
+        // Crosswinds compress the eye-height layer into rolling banks. The signed
+        // arena clip, near-ground visibility and guide glow still run independently.
+        float front = smoothstep(0.39, 0.72,
+                cloudNoise(point * vec3(0.37, 0.19, 0.52) - drift * 1.35));
+        float boundary = smoothstep(0.0, 0.64, min(ArenaMax.y - point.y,
+                min(min(ArenaMax.x - point.x, point.x - ArenaMin.x),
+                    min(ArenaMax.z - point.z, point.z - ArenaMin.z))));
+        float density = VolumeState.y * nearGain * boundary
+                * clamp(0.64 + floorLayer * 0.71 + eyeLayer * (0.44 + front * 0.65) + upperLayer * 0.46, 0.64, 1.95);
         float extinction = 1.0 - exp(-density * stride);
-        float soul = pow(cloudNoise(point * 1.9 - drift * 2.1), 9.0);
-        vec3 ink = mix(vec3(0.005,0.003,0.008), vec3(0.043,0.024,0.044), eddy * eddy);
-        ink += soul * vec3(0.085, 0.022, 0.095);
+        vec3 charcoal = vec3(0.010, 0.006, 0.011);
+        vec3 coalAsh = vec3(0.080, 0.041, 0.026);
+        vec3 violet = vec3(0.052, 0.023, 0.069);
+        vec3 ink = mix(charcoal, coalAsh, floorLayer * 0.67);
+        ink = mix(ink, violet, clamp(upperLayer * 0.65 + eyeLayer * 0.55, 0.0, 0.7));
+        float wispCore = smoothstep(0.66, 0.90, streamer) * eyeLayer * front;
+        ink += wispCore * vec3(0.14, 0.038, 0.18);
+        ink *= 0.78 + 0.22 * front;
         scattered += transmittance * extinction * ink;
         transmittance *= 1.0 - extinction;
         if (transmittance < 0.004) break;

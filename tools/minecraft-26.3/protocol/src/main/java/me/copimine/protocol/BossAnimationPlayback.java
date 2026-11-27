@@ -45,7 +45,8 @@ public final class BossAnimationPlayback {
 
     /** Old clients reject unknown V4 tokens; keep their stream alive during an upgrade. */
     public static String compatibleCue(String animation, String verifiedClientVersion) {
-        if ("0.1.4+26.3".equals(verifiedClientVersion)) return animation;
+        if ("0.1.4+26.3".equals(verifiedClientVersion)
+                || "0.1.5+26.3".equals(verifiedClientVersion)) return animation;
         if ("COCOON_FALL".equals(animation)) return "CAST_CHARGE";
         if ("COCOON_LAND".equals(animation)) return "GROUND_SLAM";
         // The last-stand intro is a new staged cue; older clients only know the

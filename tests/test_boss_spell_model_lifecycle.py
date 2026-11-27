@@ -10,6 +10,10 @@ def model_probe(tmp_path_factory):
     out=tmp_path_factory.mktemp("boss-model-life")
     source=(ROOT/'copimine-end-event/src/me/copimine/endevent/CopiMineEndEvent.java').read_text(encoding='utf-8')
     methods='\n'.join(declaration(source,s) for s in ['private void playBossSpellModel(', 'private void removeBossSpellModel(', 'private void clearBossSpellModels(', 'private ItemDisplay spawnSpellModelDisplay(', 'private void playMiniBossSpellModel(', 'private void playCasterSpellBody(', 'private void removeMiniBossSpellModel(', 'private void clearMiniBossSpellModels('])
+    boss_shape = source.index("private void playBossSpellModel(")
+    methods += "\n" + declaration(source[boss_shape + 1:], "private void playBossSpellModel(")
+    methods += "\n" + declaration(source, "private ItemDisplay spawnSpellModelDisplay(Location at, int modelData, int")
+    methods = methods.replace("me.copimine.endevent.presentation.ItemPresentationComponents.", "ItemPresentationComponents.")
     f=out/'SpellModelProbe.java'
     f.write_text(r'''import java.util.*;
 import me.copimine.endevent.domain.BossSpellGeometryPolicy;
@@ -37,7 +41,8 @@ public class SpellModelProbe {
  }
  static class ItemDisplay extends Display {
   enum ItemDisplayTransform {NONE}
-  void setItemStack(Object v){}void setBrightness(Brightness b){}void setItemDisplayTransform(ItemDisplayTransform t){}
+  ItemStack stack;
+  void setItemStack(ItemStack v){stack=v;}void setBrightness(Brightness b){}void setItemDisplayTransform(ItemDisplayTransform t){}
   void setBillboard(Billboard b){}void setViewRange(float v){}void setDisplayWidth(float v){}void setDisplayHeight(float v){}
   void setTeleportDuration(int t){}void setInterpolationDuration(int t){}void setGravity(boolean b){}void setInvulnerable(boolean b){}
   void setPersistent(boolean b){}void setShadowRadius(float v){}void setVisibleByDefault(boolean v){}
@@ -81,7 +86,16 @@ public class SpellModelProbe {
  boolean ownedBySession(Entity entity,String expectedEventId,long expectedGeneration){
   return Objects.equals(eventId,expectedEventId)&&generation==expectedGeneration;}
  void retireBossChestStrikeModel(){}
- Object overlayItem(int id,String name){return id;}
+ static class ItemMeta {List<Float> parameters=List.of();}
+ static class ItemStack {
+   final ItemMeta meta=new ItemMeta();
+   ItemMeta getItemMeta(){return meta;}
+   void setItemMeta(ItemMeta value){if(value!=meta)throw new AssertionError();}
+ }
+ static class ItemPresentationComponents {
+   static void setVisualFloats(ItemMeta meta,List<Float> floats){meta.parameters=floats;}
+ }
+ ItemStack overlayItem(int id,String name){return new ItemStack();}
  boolean isOfficialEntity(Entity e){return false;}
  void tag(Entity entity,String kind,int wave,boolean official){owned.put(entity.id,entity);if(failTag)throw new IllegalStateException("tag failed after ownership insert");}
  Entity unregisterOwnedEntity(UUID id,String reason){bossSpellModelIds.remove(id);return owned.remove(id);}
@@ -100,6 +114,8 @@ public class SpellModelProbe {
  void runMiniBossScenario(String scenario){
   playMiniBossSpellModel(boss,"rift_step",new Location(),20);
   check(WORLD.created.size()==1,"miniboss cast spawned no body");
+  check(WORLD.created.get(0).stack.meta.parameters.equals(List.of(830212F,20F,0F)),
+      "miniboss body must carry its own compact effect preset and duration");
   check(owned.size()==1,"miniboss body was never owned");
   check(miniBossSpellModelIds.size()==1,"miniboss body missing from its own index");
   check(bossSpellModelIds.isEmpty(),"miniboss body leaked into the boss index");
@@ -139,6 +155,8 @@ public class SpellModelProbe {
   if(scenario.startsWith("mini")){p.runMiniBossScenario(scenario);return;}
   p.failTag=scenario.equals("tag-failure");
   p.playBossSpellModel(p.boss,"rift_projectile",new Location(),200,true);
+  check(WORLD.created.get(0).stack.meta.parameters.equals(List.of(830202F,80F,1F)),
+      "Guardian cast must carry its capped stage duration");
   if(scenario.equals("tag-failure")){
    check(p.owned.isEmpty()&&p.bossSpellModelIds.isEmpty(),"failed tag leaked ownership");
    check(!WORLD.created.getFirst().valid,"failed tag left a visible rig");return;

@@ -178,7 +178,7 @@ def test_wave6_pre_capture_lock_is_rechecked_inside_the_health_transaction() -> 
         "blockRitualCasterShieldHit(event, victim)"
     )
     assert commit.index("ritualCasterDamageLocked(victim)") < commit.index(
-        "victim.setHealth(result.remainingHealth())"
+        "Player attacker = waveDamageOwner(event)"
     )
     assert "event.setCancelled(true)" in commit[
         commit.index("ritualCasterDamageLocked(victim)"):

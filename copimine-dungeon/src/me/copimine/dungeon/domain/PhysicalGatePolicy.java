@@ -34,11 +34,16 @@ public final class PhysicalGatePolicy {
     /** {@link #doorMask(GateDefinition)} over raw bounds (secrets reuse it). */
     public static List<int[]> doorMask(Cuboid bounds) {
         Objects.requireNonNull(bounds, "bounds");
-        int volume = bounds.volume();
-        if (volume > MAX_GATE_BLOCKS) {
+        long sizeX = (long) bounds.maxX() - bounds.minX() + 1L;
+        long sizeY = (long) bounds.maxY() - bounds.minY() + 1L;
+        long sizeZ = (long) bounds.maxZ() - bounds.minZ() + 1L;
+        if (sizeX > MAX_GATE_BLOCKS || sizeY > MAX_GATE_BLOCKS || sizeZ > MAX_GATE_BLOCKS
+                || sizeX * sizeY * sizeZ > MAX_GATE_BLOCKS || bounds.maxX() == Integer.MAX_VALUE
+                || bounds.maxY() == Integer.MAX_VALUE || bounds.maxZ() == Integer.MAX_VALUE) {
             throw new IllegalArgumentException("Маска ворот превышает допустимый объём "
-                    + MAX_GATE_BLOCKS + ": " + volume + " блоков.");
+                    + MAX_GATE_BLOCKS + " блоков.");
         }
+        int volume = (int) (sizeX * sizeY * sizeZ);
         List<int[]> mask = new ArrayList<>(volume);
         for (int x = bounds.minX(); x <= bounds.maxX(); x++) {
             for (int y = bounds.minY(); y <= bounds.maxY(); y++) {

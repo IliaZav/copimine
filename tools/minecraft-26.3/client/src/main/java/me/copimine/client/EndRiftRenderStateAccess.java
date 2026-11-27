@@ -13,6 +13,12 @@ public interface EndRiftRenderStateAccess {
     /** 0 while an echo's eyes are still dark, 1 once they have lit fully. */
     default void copimine$echoEyeGlow(float value) { }
     default float copimine$echoEyeGlow() { return 1.0F; }
+    /**
+     * V6 Phase 5: body alpha of a player Echo copy. {@code 1} means an ordinary
+     * opaque echo; values in (0,1) mark a semi-transparent RAGE duplicate.
+     */
+    default void copimine$echoCopyAlpha(float value) { }
+    default float copimine$echoCopyAlpha() { return 1.0F; }
     String copimine$uuid();
     int copimine$entityId();
     boolean copimine$isEcho();

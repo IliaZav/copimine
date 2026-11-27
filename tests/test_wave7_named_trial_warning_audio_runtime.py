@@ -31,6 +31,7 @@ public class Wave7WarningAudioProbe {
         BLOCK_RESPAWN_ANCHOR_CHARGE, ITEM_TRIDENT_RETURN }
     static class Wave7NamedTrialActorPolicy {
         enum Attack { MARKSMAN_QUICK_SHOT, MARKSMAN_HEAVY_SHOT, MARKSMAN_SPREAD_SHOT,
+            MARKSMAN_SKY_HAIL,
             MARKSMAN_SUPPORT, ARCHMAGE_FANGS, ARCHMAGE_SPEAR, ARCHMAGE_STEP,
             ARCHMAGE_BEAM, ARCHMAGE_CIRCLE, ARCHMAGE_CROWN, ARCHMAGE_REPULSE, NONE }
     }
@@ -60,6 +61,7 @@ public class Wave7WarningAudioProbe {
         @Override public Location clone(){return new Location(world,x,y,z);}
         Location add(double dx,double dy,double dz){x+=dx;y+=dy;z+=dz;return this;}
         Location add(Vector vector){return add(vector.x,vector.y,vector.z);}
+        Location subtract(double dx,double dy,double dz){x-=dx;y-=dy;z-=dz;return this;}
         void setY(double y){this.y=y;}
         double getY(){return y;}
         double getYaw(){return 0.0D;}
@@ -77,11 +79,11 @@ public class Wave7WarningAudioProbe {
     }
     static final class Player extends LivingEntity { Player(World w){super(w);} }
     // The frozen aim lease the production renderer resolves fang victims from.
-    record TrialAimLock(long generation,String event,long cast,Location point,Map<UUID,Location> fangMarks) { }
+    record TrialAimLock(long generation,String event,long cast,Location point,Location floor,Location casterOrigin,Map<UUID,Location> fangMarks) { }
     final String eventId="event-7";
     final long generation=7;
     final Map<UUID,TrialAimLock> trialAimLocks=new HashMap<>();
-    boolean valid=true;int visualFrames=0;
+    boolean valid=true;int visualFrames=0;long eventTickCounter;
     int wave7FrozenRosterSize(){return 10;}
     boolean isCurrentRealitySplitTrialTarget(LivingEntity actor,Player target){return valid;}
     Vector horizontalDirection(Location a,Location b){return new Vector(1,0,0);}
@@ -92,8 +94,17 @@ public class Wave7WarningAudioProbe {
         Map<UUID,Location> marks=new LinkedHashMap<>();
         if(withFangs) marks.put(target.getUniqueId(),target.getLocation().clone());
         trialAimLocks.put(actor.getUniqueId(),
-                new TrialAimLock(generation,eventId,1L,target.getEyeLocation().clone(),Map.copyOf(marks)));
+                new TrialAimLock(generation,eventId,1L,target.getEyeLocation().clone(),
+                        target.getLocation(),actor.getLocation(),Map.copyOf(marks)));
     }
+    List<Location> namedTrialCirclePoints(LivingEntity actor,TrialAimLock lock){
+        return List.of(lock.floor().clone());
+    }
+    List<Location> namedTrialCrownPoints(LivingEntity actor,Location base,int step){
+        return List.of(base.clone());
+    }
+    void publishTrialFangCast(LivingEntity actor,Location at,String variant,List<Location> jaws,
+            int warning,int active){}
     Location namedTrialAim(LivingEntity actor,Player target){
         TrialAimLock lock=trialAimLocks.get(actor.getUniqueId());
         return lock!=null && lock.generation()==generation && Objects.equals(lock.event(),eventId)
@@ -132,7 +143,10 @@ public class Wave7WarningAudioProbe {
         // only the marks frozen there, so an unarmed actor must draw nothing.
         armTrialAim(actor,target,attack==Wave7NamedTrialActorPolicy.Attack.ARCHMAGE_FANGS);
         renderNamedTrialTelegraph(actor,target,attack,true);
-        for(int tick=0;tick<4;tick++) renderNamedTrialTelegraph(actor,target,attack,false);
+        for(int tick=1;tick<=4;tick++){
+            eventTickCounter=tick;
+            renderNamedTrialTelegraph(actor,target,attack,false);
+        }
         require(world.sounds==1,"Expected one warning sound, got "+world.sounds+" for "+attack);
         require(visualFrames>0,"Expected visible warning frames for "+attack);
         valid=false;

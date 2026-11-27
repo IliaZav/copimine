@@ -96,7 +96,8 @@ public final class RealitySplitTrialSnapshotTest {
         Map<String, String> encoded = RealitySplitTrialSnapshot.encodeNamed(source.namedSnapshot());
         var decoded = RealitySplitTrialSnapshot.decodeNamed(encoded, event, 81L);
         check(decoded.equals(source.namedSnapshot()), "named codec preserves exact layout, owners, stages and receipts");
-        check("5".equals(encoded.get("reality-split-trial.schema")), "Echo action deadlines use named schema 5");
+        check("6".equals(encoded.get("reality-split-trial.schema")),
+                "Echo action and ranged-charge deadlines use named schema 6");
         check(decoded.selectedLayout().equals(layout), "restore never returns default room order or rerolls");
         check(decoded.trials().get(1).echoReceipts().get(owner).eventId().equals(event), "receipt retains owning event");
         check(decoded.trials().get(1).echoReceipts().get(owner).generation() == 81L, "receipt retains generation");

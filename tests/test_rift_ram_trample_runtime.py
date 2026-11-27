@@ -31,7 +31,8 @@ import java.util.*;
 import me.copimine.endevent.domain.RamMovingEarthquakePolicy;
 public class TrampleRuntimeProbe {
   enum Action { RECOVER }
-  enum Particle { BLOCK }
+  enum Particle { BLOCK, DUST, ASH; record DustOptions(Object color,float size){} }
+  static class Color { static Color fromRGB(int rgb){return new Color();} }
   enum Material { DEEPSLATE,OBSIDIAN,CRYING_OBSIDIAN; Object createBlockData(){return this;} }
   enum PotionEffectType { SLOWNESS }
   enum Sound { ENTITY_RAVAGER_STEP, BLOCK_ANVIL_LAND }
@@ -46,6 +47,7 @@ public class TrampleRuntimeProbe {
     double getX(){return x;}double getY(){return y;}double getZ(){return z;}
     World getWorld(){return world;}
     public Location clone(){return new Location(world,x,y,z);}
+    Location add(double dx,double dy,double dz){return new Location(world,x+dx,y+dy,z+dz);}
     double distanceSquared(Location o){return (x-o.x)*(x-o.x)+(y-o.y)*(y-o.y)+(z-o.z)*(z-o.z);}
   }
   static class Player {
@@ -57,6 +59,7 @@ public class TrampleRuntimeProbe {
     boolean isOnGround(){return grounded;}
     void spawnParticle(Particle p,double x,double y,double z,int count,double dx,double dy,double dz,double speed,Object data){packets++;}
     void spawnParticle(Particle p,Location l,int count,double a,double b,double c,double d,Object data){packets++;}
+    void spawnParticle(Particle p,Location l,int count,double a,double b,double c,double d){packets++;}
     void addPotionEffect(PotionEffect e){
       if(e.type()!=PotionEffectType.SLOWNESS
               ||e.ticks()!=RamMovingEarthquakePolicy.BEAT_SLOW_TICKS
@@ -68,12 +71,15 @@ public class TrampleRuntimeProbe {
   static class Ram {
     World world;Location at;Player target;
     Ram(World w){world=w;at=new Location(w,0,65,0);}
-    World getWorld(){return world;}Location getLocation(){return at;}
-    boolean isValid(){return true;}void setAI(boolean b){}void setTarget(Player p){target=p;}
+    World getWorld(){return world;}Location getLocation(){return at.clone();}
+    boolean isValid(){return true;}boolean isOnGround(){return true;}void setAI(boolean b){}void setTarget(Player p){target=p;}
   }
   static class Host {
     List<Player> roster=new ArrayList<>();
     int floorY(){return 64;}
+    // The front is clipped to the legal arena footprint; the probe stands every
+    // sampled seam inside it so the sweep-count assertions stay meaningful.
+    boolean inArena(Location location){return true;}
     int particleBudget(){return 256;}
     int damageCalls;double lastAmount;Set<Double> amounts=new HashSet<>();
     boolean damage(Ram source,Player player,double amount){
@@ -88,7 +94,8 @@ public class TrampleRuntimeProbe {
     List<Player> players(){return roster;}
   }
   final Host host=new Host(); int tick,actionTick;
-  Ram ram; Location trampleOrigin; double trampleRadius;
+  Ram ram; Location trampleOrigin,priorTrampleFootfall; double trampleRadius;
+  int trampleFootfallTick=-1;
   int trampleBeats,trampleBeat=-1,trampleWarnedBeat=-1;
   Set<UUID> trampleHits=new HashSet<>(),trampleRoster=new HashSet<>(),trampleBeatResolved=new HashSet<>();
   boolean recovered; void begin(Action a){recovered=true;}
@@ -112,6 +119,7 @@ public class TrampleRuntimeProbe {
       int total=RamMovingEarthquakePolicy.totalTicks(beats);
       for(int tick=0;tick<=total+2;tick++){
         cast.tick=tick;
+        cast.ram.at.x=0.8*(RamMovingEarthquakePolicy.beatIndex(beats,tick)%2);
         if(tick==total/2)players.add(late);
         cast.trample(players);
         if(tick<=1)check(ground.applications==0,"not an instant radius debuff");

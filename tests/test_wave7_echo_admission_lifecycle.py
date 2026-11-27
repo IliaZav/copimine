@@ -41,6 +41,9 @@ public class EchoAdmissionLifecycle {
  EchoCombatAdmission.Pair echoProbeCombatPair=new EchoCombatAdmission.Pair(EVENT,7,10,new UUID(0,4),OWNER,ACTOR,new UUID(0,5));
  String eventId=EVENT.toString();long generation=7,eventTickCounter=110;int unregistered;
  EventPhase phase=EventPhase.READY_FOR_PLAYERS;boolean bootstrapped=true,testCombatAiMode,testWaveFrontVisualMode;
+ long nextOfficialSiteCheck;String lastOfficialSiteBlocker,siteProblem;
+ String officialSiteBlocker(){return siteProblem;}
+ void announceEventTitle(String title,String detail,boolean emphasis){}
  int activeWave,requiredPlayers=2,transitions,resets;long phaseDeadlineMillis;Object creativeTestTask;
  Map<String,UUID> padOccupants=new HashMap<>(Map.of("one",OWNER,"two",ACTOR));Map<String,String> transitionRuneRenderStates=new HashMap<>();
  class Config {int startRitualTimeoutSeconds(){return 60;}}Config config=new Config();
@@ -67,7 +70,12 @@ public class EchoAdmissionLifecycle {
    case "other-probe-fence":a.activeWave=6;require(!a.currentEchoCombatContext().active(),"local pair admitted combat alongside another wave probe");break;
    case "ritual-start":a.beginStartRitualIfReady();require(a.phase==EventPhase.START_RITUAL&&probe.closed&&a.currentEchoCombatContext()==null&&sources.clearCalls==1&&a.transitions==1,"official ritual started with local pair sources alive");break;
    case "ritual-cleanup-failure":sources.failClear=true;a.beginStartRitualIfReady();require(a.phase==EventPhase.READY_FOR_PLAYERS&&a.transitions==0&&a.phaseDeadlineMillis==0&&a.resets==0&&!a.currentEchoCombatContext().active(),"failed local cleanup still committed the official ritual");break;
-   case "ritual-retry":sources.failClear=true;a.beginStartRitualIfReady();a.beginStartRitualIfReady();require(a.phase==EventPhase.START_RITUAL&&a.transitions==1&&probe.closeCalls==1&&sources.clearCalls==2,"ritual retry leaked sources or repeated the start transaction");break;
+   case "ritual-retry":sources.failClear=true;a.beginStartRitualIfReady();a.beginStartRitualIfReady();
+    require(a.phase==EventPhase.READY_FOR_PLAYERS&&sources.clearCalls==1,"ritual repeated a site check before its next server tick");
+    a.eventTickCounter+=40;a.beginStartRitualIfReady();
+    require(a.phase==EventPhase.START_RITUAL&&a.transitions==1&&probe.closeCalls==1&&sources.clearCalls==2,"ritual retry leaked sources or repeated the start transaction");break;
+   case "site-blocked":a.siteProblem="missing-core";a.beginStartRitualIfReady();
+    require(a.phase==EventPhase.READY_FOR_PLAYERS&&a.transitions==0&&sources.clearCalls==0,"an incomplete site started the official ritual");break;
    default:throw new AssertionError(args[0]);
   }
  }
@@ -78,7 +86,7 @@ public class EchoAdmissionLifecycle {
     return directory
 
 
-@pytest.mark.parametrize("scenario", ["active", "stale-generation", "capability", "closing", "close", "retry", "tick-failure", "empty", "official-fence", "other-probe-fence", "ritual-start", "ritual-cleanup-failure", "ritual-retry"])
+@pytest.mark.parametrize("scenario", ["active", "stale-generation", "capability", "closing", "close", "retry", "tick-failure", "empty", "official-fence", "other-probe-fence", "ritual-start", "ritual-cleanup-failure", "ritual-retry", "site-blocked"])
 def test_current_context_and_retryable_cleanup(lifecycle, scenario):
     result = subprocess.run(["java", "-cp", str(lifecycle), "EchoAdmissionLifecycle", scenario], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr

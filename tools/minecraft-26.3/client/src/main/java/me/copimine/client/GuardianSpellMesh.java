@@ -23,7 +23,29 @@ public final class GuardianSpellMesh {
             // inferno column, which no longer share the fault fragment.
             "geyser", "rift_fracture", "inferno_geyser",
             // N23-P1-06 residual: the three Kagune roles, each with its own body.
-            "kagune_stab", "kagune_eruption", "kagune_small"};
+            "kagune_stab", "kagune_eruption", "kagune_small",
+            // V5.1 REMASTER — cinematic VFX meshes (§9B-§9L)
+            "void_crush", "claw_chain", "dimensional_carve",
+            // N23-P4/5 — Phase 1 enhancements: shoulder slam, hunt phase dash
+            "shoulder_slam", "hunt_dash",
+            // N23-P5 — Phase 2/6 grab mechanics
+            "grab_shove",
+            // N23-P6 — Phase 6 seal lance volley
+            "seal_lance",
+            // N23-P6 — Ring of Kagune defensive barrier
+            "ring_of_kagune",
+            // N23-P6 — Ambush grab tendrils
+            "ambush_grab",
+            // N23-P3 — Phase 4 infernal surge fire wall
+            "infernal_surge",
+            // N23-P3 — Phase 5 mirror carnage fractured planes
+            "mirror_carnage",
+            // N23-P3 — Phase 4 inferno overhead curtain
+            "inferno_curtain",
+            // N23-W6 — Earthquake trample wave
+            "earthquake_wave",
+            // N23-W6 — Spire Harbinger skeleton
+            "spire_harbinger"};
     private static final Map<String, List<Vertex>> MESHES = loadAll();
     public record Vertex(float x, float y, float z, float u, float v, float nx, float ny, float nz) { }
     private GuardianSpellMesh() { }
@@ -84,11 +106,17 @@ public final class GuardianSpellMesh {
                 for (int i=0; i<4; i++) {
                     float[] point=rotate(faces[f][i], pivot, axis, angle);
                     vertices.add(new Vertex((point[0]-8)/16, (point[1]-8)/16, (point[2]-8)/16,
-                            coords[i][0]/16, coords[i][1]/16, normal[0],normal[1],normal[2]));
+                            atlasUv(coords[i][0]), atlasUv(coords[i][1]), normal[0],normal[1],normal[2]));
                 }
             }
         }
         return List.copyOf(vertices);
+    }
+
+    private static float atlasUv(float authoredUv) {
+        // Sample the centre of the first or last texel at the atlas boundary.
+        float halfTexel = .5F / 1254F;
+        return Math.clamp(authoredUv / 16F, halfTexel, 1F - halfTexel);
     }
 
     private static float[] vector(JsonArray values, int count, float min, float max) {

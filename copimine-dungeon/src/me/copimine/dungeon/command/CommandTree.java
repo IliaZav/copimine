@@ -57,15 +57,19 @@ public final class CommandTree {
                         argCmd(CommandNode.ArgType.ROOM_ID, "roomId", builder)),
                 CommandNode.literal("edit", builder, false, false, false,
                         argCmd(CommandNode.ArgType.ROOM_ID, "roomId", builder)),
+                CommandNode.literal("bounds", builder, false, false, true,
+                        argCmd(CommandNode.ArgType.ROOM_ID, "roomId", builder)),
+                CommandNode.literal("trigger", builder, false, false, true,
+                        argCmd(CommandNode.ArgType.ROOM_ID, "roomId", builder)),
                 CommandNode.literal("validate", builder, false, false, false,
                         argCmd(CommandNode.ArgType.ROOM_ID, "roomId", builder)),
                 // Preview is explicitly NO block mutations: never world-mutating.
                 CommandNode.literal("preview", builder, false, false, false,
                         argCmd(CommandNode.ArgType.ROOM_ID, "roomId", builder)),
-                // Publish is admin-only and carries a dry-run receipt.
-                CommandNode.literal("publish", admin, true, false, false,
+                // Publication activates a durable definition; the command itself changes no blocks.
+                CommandNode.literal("publish", admin, false, false, false,
                         argCmd(CommandNode.ArgType.ROOM_ID, "roomId", admin)),
-                CommandNode.literal("disable", admin, true, false, false,
+                CommandNode.literal("disable", admin, false, false, false,
                         argCmd(CommandNode.ArgType.ROOM_ID, "roomId", admin)),
                 CommandNode.literal("reset", admin, true, true, false,
                         CommandNode.argument(CommandNode.ArgType.ROOM_ID, "roomId", admin)
@@ -91,9 +95,14 @@ public final class CommandTree {
         CommandNode gate = CommandNode.literal("gate", builder, false, false, false,
                 CommandNode.literal("add", builder, false, false, false,
                         argCmd(CommandNode.ArgType.GATE_ID_NEW, "gateId", builder)),
+                CommandNode.literal("bounds", builder, false, false, true,
+                        argCmd(CommandNode.ArgType.GATE_ID, "gateId", builder)),
                 CommandNode.literal("style", builder, false, false, false,
                         CommandNode.argument(CommandNode.ArgType.GATE_ID, "gateId", builder)
                                 .with(argCmd(CommandNode.ArgType.GATE_STYLE, "style", builder))),
+                CommandNode.literal("role", builder, false, false, false,
+                        CommandNode.argument(CommandNode.ArgType.GATE_ID, "gateId", builder)
+                                .with(cmd("entrance", builder), cmd("exit", builder))),
                 CommandNode.literal("unlock", builder, false, false, false,
                         CommandNode.argument(CommandNode.ArgType.GATE_ID, "gateId", builder)
                                 .with(argCmd(CommandNode.ArgType.UNLOCK_MODE, "mode", builder))),
@@ -113,8 +122,16 @@ public final class CommandTree {
                         argCmd(CommandNode.ArgType.GATE_ID, "gateId", builder)));
 
         CommandNode secret = CommandNode.literal("secret", builder, false, false, false,
+                CommandNode.literal("trigger", builder, false, false, true,
+                        CommandNode.argument(CommandNode.ArgType.SECRET_ID, "secretId", builder)
+                                .with(argCmd(CommandNode.ArgType.SECRET_TRIGGER, "trigger", builder))),
+                CommandNode.literal("milestone", builder, false, false, false,
+                        CommandNode.argument(CommandNode.ArgType.SECRET_ID, "secretId", builder)
+                                .with(argCmd(CommandNode.ArgType.ROOM_ID, "milestoneRoom", builder))),
                 CommandNode.literal("add", builder, false, false, false,
                         argCmd(CommandNode.ArgType.SECRET_ID_NEW, "secretId", builder)),
+                CommandNode.literal("bounds", builder, false, false, true,
+                        argCmd(CommandNode.ArgType.SECRET_ID, "secretId", builder)),
                 CommandNode.literal("style", builder, false, false, false,
                         CommandNode.argument(CommandNode.ArgType.SECRET_ID, "secretId", builder)
                                 .with(argCmd(CommandNode.ArgType.GATE_STYLE, "gateStyle", builder))),
@@ -123,6 +140,10 @@ public final class CommandTree {
                                 .with(argCmd(CommandNode.ArgType.UNLOCK_MODE, "mode", builder))));
 
         CommandNode spawn = CommandNode.literal("spawn", builder, false, false, false,
+                CommandNode.literal("zone", builder, false, false, false,
+                        argCmd(CommandNode.ArgType.SPAWN_ID_NEW, "spawnId", builder)),
+                CommandNode.literal("bounds", builder, false, false, false,
+                        argCmd(CommandNode.ArgType.SPAWN_ID, "spawnId", builder)),
                 CommandNode.literal("add", builder, false, false, false,
                         CommandNode.argument(CommandNode.ArgType.SPAWN_ID_NEW, "spawnId", builder)
                                 .with(argCmd(CommandNode.ArgType.MOB_TEMPLATE, "mobTemplate", builder))),
@@ -146,6 +167,11 @@ public final class CommandTree {
         CommandNode wave = CommandNode.literal("wave", builder, false, false, false,
                 CommandNode.literal("add", builder, false, false, false,
                         argCmd(CommandNode.ArgType.ROOM_ID, "roomId", builder)),
+                CommandNode.literal("mob", builder, false, false, false,
+                        CommandNode.argument(CommandNode.ArgType.ROOM_ID, "roomId", builder)
+                                .with(CommandNode.number("waveIndex", 0, 63, builder)
+                                        .with(CommandNode.argument(CommandNode.ArgType.MOB_TEMPLATE, "mobTemplate", builder)
+                                                .with(CommandNode.number("count", 0, 200, builder).asCommand())))),
                 CommandNode.literal("delay", builder, false, false, false,
                         CommandNode.argument(CommandNode.ArgType.ROOM_ID, "roomId", builder)
                                 .with(CommandNode.number("waveIndex", 0, 63, builder)

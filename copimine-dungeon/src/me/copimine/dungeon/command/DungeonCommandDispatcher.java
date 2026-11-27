@@ -11,6 +11,7 @@ import me.copimine.dungeon.domain.RewardMode;
 import me.copimine.dungeon.domain.RewardSpec;
 import me.copimine.dungeon.domain.ScalingMode;
 import me.copimine.dungeon.domain.SecretDefinition;
+import me.copimine.dungeon.domain.SecretTrigger;
 import me.copimine.dungeon.domain.SpawnAnchor;
 import me.copimine.dungeon.domain.UnlockMode;
 import me.copimine.dungeon.domain.WaveSpec;
@@ -46,6 +47,27 @@ public final class DungeonCommandDispatcher {
     private final List<String> extraLootTables = new ArrayList<>();
     private final List<String> playerNames = new ArrayList<>();
     private WandGateway wandGateway;
+    private PublicationGateway publicationGateway;
+
+    @FunctionalInterface
+    public interface PublicationGateway {
+        void publish(String roomId, boolean enabled) throws java.io.IOException;
+    }
+
+    public void setPublicationGateway(PublicationGateway gateway) {
+        publicationGateway = gateway;
+    }
+
+    @FunctionalInterface
+    public interface PlaytestGateway {
+        CommandResponse start(CommandActor actor, String roomId, boolean solo);
+    }
+
+    private PlaytestGateway playtestGateway;
+
+    public void setPlaytestGateway(PlaytestGateway gateway) {
+        playtestGateway = gateway;
+    }
 
     public DungeonCommandDispatcher(DungeonDefinitionStore store, EditorSessionManager sessions,
                                     AuditLog audit) {
@@ -74,6 +96,7 @@ public final class DungeonCommandDispatcher {
 
     /** Tab completion over real registered ids and enumerated styles. */
     public List<String> complete(CommandActor actor, List<String> args) {
+        if (!EditorPermissions.isBuilder(actor.permissions())) return List.of();
         return registry.complete(args);
     }
 
@@ -188,8 +211,8 @@ public final class DungeonCommandDispatcher {
                 if (session == null) {
                     return CommandResponse.fail(lines);
                 }
-                session.setCorner1(actor.x(), actor.y(), actor.z());
                 session.setWorld(actor.world());
+                session.setCorner1(actor.x(), actor.y(), actor.z());
                 lines.add("Точка 1: " + format(actor.position()) + " в мире '" + actor.world() + "'.");
                 return CommandResponse.ok(lines);
             }
@@ -198,8 +221,8 @@ public final class DungeonCommandDispatcher {
                 if (session == null) {
                     return CommandResponse.fail(lines);
                 }
-                session.setCorner2(actor.x(), actor.y(), actor.z());
                 session.setWorld(actor.world());
+                session.setCorner2(actor.x(), actor.y(), actor.z());
                 lines.add("Точка 2: " + format(actor.position()) + " в мире '" + actor.world() + "'.");
                 return CommandResponse.ok(lines);
             }
@@ -237,6 +260,20 @@ public final class DungeonCommandDispatcher {
             case "room info", "room edit", "room show" -> {
                 return describeRoom(route.argument("roomId"), lines);
             }
+            case "room bounds", "room trigger" -> {
+                String id = route.argument("roomId");
+                DungeonRoomDefinition room = store.catalog().room(id);
+                Cuboid selection = room == null ? null : selectionInWorld(actor, room.world());
+                if (selection == null) return CommandResponse.fail("Сначала выделите две точки в мире комнаты.");
+                if (path.endsWith("trigger")) {
+                    if (!room.bounds().contains(selection)) return CommandResponse.fail("Триггер должен быть внутри комнаты.");
+                    return roomMutate(id, lines, b -> b.trigger(selection), "Триггер обновлён.");
+                }
+                if (room.trigger() != null && !selection.contains(room.trigger())) {
+                    return CommandResponse.fail("Новые границы должны содержать триггер комнаты.");
+                }
+                return roomMutate(id, lines, b -> b.bounds(selection), "Границы комнаты обновлены.");
+            }
             case "room validate" -> {
                 return validateRoom(route.argument("roomId"), lines);
             }
@@ -254,9 +291,7 @@ public final class DungeonCommandDispatcher {
                 return publishRoom(route.argument("roomId"), lines);
             }
             case "room disable" -> {
-                lines.add("Комната '" + route.argument("roomId")
-                        + "' помечена как отключённая. Безопасное сворачивание: без изменения мира.");
-                return CommandResponse.ok(lines);
+                return commitPublication(route.argument("roomId"), false, lines);
             }
             case "room reset confirm" -> {
                 lines.add("Preflight: сброс '" + route.argument("roomId")
@@ -264,10 +299,11 @@ public final class DungeonCommandDispatcher {
                 return CommandResponse.ok(lines);
             }
             case "room test", "room test solo", "room test party" -> {
-                String mode = route.literals().get(route.literals().size() - 1);
-                lines.add("Тестовый запуск '" + route.argument("roomId") + "' ("
-                        + mode + ") разрешён только в тестовом мире.");
-                return CommandResponse.ok(lines);
+                if (playtestGateway == null) return CommandResponse.fail("Игровой тест требует запущенного Paper.");
+                if (!EditorPermissions.allows(actor.permissions(), actor.op(), EditorPermissions.Capability.ADMIN_PUBLISH)) {
+                    return CommandResponse.fail("Для запуска боевого теста нужны права администратора данжа.");
+                }
+                return playtestGateway.start(actor, route.argument("roomId"), !path.endsWith("party"));
             }
             case "room export" -> {
                 String serialized = store.serialize();
@@ -320,9 +356,20 @@ public final class DungeonCommandDispatcher {
             case "gate add" -> {
                 return gateAdd(actor, route, lines);
             }
+            case "gate bounds" -> {
+                String id = route.argument("gateId");
+                var definition = store.catalog().gate(id);
+                Cuboid selection = definition == null ? null : selectionInWorld(actor, definition.world());
+                if (selection == null) return CommandResponse.fail("Сначала выделите две точки в мире объекта.");
+                return gateMutate(id, lines, b -> b.bounds(selection));
+            }
             case "gate style" -> {
                 return gateMutate(route.argument("gateId"), lines, gate -> gate
                         .style(GateStyle.fromToken(route.argument("style"))));
+            }
+            case "gate role entrance", "gate role exit" -> {
+                return gateMutate(route.argument("gateId"), lines,
+                        gate -> gate.initialOpen(path.endsWith("entrance")));
             }
             case "gate unlock" -> {
                 return gateMutate(route.argument("gateId"), lines, gate -> gate
@@ -358,29 +405,89 @@ public final class DungeonCommandDispatcher {
             case "secret add" -> {
                 return secretAdd(actor, route, lines);
             }
+            case "secret bounds" -> {
+                String id = route.argument("secretId");
+                var definition = store.catalog().secret(id);
+                Cuboid selection = definition == null ? null : selectionInWorld(actor, definition.world());
+                if (selection == null) return CommandResponse.fail("Сначала выделите две точки в мире объекта.");
+                return secretMutate(id, lines, b -> b.bounds(selection));
+            }
             case "secret style" -> {
                 return secretMutate(route.argument("secretId"), lines, secret -> secret
                         .style(GateStyle.fromToken(route.argument("gateStyle"))));
             }
+            case "secret trigger" -> {
+                String id = route.argument("secretId");
+                var secret = store.catalog().secret(id);
+                if (secret == null) return CommandResponse.fail("Секрет не найден.");
+                var prior = secret.trigger();
+                var action = SecretTrigger.Action.parse(route.argument("trigger"));
+                var cell = selectionInWorld(actor, secret.world());
+                if (action != SecretTrigger.Action.AUTO && (cell == null || !cell.enclosesExactlyOneBlock())) {
+                    return CommandResponse.fail("Выделите ровно один блок активации обеими точками.");
+                }
+                var point = action == SecretTrigger.Action.AUTO ? null
+                        : new SecretTrigger.BlockPoint(cell.minX(), cell.minY(), cell.minZ());
+                var trigger = new SecretTrigger(action, point, prior.milestoneRoom());
+                return secretMutate(id, lines, b -> b.entryRule(trigger.encode()).unlock(
+                        secret.unlock() == UnlockMode.ON_SPECIFIC_MILESTONE ? secret.unlock()
+                        : action == SecretTrigger.Action.AUTO ? UnlockMode.ON_ROOM_CLEAR
+                        : UnlockMode.MANUAL_AFTER_ROOM_CLEAR));
+            }
+            case "secret milestone" -> {
+                String id = route.argument("secretId");
+                var secret = store.catalog().secret(id);
+                if (secret == null) return CommandResponse.fail("Секрет не найден.");
+                var prior = secret.trigger();
+                var trigger = new SecretTrigger(prior.action(), prior.block(), route.argument("milestoneRoom"));
+                return secretMutate(id, lines, b -> b.entryRule(trigger.encode()).unlock(UnlockMode.ON_SPECIFIC_MILESTONE));
+            }
             case "secret unlock" -> {
-                return secretMutate(route.argument("secretId"), lines, secret -> secret
-                        .unlock(UnlockMode.fromToken(route.argument("mode"))));
+                String id = route.argument("secretId");
+                var secret = store.catalog().secret(id);
+                var mode = UnlockMode.fromToken(route.argument("mode"));
+                if (secret == null) return CommandResponse.fail("Секрет не найден.");
+                var prior = secret.trigger();
+                return secretMutate(id, lines, builder -> {
+                    builder.unlock(mode);
+                    if (mode == UnlockMode.MANUAL_AFTER_ROOM_CLEAR && prior.action() == SecretTrigger.Action.AUTO) {
+                        builder.entryRule(new SecretTrigger(SecretTrigger.Action.RUNE, null,
+                                prior.milestoneRoom()).encode());
+                    }
+                });
             }
             case "spawn add" -> {
                 return spawnAdd(actor, route, lines);
             }
+            case "spawn zone", "spawn bounds" -> {
+                return editSpawnZone(actor, route.argument("spawnId"), path.equals("spawn bounds"));
+            }
             case "spawn list" -> {
                 for (SpawnAnchor spawn : store.catalog().spawns().values()) {
                     if (spawn.roomId().equals(route.argument("roomId"))) {
-                        lines.add(spawn.id() + " " + format(spawn.position()) + " r=" + spawn.radius());
+                        lines.add(spawn.id() + " " + spawn.bounds().describe() + " r=" + spawn.radius());
                     }
                 }
                 return CommandResponse.ok(lines);
             }
             case "spawn remove" -> {
-                boolean removed = store.catalog().removeSpawn(route.argument("spawnId")) != null;
-                lines.add(removed ? "Спавн-якорь удалён." : "Спавн-якорь не найден.");
-                return CommandResponse.ok(lines);
+                String id = route.argument("spawnId");
+                SpawnAnchor anchor = store.catalog().spawn(id);
+                if (anchor == null) return CommandResponse.fail("Спавн-якорь не найден.");
+                DungeonRoomDefinition room = store.catalog().room(anchor.roomId());
+                if (room != null && id.equals(room.reward().anchorId())) {
+                    return CommandResponse.fail("Этот якорь используется наградой комнаты.");
+                }
+                try {
+                    store.applyEdit(catalog -> {
+                        catalog.removeSpawn(id);
+                        if (room != null) catalog.putRoom(room.toBuilder().spawnAnchorIds(room.spawnAnchorIds().stream()
+                                .filter(anchorId -> !id.equals(anchorId)).toList()).build());
+                    });
+                    return CommandResponse.ok("Спавн-якорь удалён.");
+                } catch (RuntimeException error) {
+                    return CommandResponse.fail(error.getMessage());
+                }
             }
             case "mobs add" -> {
                 return mobsAdd(route, lines);
@@ -397,8 +504,26 @@ public final class DungeonCommandDispatcher {
             }
             case "wave add" -> {
                 return roomMutate(route.argument("roomId"), lines,
-                        builder -> builder.addWave(new WaveSpec(List.of(), 0)),
+                        builder -> {
+                            if (builder.waves().size() >= 64) throw new IllegalArgumentException("Лимит — 64 волны.");
+                            builder.addWave(new WaveSpec(List.of(), 0));
+                        },
                         "Волна добавлена.");
+            }
+            case "wave mob" -> {
+                int index = Integer.parseInt(route.argument("waveIndex"));
+                int count = Integer.parseInt(route.argument("count"));
+                MobTemplate template = MobTemplate.fromId(route.argument("mobTemplate"));
+                return roomMutate(route.argument("roomId"), lines, builder -> {
+                    List<WaveSpec> waves = new ArrayList<>(builder.waves());
+                    if (index >= waves.size()) throw new IllegalArgumentException("Индекс волны вне диапазона.");
+                    WaveSpec wave = waves.get(index);
+                    List<EnemyGroup> groups = new ArrayList<>(wave.group());
+                    groups.removeIf(group -> group.template() == template);
+                    if (count > 0) groups.add(new EnemyGroup(template, count));
+                    waves.set(index, new WaveSpec(groups, wave.delayTicks()));
+                    builder.waves(waves);
+                }, "Состав волны обновлён.");
             }
             case "wave delay" -> {
                 int index = Integer.parseInt(route.argument("waveIndex"));
@@ -421,11 +546,7 @@ public final class DungeonCommandDispatcher {
                 }, "Режим награды обновлён.");
             }
             case "reward anchor" -> {
-                String anchorId = selectionOrActorAnchorId(actor);
-                return roomMutate(route.argument("roomId"), lines, builder -> {
-                    RewardSpec current = builder.reward();
-                    builder.reward(new RewardSpec(current.mode(), anchorId, current.lootTableId()));
-                }, "Якорь награды обновлён: " + anchorId);
+                return setRewardAnchor(actor, route.argument("roomId"));
             }
             case "reward loot" -> {
                 String loot = route.argument("lootTableId");
@@ -528,12 +649,12 @@ public final class DungeonCommandDispatcher {
         List<String> problems = new ArrayList<>(store.loadProblems());
         problems.addAll(DungeonDefinitionStore.validateCatalog(store.catalog(), null).stream()
                 .filter(problem -> problem.contains("'" + id + "'")).toList());
-        if (problems.isEmpty()) {
-            lines.add("Комната '" + id + "': проверка пройдена, проблем нет.");
-        } else {
+        if (!problems.isEmpty()) {
             lines.add("Комната '" + id + "': найдено проблем: " + problems.size());
             lines.addAll(problems);
+            return CommandResponse.fail(lines);
         }
+        lines.add("Комната '" + id + "': проверка пройдена, проблем нет.");
         return CommandResponse.ok(lines);
     }
 
@@ -544,17 +665,39 @@ public final class DungeonCommandDispatcher {
         }
         List<String> problems = DungeonDefinitionStore.validateCatalog(store.catalog(), null);
         List<String> relevant = problems.stream().filter(p -> p.contains("'" + id + "'")).toList();
-        lines.add("Отчёт публикации (dry-run) для '" + id + "':");
-        lines.add("  границы: " + room.bounds() + ", триггер: " + room.trigger());
-        lines.add("  шлюзов: " + room.gateIds().size() + ", секретов: " + room.secretIds().size());
-        lines.add("  проблем: " + relevant.size());
-        lines.addAll(relevant);
-        lines.add("Публикация не изменяет блоки мира; требуется отдельное подтверждение администратора.");
-        return CommandResponse.ok(lines);
+        if (!relevant.isEmpty()) {
+            lines.addAll(relevant);
+            return CommandResponse.fail(lines);
+        }
+        if (room.trigger() == null || room.spawnAnchorIds().isEmpty()) {
+            return CommandResponse.fail("Для публикации задайте триггер и точку спавна комнаты.");
+        }
+        return commitPublication(id, true, lines);
+    }
+
+    private CommandResponse commitPublication(String id, boolean enabled, List<String> lines) {
+        if (publicationGateway == null) {
+            return CommandResponse.fail("Хранилище опубликованных подземелий недоступно.");
+        }
+        try {
+            publicationGateway.publish(id, enabled);
+            lines.add("Комната '" + id + (enabled ? "' опубликована." : "' отключена."));
+            return CommandResponse.ok(lines);
+        } catch (java.io.IOException | RuntimeException error) {
+            return CommandResponse.fail("Публикация не выполнена: " + error.getMessage());
+        }
+    }
+
+    private Cuboid selectionInWorld(CommandActor actor, String world) {
+        EditorSession session = sessions.session(actor.id());
+        return session != null && world.equals(session.world()) ? session.selection() : null;
     }
 
     private CommandResponse gateAdd(CommandActor actor, CommandRegistry.Route route, List<String> lines) {
         String gateId = route.argument("gateId");
+        if (store.catalog().gate(gateId) != null) {
+            return CommandResponse.fail("Этот идентификатор уже занят: " + gateId);
+        }
         EditorSession session = sessions.session(actor.id());
         Cuboid mask = session == null ? null : session.selection();
         if (mask == null) {
@@ -597,6 +740,9 @@ public final class DungeonCommandDispatcher {
 
     private CommandResponse secretAdd(CommandActor actor, CommandRegistry.Route route, List<String> lines) {
         String secretId = route.argument("secretId");
+        if (store.catalog().secret(secretId) != null) {
+            return CommandResponse.fail("Этот идентификатор уже занят: " + secretId);
+        }
         EditorSession session = sessions.session(actor.id());
         Cuboid mask = session == null ? null : session.selection();
         if (mask == null) {
@@ -635,8 +781,38 @@ public final class DungeonCommandDispatcher {
         return CommandResponse.ok(lines);
     }
 
+    private CommandResponse editSpawnZone(CommandActor actor, String id, boolean replace) {
+        EditorSession session = sessions.session(actor.id());
+        if (session == null || session.selection() == null) {
+            return CommandResponse.fail("Выделите обе границы зоны спавна.");
+        }
+        SpawnAnchor existing = store.catalog().spawn(id);
+        if (replace != (existing != null)) {
+            return CommandResponse.fail(replace ? "Зона спавна не найдена." : "Этот идентификатор уже занят.");
+        }
+        String roomId = replace ? existing.roomId() : session.selectedRoomId();
+        DungeonRoomDefinition room = roomId == null ? null : store.catalog().room(roomId);
+        if (room == null || room.bounds() == null || !room.world().equals(session.world())
+                || !room.bounds().contains(session.selection())) {
+            return CommandResponse.fail("Выделение должно полностью находиться в границах комнаты.");
+        }
+        try {
+            SpawnAnchor anchor = SpawnAnchor.inZone(id, roomId, room.world(), session.selection());
+            store.applyEdit(catalog -> {
+                catalog.putSpawn(anchor);
+                if (!replace) catalog.putRoom(room.toBuilder().addSpawnAnchorId(id).build());
+            });
+            return CommandResponse.ok("Зона спавна " + id + " · " + anchor.bounds().describe());
+        } catch (RuntimeException error) {
+            return CommandResponse.fail(error.getMessage());
+        }
+    }
+
     private CommandResponse spawnAdd(CommandActor actor, CommandRegistry.Route route, List<String> lines) {
         String spawnId = route.argument("spawnId");
+        if (store.catalog().spawn(spawnId) != null) {
+            return CommandResponse.fail("Этот идентификатор уже занят: " + spawnId);
+        }
         MobTemplate template = MobTemplate.fromId(route.argument("mobTemplate"));
         if (template == null) {
             return CommandResponse.fail("Неизвестный шаблон моба: " + route.argument("mobTemplate"));
@@ -728,12 +904,29 @@ public final class DungeonCommandDispatcher {
         return sessions.open(actor.id(), actor.name());
     }
 
-    private String selectionOrActorAnchorId(CommandActor actor) {
-        EditorSession session = sessions.session(actor.id());
-        if (session != null && session.selectedRoomId() != null) {
-            return session.selectedRoomId() + "_reward";
+    private CommandResponse setRewardAnchor(CommandActor actor, String roomId) {
+        var room = store.catalog().room(roomId);
+        if (room == null || room.bounds() == null) return CommandResponse.fail("Комната не найдена.");
+        Cuboid cell = selectionInWorld(actor, room.world());
+        if (cell == null || !cell.enclosesExactlyOneBlock() || !room.bounds().contains(cell)) {
+            return CommandResponse.fail("Выделите один блок внутри комнаты обеими точками жезла.");
         }
-        return "reward_anchor";
+        String id = roomId + "_reward";
+        var old = store.catalog().spawn(id);
+        if (old != null && (!old.roomId().equals(roomId) || room.spawnAnchorIds().contains(id))) {
+            return CommandResponse.fail("Идентификатор " + id + " занят точкой спавна.");
+        }
+        try {
+            var anchor = new SpawnAnchor(id, roomId, room.world(), cell.minX(), cell.minY(), cell.minZ(), 0);
+            var reward = room.reward();
+            store.applyEdit(catalog -> {
+                catalog.putSpawn(anchor);
+                catalog.putRoom(room.toBuilder().reward(new RewardSpec(reward.mode(), id, reward.lootTableId())).build());
+            });
+        } catch (RuntimeException error) {
+            return CommandResponse.fail(error.getMessage());
+        }
+        return CommandResponse.ok("Якорь награды — " + cell.describe());
     }
 
     private List<String> overlaySummary(DungeonRoomDefinition room) {

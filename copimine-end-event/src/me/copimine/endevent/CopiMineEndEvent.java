@@ -7235,8 +7235,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (projectile == null) {
             return BossHitFlavorPolicy.none();
         }
-        boolean area = projectile.getType() == EntityType.SPLASH_POTION
-                || projectile.getType() == EntityType.LINGERING_POTION;
+        // Version-independent: the legacy 1.21.1 EntityType only carries POTION,
+        // while 26.3 splits it into SPLASH_POTION/LINGERING_POTION. The
+        // ThrownPotion interface covers both splash and lingering potions on
+        // every API the plugin compiles against.
+        boolean area = projectile instanceof org.bukkit.entity.ThrownPotion;
         boolean critical = projectile instanceof AbstractArrow arrow && arrow.isCritical();
         if (projectile.getShooter() instanceof Player shooter) {
             recordPlayerRecentAction(shooter,

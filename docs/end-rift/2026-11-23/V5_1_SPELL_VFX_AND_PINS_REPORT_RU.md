@@ -117,12 +117,12 @@ hazard-journal допускает одну живую пачку) — это о�
 гейтом `tests/RunEndRiftEventChecks.ps1` (Temurin 25.0.4.1, Gradle 9.8.1,
 offline): **«End Rift current local checks passed»**, `GATE_EXIT=0`, включая
 **436 тестов 26.3-клиента, `FAIL=0 ERR=0 SKIP=0`**. Серверный кандидат
-`CopiMineEndEvent-26.3.jar` — **2 958 229 B / sha256
-`cb48aeee067ce9979c4a0cdc6418b23495b9a0f086852f6fd972ec3c253ce1ad` / sha512
-`a7837232b58517f31ddfe57e5eb37e1ee87b481529ea79fe18c30a9fd3f7063900785f7ce64a1dd56794b1e55eac6604bf354a09c65ff45d6c069cf1f33cc02d`**
-(предыдущий `a3493d35…` добавлен в начало `replaceSha256`). Синхронизированы
+`CopiMineEndEvent-26.3.jar` — **2 958 162 B / sha256
+`716181f5d196c31900264d2b4be8afbc3672b9b8eff4111c0fb258af06fa1fa5` / sha512
+`75064ce138efda2342179d08953d92c1e1e58edbaf8bc308d203b51cc304cefd11ce7f7999055a1f5df65b34e87b0ef74d59a17bbc0346c0cd292b32feb9c322`**
+(предыдущий `cb48aeee…` добавлен в начало `replaceSha256`). Синхронизированы
 `OWN_PLUGIN_INVENTORY.json` (Dungeon `f447404b…` / 280 467 B, EndEvent
-`cb48aeee…` / 2 958 229 B, Narcotics `f85402bd…` / 379 551 B),
+`716181f5…` / 2 958 162 B, Narcotics `f85402bd…` / 379 551 B),
 `server-plugins.lock.json`, оба литерала
 `tests/test_minecraft_migration_server_plugins.py` и шапка F2-чек-листа. Модпак
 пересобран: `CopiMineMods.zip` — 27 407 027 B / sha256 `2e305722…` / sha1
@@ -991,3 +991,40 @@ durable-формата журнала и нативной приёмки — э�
 - Играть/смотреть визуал можно только после нативного F2 (нужен подписанный
   клиент + живой сервер). До этого — статически и автотестами проверено, нативно
   не подтверждено.
+
+## Дополнение 2026-11-27 (7-е): исправление кросс-версионной компиляции и перепин EndEvent
+
+### Причина перепина
+CI ран `45926049281` (коммит `7f9c9e3f`) отказал на шаге **java-plugins → Run shared Java plugin release gate** с ошибкой компиляции:
+```
+CopiMineEndEvent.java:7238: cannot find symbol: EntityType.SPLASH_POTION
+CopiMineEndEvent.java:7239: cannot find symbol: EntityType.LINGERING_POTION
+```
+Paper 26.3 (`26.3.build.205-stable`) разделяет `EntityType.SPLASH_POTION`/`LINGERING_POTION`, а legacy 1.21.1 API (`1.21.1-R0.1-SNAPSHOT`, sha256 `b8df3e7f…`, 2 344 886 B), под которым `RunJavaPluginCi.ps1` компилирует плагин, содержит только `EntityType.POTION`.
+
+### Исправление
+Классификация ударной воронки (area/splash) заменена на версионезависимый предикат:
+```java
+boolean area = projectile instanceof org.bukkit.entity.ThrownPotion;
+```
+`ThrownPotion extends ThrowableProjectile extends Projectile` существует в обоих API и покрывает splash и lingering potions. Однотипные deprecation warnings (EntityKnockbackEvent, EntityEffect.HURT, Sound.valueOf) не затрагивались — они не блокируют компиляцию.
+
+Локальная проверка: `PAPER_API_JAR=…/paper-api-1.21.1-…128.jar build-plugin.ps1 -CompileOnly` → **BUILD SUCCESSFUL** (только deprecation warnings).
+
+### Перепин
+- **Старый кандидат**: 2 958 229 B, sha256 `cb48aeee…`, sha512 `a7837232…`
+- **Новый кандидат**: 2 958 162 B, sha256 `716181f5…`, sha512 `75064ce1…`
+- Байт-воспроизводимость: две чистые сборки Gradle `migrationPlugins` (JDK 25, Gradle 9.8.1) дали идентичный jar (**sha256 `716181f5…`**, размер **2 958 162**, sha512 `75064ce1…`; 29–30 с каждая).
+- `cb48aeee…` добавлен в начало `replaceSha256`.
+
+### Обновлённые пины и тесты
+- `tools/minecraft-26.3/server-plugins.lock.json` — sha256, size, sha512, replaceSha256.
+- `docs/end-rift/final-26.3/OWN_PLUGIN_INVENTORY.json` — candidateSha256.
+- `tests/test_minecraft_migration_server_plugins.py` — 2 набора утверждений (sha256, size, sha512, replaceSha256[:6]).
+- `docs/end-rift/2026-11-23/NATIVE_F2_VISUAL_CHECKLIST.md` — шапка.
+- `docs/end-rift/2026-11-23/V5_1_SPELL_VFX_AND_PINS_REPORT_RU.md` — данный раздел.
+
+Pin-тесты (pytest): **7 passed in 1.41 s**.
+
+### PROD
+Новый jar — непринятый кандидат (`nativeVerified: false`). Развёртывание запланировано после зелёного CI.

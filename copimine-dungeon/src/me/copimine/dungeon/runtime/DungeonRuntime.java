@@ -1,6 +1,8 @@
 package me.copimine.dungeon.runtime;
 
 import me.copimine.dungeon.domain.Cuboid;
+import me.copimine.dungeon.command.CommandActor;
+import me.copimine.dungeon.command.CommandResponse;
 import me.copimine.dungeon.domain.DungeonEncounterPlanPolicy;
 import me.copimine.dungeon.domain.DungeonRewardLedger;
 import me.copimine.dungeon.domain.DungeonRoomDefinition;
@@ -67,6 +69,7 @@ public final class DungeonRuntime implements Listener {
 
     private final JavaPlugin plugin;
     private final boolean enabled;
+    private final Set<String> playtestRooms;
     private final Path data;
     private final NamespacedKey ownerKey;
     private final DungeonRewardMailbox mailbox;
@@ -83,6 +86,7 @@ public final class DungeonRuntime implements Listener {
     public DungeonRuntime(JavaPlugin plugin, boolean enabled) {
         this.plugin = plugin;
         this.enabled = enabled;
+        playtestRooms = Set.copyOf(plugin.getConfig().getStringList("dungeons.runtime.playtest_rooms"));
         data = plugin.getDataFolder().toPath().resolve("runtime");
         ownerKey = new NamespacedKey(plugin, "attempt_generation");
         mailbox = new DungeonRewardMailbox(plugin, data.resolve("rewards"));
@@ -219,6 +223,25 @@ public final class DungeonRuntime implements Listener {
 
     public int roomCount() {
         return rooms.size();
+    }
+
+    public CommandResponse requestPlaytest(CommandActor actor, String id, boolean solo) {
+        RoomRuntime room = rooms.get(id);
+        if (task == null || room == null || !playtestRooms.contains(id)) {
+            return CommandResponse.fail("Нужна опубликованная тестовая комната из dungeons.runtime.playtest_rooms.");
+        }
+        Player player = actor.id() == null ? null : Bukkit.getPlayer(actor.id());
+        if (player == null || !eligible(player) || !inside(player.getLocation(), room.room.world(), room.room.trigger())) {
+            return CommandResponse.fail("Встаньте в зону входа тестовой комнаты в режиме выживания.");
+        }
+        if (room.life != null || !room.baselineReady || !room.pendingRewards.isEmpty()
+                || room.playtestStarter != null || tick < room.cooldownUntil) {
+            return CommandResponse.fail("Комната ещё восстанавливается, занята или на перезарядке.");
+        }
+        room.playtestStarter = player.getUniqueId();
+        room.playtestSolo = solo;
+        room.candidates.add(player.getUniqueId());
+        return CommandResponse.ok("Боевой тест поставлен в очередь. Награды и вехи отключены.");
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -481,6 +504,8 @@ public final class DungeonRuntime implements Listener {
         private boolean combatFailure;
         private long noPlayersSince = -1;
         private long activeSince;
+        private UUID playtestStarter;
+        private boolean playtestSolo;
         private long retryAt;
         private long cooldownUntil;
         private World boundWorld;
@@ -497,6 +522,7 @@ public final class DungeonRuntime implements Listener {
         }
 
         private void enter(Player player) {
+            if (playtestRooms.contains(room.id())) return;
             if (life == null && tick >= cooldownUntil) {
                 candidates.add(player.getUniqueId());
             } else if (life != null && life.state() == RoomState.FIGHTING
@@ -509,11 +535,16 @@ public final class DungeonRuntime implements Listener {
             List<Player> players = boundWorld.getPlayers().stream().filter(DungeonRuntime::eligible)
                     .filter(player -> inside(player.getLocation(), room.world(), room.trigger()))
                     .sorted(Comparator.comparing(Player::getUniqueId)).toList();
-            Player starter = players.stream().filter(player -> candidates.contains(player.getUniqueId()))
+            UUID requested = playtestStarter;
+            playtestStarter = null;
+            Player starter = players.stream().filter(player -> requested == null
+                            ? candidates.contains(player.getUniqueId()) : requested.equals(player.getUniqueId()))
                     .findFirst().orElse(null);
             candidates.clear();
             if (starter == null) return;
-            if (room.participation().mode() == ParticipationMode.PARTY_SYNCHRONIZED) {
+            if (requested != null && playtestSolo) {
+                roster.add(starter.getUniqueId());
+            } else if (room.participation().mode() == ParticipationMode.PARTY_SYNCHRONIZED) {
                 var team = Bukkit.getScoreboardManager().getMainScoreboard().getEntryTeam(starter.getName());
                 if (team == null) {
                     starter.sendMessage("Для синхронного входа нужна общая команда scoreboard.");
@@ -532,7 +563,7 @@ public final class DungeonRuntime implements Listener {
             boolean rewardSiteReady = room.reward().mode() == me.copimine.dungeon.domain.RewardMode.PERSONAL
                     || rewardAnchor != null && DungeonRewardSite.valid(room.reward().mode(), boundWorld,
                             rewardAnchor.x(), rewardAnchor.y(), rewardAnchor.z());
-            if (!plan.viable() || !rewardSiteReady || DungeonRewardMailbox.lootTable(room) == null) {
+            if (!plan.viable() || requested == null && (!rewardSiteReady || DungeonRewardMailbox.lootTable(room) == null)) {
                 report("Dungeon " + room.id() + " cannot start: "
                         + (plan.viable() ? "unsupported reward mode or missing loot table" : plan.reason()));
                 roster.clear();
@@ -585,7 +616,7 @@ public final class DungeonRuntime implements Listener {
                         return;
                     }
                 }
-                if (tick % 20 == 0) {
+                if (tick % 20 == 0 && !playtestRooms.contains(room.id())) {
                     for (GateRuntime gate : gates) {
                         SecretTrigger rule = secrets.get(gate.gate().id());
                         if (rule != null && rule.action() == SecretTrigger.Action.AUTO
@@ -629,7 +660,7 @@ public final class DungeonRuntime implements Listener {
                 life = null;
                 roster.clear();
                 cleared = false;
-                long seconds = room.resetCooldownSeconds();
+                long seconds = playtestRooms.contains(room.id()) ? 5 : room.resetCooldownSeconds();
                 cooldownUntil = tick + (signal == DungeonRoomLifecycle.Signal.REJECTED ? 100 : seconds * 20);
             }
         }
@@ -826,6 +857,7 @@ public final class DungeonRuntime implements Listener {
 
         @Override
         public boolean commitClear() {
+            if (playtestRooms.contains(room.id())) return true;
             try {
                 mailbox.prepare(room, life.generation(), boundWorld, roster, rewardAnchor);
                 return true;
@@ -837,6 +869,7 @@ public final class DungeonRuntime implements Listener {
 
         @Override
         public boolean grantReward() {
+            if (playtestRooms.contains(room.id())) return true;
             long attempt = life.generation();
             return ledger.claim(room.id(), attempt, "mailbox", room.reward().mode(),
                     () -> release(attempt)) != DungeonRewardLedger.Decision.DELIVERY_PENDING;

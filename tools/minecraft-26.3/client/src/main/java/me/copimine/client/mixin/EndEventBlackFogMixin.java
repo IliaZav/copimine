@@ -66,9 +66,15 @@ public abstract class EndEventBlackFogMixin {
         fog.renderDistanceEnd = copimine$blend(fog.renderDistanceEnd, end, strength);
         fog.skyEnd = copimine$blend(fog.skyEnd, end, strength);
         fog.cloudEnd = copimine$blend(fog.cloudEnd, end, strength);
-        fog.color.set(copimine$blend(fog.color.x, 0.008F, strength),
-                copimine$blend(fog.color.y, 0.010F, strength),
-                copimine$blend(fog.color.z, 0.016F, strength), fog.color.w);
+        // Bounded, world-anchored haze tint. Distance and the exact safe-volume
+        // contract above are independent of these slow decorative layers.
+        double drift = level.getGameTime() * .016D;
+        double bands = Math.sin(client.player.getX() * .085D + drift)
+                * Math.cos(client.player.getZ() * .067D - drift * .65D);
+        float purple = (float) (.5D + .5D * bands);
+        fog.color.set(copimine$blend(fog.color.x, .022F - .011F * purple, strength),
+                copimine$blend(fog.color.y, .012F - .006F * purple, strength),
+                copimine$blend(fog.color.z, .016F + .015F * purple, strength), fog.color.w);
     }
 
     @Unique

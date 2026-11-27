@@ -42,6 +42,7 @@ public final class RageEchoSession {
     private final double ownerStartingHealth;
     private DuelRecord duel;
     private boolean active = true;
+    private boolean totemSpent;
     private long lastSummonTick;
 
     public RageEchoSession(UUID eventId, long generation, long epoch,
@@ -113,6 +114,10 @@ public final class RageEchoSession {
 
     public EchoLoadoutState replica() { return replica; }
 
+    public EchoLoadoutState actionProposal() {
+        return EchoLoadoutState.restore(duel.replicaState(), eventId, generation, duelId, ownerId, replica.revision());
+    }
+
     public EchoBehaviorStrategy strategy() { return strategy; }
 
     public DuelRecord duel() { return duel; }
@@ -121,20 +126,58 @@ public final class RageEchoSession {
 
     public long lastSummonTick() { return lastSummonTick; }
 
-    /** Replace the internal duel record with a newer checkpoint. */
-    public void updateDuel(DuelRecord next) {
-        if (next == null) throw new IllegalArgumentException("Rage Echo duel record cannot be null");
-        this.duel = next;
+    /** Commit the accepted action and its private supplies as one actor-local state change. */
+    public boolean commit(EchoDuelCombatRuntimeAdapter.Decision decision) {
+        if (!active || decision == null || !duel.equals(decision.previousDuel())
+                || replica.revision() != decision.previousReplica().revision()
+                || !duel.replicaState().equals(decision.previousReplica().encode())) return false;
+        DuelRecord next = decision.nextDuel();
+        if (!eventId.equals(next.eventId()) || generation != next.attemptGeneration()
+                || epoch != next.runtimeGeneration() || !duelId.equals(next.duelId())
+                || !ownerId.equals(next.ownerUuid()) || !carrierId.equals(next.actor().actorUuid())
+                || next.replicaRevision() != decision.replica().revision()
+                || !next.replicaState().equals(decision.replica().encode())) return false;
+        duel = next;
+        replica = decision.replica();
+        return true;
     }
 
-    /**
-     * Replace the private loadout with the state a spent action produced. The
-     * engine requires the replica revision and encoded state to stay in lockstep
-     * with the durable duel record.
-     */
-    public void updateReplica(EchoLoadoutState next) {
-        if (next == null) throw new IllegalArgumentException("Rage Echo replica cannot be null");
-        this.replica = next;
+    public boolean totemSpent() { return totemSpent; }
+
+    /** Apply a native block or revival only after its exact supply cost is validated. */
+    public boolean commitDefense(EchoLoadoutState supplies, double health, long shieldUntil, boolean totem) {
+        ActorState actor = duel.actor();
+        if (!active || supplies == null || supplies.revision() != replica.revision() + 1L
+                || !Double.isFinite(health) || health <= 0.0D || health > actor.maximumHealth()
+                || totem && totemSpent) return false;
+        ActorState updated = new ActorState(carrierId, health, actor.maximumHealth(), actor.lifecycle(),
+                actor.revision() + 1L, actor.nextActionTick(), actor.meleeCooldownUntilTick(),
+                actor.rangedCooldownUntilTick(), actor.pendingUseUntilTick(), actor.deathSerial(),
+                shieldUntil, actor.shieldCooldownUntilTick(), actor.jumpCooldownUntilTick(),
+                actor.rangedChargeUntilTick());
+        DuelRecord next = duel.withActor(epoch, duel.ownerStartingHealth(), duel.ownerMaximumHealth(),
+                duel.returnDeadlineMillis(), updated, duel.revision() + 1L, supplies.revision(),
+                supplies.encode(), strategy);
+        duel = next;
+        replica = supplies;
+        if (totem) totemSpent = true;
+        return true;
+    }
+
+    /** The physical carrier owns actual health between decisions. */
+    public void synchronizeHealth(double currentHealth) {
+        ActorState actor = duel.actor();
+        if (!active || !Double.isFinite(currentHealth) || currentHealth <= 0.0D) return;
+        double health = Math.min(currentHealth, actor.maximumHealth());
+        if (Double.compare(health, actor.currentHealth()) == 0) return;
+        ActorState updated = new ActorState(carrierId, health, actor.maximumHealth(), actor.lifecycle(),
+                actor.revision() + 1L, actor.nextActionTick(), actor.meleeCooldownUntilTick(),
+                actor.rangedCooldownUntilTick(), actor.pendingUseUntilTick(), actor.deathSerial(),
+                actor.shieldActiveUntilTick(), actor.shieldCooldownUntilTick(), actor.jumpCooldownUntilTick(),
+                actor.rangedChargeUntilTick());
+        duel = duel.withActor(epoch, duel.ownerStartingHealth(), duel.ownerMaximumHealth(),
+                duel.returnDeadlineMillis(), updated, duel.revision() + 1L, replica.revision(),
+                replica.encode(), strategy);
     }
 
     /**

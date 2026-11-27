@@ -308,6 +308,11 @@ public final class EchoDuelCombatPolicy {
      */
     public static Optional<ActorState> completeConsumable(ActorState actor, long tick,
                                                           Cooldowns cooldowns) {
+        return completeConsumable(actor, tick, cooldowns, true);
+    }
+
+    public static Optional<ActorState> completeConsumable(ActorState actor, long tick,
+                                                          Cooldowns cooldowns, boolean heal) {
         if (actor == null || cooldowns == null || tick < 0L
                 || tick > RealitySplitEchoDuelState.MAX_COUNTER
                 || actor.lifecycle() != ActorLifecycle.ALIVE
@@ -317,7 +322,7 @@ public final class EchoDuelCombatPolicy {
             return Optional.empty();
         }
         double restored = Math.min(actor.maximumHealth(),
-                actor.currentHealth() + consumableHealAmount(actor.maximumHealth()));
+                actor.currentHealth() + (heal ? consumableHealAmount(actor.maximumHealth()) : 0.0D));
         return Optional.of(new ActorState(actor.actorUuid(), restored, actor.maximumHealth(),
                 actor.lifecycle(), actor.revision() + 1L, actor.nextActionTick(),
                 actor.meleeCooldownUntilTick(), actor.rangedCooldownUntilTick(),

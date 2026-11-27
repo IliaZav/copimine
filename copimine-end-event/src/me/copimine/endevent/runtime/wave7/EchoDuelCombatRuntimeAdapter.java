@@ -160,7 +160,15 @@ public final class EchoDuelCombatRuntimeAdapter {
 
     public record Observation(long tick, double distanceSquared, boolean lineOfSight,
                               boolean onGround, boolean criticalWindow,
-                              long ownerStrikeIntervalTicks, long ticksSinceOwnerStrike) {
+                              long ownerStrikeIntervalTicks, long ticksSinceOwnerStrike,
+                              boolean ownerBlocking, boolean allowSecondaryProjectiles, boolean pendingFoodHeal) {
+        public Observation(long tick, double distanceSquared, boolean lineOfSight,
+                           boolean onGround, boolean criticalWindow, long ownerStrikeIntervalTicks,
+                           long ticksSinceOwnerStrike) {
+            this(tick, distanceSquared, lineOfSight, onGround, criticalWindow,
+                    ownerStrikeIntervalTicks, ticksSinceOwnerStrike, false, true, true);
+        }
+
         public Observation(long tick, double distanceSquared, boolean lineOfSight) {
             this(tick, distanceSquared, lineOfSight, true, false, -1L, -1L);
         }
@@ -352,6 +360,10 @@ public final class EchoDuelCombatRuntimeAdapter {
         // kites, so this only changes melee copies.
         if (wounded && canHeal && !wantsRange) return MovementIntent.KITE;
         if (wantsRange) {
+            if (!observation.lineOfSight() && distance <= preferred + HOLD_TOLERANCE_BLOCKS) {
+                return ((observation.tick() + phaseOffset) / 20L) % 2L == 0L
+                        ? MovementIntent.STRAFE_LEFT : MovementIntent.STRAFE_RIGHT;
+            }
             if (distance < preferred - HOLD_TOLERANCE_BLOCKS) return MovementIntent.KITE;
             // E-02: close to the owner's hold band. The previous guard also
             // required distance > RANGED_RANGE_BLOCKS, so a ranged copy at, for
@@ -362,7 +374,7 @@ public final class EchoDuelCombatRuntimeAdapter {
             if (distance > preferred + HOLD_TOLERANCE_BLOCKS) return MovementIntent.APPROACH;
             return lateralIntent(strategy, observation, phaseOffset);
         }
-        if (distance > preferred + HOLD_TOLERANCE_BLOCKS) return MovementIntent.APPROACH;
+        if (distance > preferred + HOLD_TOLERANCE_BLOCKS || !observation.lineOfSight()) return MovementIntent.APPROACH;
         return lateralIntent(strategy, observation, phaseOffset);
     }
 
@@ -472,7 +484,8 @@ public final class EchoDuelCombatRuntimeAdapter {
             EchoDuelCombatPolicy.Cooldowns cooldowns = cooldownsFor(duel.behaviorStrategy());
             EchoLoadoutState baselineReplica = EchoLoadoutState.restore(replicaSnapshot,
                     duel.eventId(), duel.attemptGeneration(), duel.duelId(), duel.ownerUuid(), replica.revision());
-            int meleeSlot = meleeSlotFor(duel.behaviorStrategy(), replica);
+            int meleeSlot = observation.ownerBlocking()
+                    ? replica.findPreferredMelee(true) : meleeSlotFor(duel.behaviorStrategy(), replica);
             int bowSlot = replica.find(EchoLoadoutState.Kind.BOW);
             int crossbowSlot = replica.find(EchoLoadoutState.Kind.CROSSBOW);
             int rangedSlot = duel.behaviorStrategy().rangedPermille() >= duel.behaviorStrategy().meleePermille()
@@ -490,7 +503,7 @@ public final class EchoDuelCombatRuntimeAdapter {
             if (duel.actor().pendingUseUntilTick() > 0L
                     && observation.tick() >= duel.actor().pendingUseUntilTick()) {
                 Optional<ActorState> completed = EchoDuelCombatPolicy.completeConsumable(
-                        duel.actor(), observation.tick(), cooldowns);
+                        duel.actor(), observation.tick(), cooldowns, observation.pendingFoodHeal());
                 if (completed.isPresent()) {
                     // The supply was spent when the use STARTED, so by now the slot is
                     // empty and there is no item to report. The resolution is a state
@@ -601,7 +614,7 @@ public final class EchoDuelCombatRuntimeAdapter {
             // repositioning instead of freezing on the spot. Only a legal current
             // action is selected here, so movement never grants range and never
             // bypasses a cooldown.
-            boolean inMeleeRange = observation.distanceSquared()
+            boolean inMeleeRange = observation.lineOfSight() && observation.distanceSquared()
                     <= MELEE_RANGE_BLOCKS * (double) MELEE_RANGE_BLOCKS;
             // BRAIN-013: a copy of a player who swapped weapons constantly does
             // not lock itself to one tool. Inside its recorded switch window it
@@ -707,7 +720,7 @@ public final class EchoDuelCombatRuntimeAdapter {
 
             // A wind charge burst is the copy's own knockback tool: it spends one
             // carried charge and keeps the fight at range the way its owner did.
-            int chargeSlot = replica.find(EchoLoadoutState.Kind.WIND_CHARGE);
+            int chargeSlot = observation.allowSecondaryProjectiles() ? replica.find(EchoLoadoutState.Kind.WIND_CHARGE) : -1;
             if (chargeSlot >= 0 && observation.lineOfSight()
                     && observation.distanceSquared() <= RANGED_RANGE_BLOCKS * (double) RANGED_RANGE_BLOCKS) {
                 EchoLoadoutState.Item item = replica.item(chargeSlot);
@@ -721,7 +734,7 @@ public final class EchoDuelCombatRuntimeAdapter {
 
             // A thrown splash bottle is a weapon: the copy lobs one of the bottles
             // its owner carried, never a bottle it does not have.
-            int splashSlot = replica.find(EchoLoadoutState.Kind.SPLASH_POTION);
+            int splashSlot = observation.allowSecondaryProjectiles() ? replica.find(EchoLoadoutState.Kind.SPLASH_POTION) : -1;
             if (splashSlot >= 0 && observation.lineOfSight()
                     && observation.distanceSquared() <= RANGED_RANGE_BLOCKS * (double) RANGED_RANGE_BLOCKS) {
                 EchoLoadoutState.Item item = replica.item(splashSlot);
@@ -739,7 +752,7 @@ public final class EchoDuelCombatRuntimeAdapter {
             // has declined this tick and only while the copy is still outside
             // melee reach, so it never trades a swing for a jump and never
             // substitutes for a legal shot.
-            if (observation.onGround() && !inMeleeRange && meleeSlot >= 0
+            if (observation.onGround() && observation.lineOfSight() && !inMeleeRange && meleeSlot >= 0
                     && intent == MovementIntent.APPROACH
                     && duel.behaviorStrategy().jumpAttackPermille() > JUMP_ATTACK_BASELINE_PERMILLE
                     && inProfileWindow(observation.tick(), duel.behaviorStrategy().jumpAttackPermille(),

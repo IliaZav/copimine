@@ -30,6 +30,7 @@ import org.bukkit.event.entity.ProjectileLaunchEvent;
 public final class EchoCombatAdmissionListener implements Listener {
     private static final int MAX_PROJECTILES = 64, MAX_CLOUDS = 16;
     private final Supplier<Context> current;
+    private final boolean privateDuel;
     private final IncomingOwnerHitHandler incomingOwnerHitHandler;
     private final LethalSurvivalHandler lethalSurvivalHandler;
     private final Map<Projectile, Scope> projectiles = new IdentityHashMap<>();
@@ -75,7 +76,15 @@ public final class EchoCombatAdmissionListener implements Listener {
     public EchoCombatAdmissionListener(Supplier<Context> current,
                                        IncomingOwnerHitHandler incomingOwnerHitHandler,
                                        LethalSurvivalHandler lethalSurvivalHandler) {
+        this(current, incomingOwnerHitHandler, lethalSurvivalHandler, true);
+    }
+
+    public EchoCombatAdmissionListener(Supplier<Context> current,
+                                       IncomingOwnerHitHandler incomingOwnerHitHandler,
+                                       LethalSurvivalHandler lethalSurvivalHandler,
+                                       boolean privateDuel) {
         this.current = Objects.requireNonNull(current);
+        this.privateDuel = privateDuel;
         this.incomingOwnerHitHandler = incomingOwnerHitHandler;
         this.lethalSurvivalHandler = lethalSurvivalHandler;
     }
@@ -90,8 +99,8 @@ public final class EchoCombatAdmissionListener implements Listener {
             Entity damager = byEntity.getDamager();
             if (direct == null) direct = damager;
             else if (!Objects.equals(id(direct), id(damager))
-                    && (member(context, origin(direct)) || member(context, origin(damager))
-                    || member(context, id(event.getEntity())))) {
+                    && (isolatedMember(context, origin(direct)) || isolatedMember(context, origin(damager))
+                    || isolatedMember(context, id(event.getEntity())))) {
                 event.setCancelled(true); return;
             }
         }
@@ -302,7 +311,7 @@ public final class EchoCombatAdmissionListener implements Listener {
             if (!previous.current(context, origin)) event.setCancelled(true);
             return; // A duplicate callback cannot renew or rebind this launch.
         }
-        if (!member(context, origin)) return;
+        if (!isolatedMember(context, origin)) return;
         if (!context.active() || !sameWorld(context, projectile)
                 || context.tick() > Long.MAX_VALUE - EchoCombatAdmission.MAX_SOURCE_TICKS
                 || projectiles.size() >= MAX_PROJECTILES) {
@@ -337,7 +346,7 @@ public final class EchoCombatAdmissionListener implements Listener {
         Context context = current.get();
         Projectile projectile = event.getEntity();
         Scope scope = projectiles.get(projectile);
-        if (scope == null && !member(context, origin(projectile))) return;
+        if (scope == null && !isolatedMember(context, origin(projectile))) return;
         AreaEffectCloud cloud = event.getAreaEffectCloud();
         if (scope == null || !scope.current(context, origin(projectile))
                 || !scope.origin().equals(origin(cloud)) || !sameWorld(context, cloud)
@@ -372,16 +381,26 @@ public final class EchoCombatAdmissionListener implements Listener {
         UUID source = origin(direct), victim = id(target);
         Scope scope = direct instanceof Projectile projectile ? projectiles.get(projectile)
                 : direct instanceof AreaEffectCloud cloud ? clouds.get(cloud) : null;
-        if (scope == null && !member(context, source) && !member(context, id(causing))
-                && !member(context, victim)) return true;
+        if (scope == null && !isolatedMember(context, source) && !isolatedMember(context, id(causing))
+                && !isolatedMember(context, victim)) return true;
         if (!sameWorld(context, direct) || !sameWorld(context, target)
                 || causing != null && !Objects.equals(id(causing), source)) return false;
         if (direct instanceof Projectile || direct instanceof AreaEffectCloud) {
-            if (scope == null || !scope.current(context, source)) return false;
+            // The arena owner's ordinary arrows still belong to the player.
+            // Only an impact against their personal Echo is considered here.
+            boolean arenaOwnerShot = !privateDuel && scope == null && direct instanceof AbstractArrow
+                    && context != null && context.pair().owner().equals(source)
+                    && context.pair().actor().equals(victim);
+            if (!arenaOwnerShot && (scope == null || !scope.current(context, source))) return false;
         }
         // Pets, summoned helpers and contradictory DamageSource chains never
         // become the owner just because a causing UUID points at that player.
         return EchoCombatAdmission.mayApply(context, source, victim, selfEffect);
+    }
+
+    private boolean isolatedMember(Context context, UUID entity) {
+        return privateDuel ? member(context, entity)
+                : context != null && context.pair().actor().equals(entity);
     }
 
     private static boolean member(Context context, UUID entity) {

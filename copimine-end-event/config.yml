@@ -321,6 +321,11 @@ event-loot-rolls:
     ENDER_PEARL: {chance: 1.0, min: 1, max: 1}
 
 boss:
+  # V7 provisional techniques are opt-in. Durations are clamped by the cast policy.
+  copy-cooperation:
+    mirror_substitution: {enabled: false, cooldown-ticks: 600}
+    coordinated_salvo: {enabled: false, cooldown-ticks: 500}
+    reflection_chain: {enabled: false, cooldown-ticks: 1000}
   # Base value for the two-player event. The current flow freezes the real entity
   # max health from BossHealthPolicy before the boss is spawned:
   # 2=5000, 3=6000, 4=7000, 5=8500, 6=9500, 7=10500, 8=11500,

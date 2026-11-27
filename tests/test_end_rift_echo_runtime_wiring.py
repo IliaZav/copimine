@@ -426,35 +426,23 @@ def test_the_rare_echo_uses_the_common_combat_engine():
     assert "this::emitNamedEchoCombatDiagnostic" in tick, (
         "engine failures must reach the bounded diagnostic channel"
     )
-    assert "session.updateDuel(accepted.nextDuel());" in tick, (
-        "the committed duel state must persist after each decision"
-    )
-    assert "session.updateReplica(accepted.replica());" in tick, (
-        "the committed private replica must persist after each decision"
-    )
+    assert "session.actionProposal()" in tick
+    assert "session.commit(accepted)" in tick
+    assert tick.index("if (!executed)") < tick.index("session.commit(accepted)")
+    assert "applyEchoActionCompletion(carrier, view, accepted)" in tick
 
 
 def test_the_rare_echo_damage_goes_through_accepted_damage():
-    execute = code_only(method("boolean executeRageEchoCombatAction("))
-    assert "applyRageEchoDamage(" in execute, (
-        "the rare Echo must report only the damage the server accepted"
-    )
-    assert not re.search(r"\bowner\.damage\(", execute), (
-        "a direct Player.damage bypasses the accepted-damage accounting"
-    )
-    damage = code_only(method("double applyRageEchoDamage("))
-    assert "target.damage(amount, attacker)" in damage, (
-        "the accepted-damage entry point must own the native damage call"
-    )
-    assert "PendingPlayerDamageOutcome" in damage, (
-        "the outcome must be captured so a cancelled hit reports zero"
-    )
-    assert "outcome.isCancelled()" in damage, (
-        "cancelled damage must never be reported as landed"
-    )
-    assert "bossPhase != BossPhase.RAGE" in damage, (
-        "a Personal Echo hit is only legal in RAGE"
-    )
+    tick = code_only(method("void tickOneRageEcho("))
+    execute = code_only(method("boolean executeEchoCombatAction("))
+    assert "executeEchoCombatAction(" in tick
+    assert "listener.beginOwnerCombatAction(pair, owner.getUniqueId())" in execute
+    assert "owner.damage(" in execute
+    assert "listener.consumeAcceptedOwnerCombatAction(pair, owner.getUniqueId()," in execute
+    assert "listener.registerServerLaunchedEchoArrow(" in execute
+    scope = code_only(method("boolean rageEchoPairActive("))
+    assert "bossPhase == BossPhase.RAGE" in scope
+    assert "session.eventId().equals(parseUuidOrNull(eventId))" in scope
 
 
 def test_the_rare_echo_budget_and_lifetime_come_from_the_policy():

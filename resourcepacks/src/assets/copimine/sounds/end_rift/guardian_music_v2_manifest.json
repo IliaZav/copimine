@@ -40,14 +40,16 @@
     {
       "phase": "overload",
       "filename": "boss_overload.ogg",
-      "source": "boss_overload.ogg",
-      "sourceSha256": "725470fe275c2acfa53f3ece663645264729b60c57275cb16d96f747664f312f",
-      "sha256": "8e5924eb59b819dbf3dac038d571639d2306430f271979a4706807ed4fc42804",
+      "source": "Heavy Boss Battle 1 — MintoDog",
+      "sourceSha256": "4db07e3d7c7ed1bc662cea9481b87d53ad29c105dd921d1006373242bf459b8d",
+      "sha256": "39d92e741ae00230d3d40183d7ccacfefc11b8293251310af8df8b0e17818898",
       "durationSeconds": 45,
-      "pulseBpm": 112,
-      "tempo": 1.1,
-      "peak": 0.8919835090637207,
-      "rms": 0.11521255970001221
+      "pulseBpm": 200,
+      "tempo": 1.0,
+      "peak": 0.4647878408432007,
+      "rms": 0.11459580808877945,
+      "license": "CC0-1.0",
+      "sourceUrl": "https://opengameart.org/content/heavy-boss-battle-1"
     },
     {
       "phase": "rage",

@@ -40,7 +40,7 @@ import java.util.function.Predicate;
 
 /** Changes only the cells pinned by a site plan. The journal also owns recovery without that plan. */
 final class LastSealArenaReveal {
-    static final int DURATION_TICKS = 280;
+    static final int DURATION_TICKS = 320;
     // The approved site mask is authored, not generated, so the ceiling has to
     // cover a genuinely large concealed corridor rather than the first 320
     // cells: the V6 audit requires "the exact mask" be honoured in bounded
@@ -247,17 +247,38 @@ final class LastSealArenaReveal {
             }
         }
         open = next == collapse.size() && age >= 100;
+        if (open && age % 12 == 0) renderOpenFissures(world, age);
         if (age >= 100) {
             for (Player player : world.getPlayers()) {
                 Location at = player.getLocation();
                 if (protects(at, generation)) continue;
-                if (at.getY() < plan.rescueY() && plan.horizontal(at.getX(), at.getZ())
+                if (at.getY() < plan.rescueY() && at.getY() >= plan.rescueY() - 4
+                        && player.getVelocity().getY() < -.04D && player.getFallDistance() >= 1.0F
+                        && plan.horizontal(at.getX(), at.getZ())
                         && plan.changes().stream().anyMatch(change -> !change.wall()
                         && Math.abs(change.cell().x() - at.getBlockX()) <= 1
                         && Math.abs(change.cell().z() - at.getBlockZ()) <= 1)) {
                     evacuate(player, plan.landing(), world);
                 }
             }
+        }
+    }
+
+    private void renderOpenFissures(World world, long age) {
+        int count = plan.changes().size();
+        int cursor = (int) ((age / 12L * 31L) % count);
+        int emitted = 0;
+        for (int i = 0; i < count && emitted < 5; i++) {
+            Change change = plan.changes().get((cursor + i) % count);
+            if (change.wall() || !change.cell().loaded(world)
+                    || !change.cell().block(world).getType().isAir()) continue;
+            Location rim = change.cell().at(world).add(0, .84D, 0);
+            world.spawnParticle(Particle.DUST, rim, 4, .21D, .08D, .21D, 0,
+                    new Particle.DustOptions(Color.fromRGB(0x9749c2), 1.25F));
+            world.spawnParticle(Particle.REVERSE_PORTAL, rim.clone().subtract(0, .8D, 0),
+                    2, .16D, .52D, .16D, .025D);
+            if (emitted++ == 0 && age % 60 == 0)
+                world.playSound(rim, Sound.BLOCK_AMETHYST_BLOCK_RESONATE, SoundCategory.BLOCKS, .42F, .51F);
         }
     }
 

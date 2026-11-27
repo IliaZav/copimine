@@ -4,9 +4,8 @@ package me.copimine.endevent.domain;
  * Phase 4 (OVERLOAD) signature spell: the rotating Rift Fire Ring.
  *
  * <p>The Guardian gathers the arena's heat into a spinning ring of fire, then
- * hurls it at the party. The ring flies forward while rotating about its travel
- * axis, and detonates on the first real contact - a player, or the floor when it
- * is not stopped. The burst damages and ignites everyone it catches.</p>
+ * releases it along a locked heading. The tilted shell damages only players
+ * it touches, and dissipates against terrain or at the end of its flight.</p>
  *
  * <p>This is a signature cast, so
  * {@link BossSignatureCastGatePolicy} fires it at most once per configured HP
@@ -15,11 +14,11 @@ package me.copimine.endevent.domain;
  * <p>Counterplay is authored, not implied: the gather window is a readable tell
  * ({@link #GATHER_TICKS}), the flight is slow enough to sidestep
  * ({@link #travelPerTick()}), and the actual hit test is the ring's own
- * thickness ({@link #HIT_RADIUS}), never an invisible homing sphere.</p>
+ * thickness ({@link #TUBE_RADIUS}).</p>
  */
 public final class RiftFireRingPolicy {
     /** Segments drawn around the ring; the hit volume matches this ring. */
-    public static final int SEGMENTS = 14;
+    public static final int SEGMENTS = 40;
     /** The visible gather tell before the ring leaves the Guardian. */
     public static final int GATHER_TICKS = 30;
     /** Hard ceiling on the flight so a ring can never live forever. */
@@ -27,18 +26,15 @@ public final class RiftFireRingPolicy {
     /** How long the detonation remains a damaging volume. */
     public static final int BURST_TICKS = 6;
     /** Ring geometry in world blocks. */
-    public static final double RING_RADIUS = 2.8D;
-    public static final double SEGMENT_RADIUS = 1.2D;
-    /** Real hit geometry, not cosmetic. */
-    public static final double HIT_RADIUS = 2.2D;
-    public static final double BURST_RADIUS = 3.6D;
+    public static final double RING_RADIUS = 5.0D;
+    public static final double TUBE_RADIUS = 0.50D;
+    public static final double TILT_RISE_PER_BLOCK = 0.14D;
     /** Damage and burn. */
-    public static final double IMPACT_DAMAGE = 10.0D;
-    public static final double BURST_DAMAGE = 15.0D;
+    public static final double CONTACT_DAMAGE = 15.0D;
     public static final int IGNITE_TICKS = 60;
     /** Visual spin; the ring keeps turning the whole flight. */
     public static final double ROTATION_DEGREES_PER_TICK = 18.0D;
-    public static final double SPEED_BLOCKS_PER_TICK = 0.55D;
+    public static final double SPEED_BLOCKS_PER_TICK = 0.26D;
     /** A signature cast still needs a real cooldown. */
     public static final int COOLDOWN_TICKS = 1000;
 
@@ -103,30 +99,14 @@ public final class RiftFireRingPolicy {
         return new double[]{Math.cos(angle) * RING_RADIUS, Math.sin(angle) * RING_RADIUS};
     }
 
-    /** A ring segment itself hits only inside its own authored radius. */
-    public static boolean segmentConnects(double dx, double dz) {
-        if (!Double.isFinite(dx) || !Double.isFinite(dz)) {
-            return false;
-        }
-        return Math.hypot(dx, dz) <= SEGMENT_RADIUS + HIT_RADIUS;
+    /** Tilt the plane along the original heading without spinning the collision plane. */
+    public static double planeHeight(double dx, double dz, double forwardX, double forwardZ) {
+        return (dx * forwardX + dz * forwardZ) * TILT_RISE_PER_BLOCK;
     }
 
-    /**
-     * First-contact test: the ring detonates when its centre reaches a player's
-     * body or the floor. {@code centreDistanceToPlayer} is the 3D distance from
-     * the flying centre to the player; {@code reachedFloor} is a real block
-     * probe, never inferred.
-     */
-    public static boolean detonates(double centreDistanceToPlayer, boolean reachedFloor) {
-        if (reachedFloor) {
-            return true;
-        }
-        return Double.isFinite(centreDistanceToPlayer) && centreDistanceToPlayer <= HIT_RADIUS;
-    }
-
-    /** The burst volume is a real radius around the detonation point. */
-    public static boolean burstConnects(double distance) {
-        return Double.isFinite(distance) && distance <= BURST_RADIUS;
+    /** Conservative horizontal rejection before the world-space swept body test. */
+    public static boolean mayReachRing(double dx, double dz, double bodyRadius, double travel) {
+        return Math.abs(Math.hypot(dx, dz) - RING_RADIUS) <= bodyRadius + TUBE_RADIUS + travel;
     }
 
     /** A signature ring only fires again once its cooldown has elapsed. */
@@ -143,10 +123,8 @@ public final class RiftFireRingPolicy {
                 + " gather_ticks=" + GATHER_TICKS
                 + " flight_ticks_max=" + FLIGHT_TICKS_MAX
                 + " ring_radius=" + RING_RADIUS
-                + " hit_radius=" + HIT_RADIUS
-                + " burst_radius=" + BURST_RADIUS
-                + " impact_damage=" + IMPACT_DAMAGE
-                + " burst_damage=" + BURST_DAMAGE
+                + " tube_radius=" + TUBE_RADIUS
+                + " contact_damage=" + CONTACT_DAMAGE
                 + " ignite_ticks=" + IGNITE_TICKS
                 + " cooldown_ticks=" + COOLDOWN_TICKS;
     }

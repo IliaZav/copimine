@@ -109,6 +109,7 @@ public final class CopiMineDungeon extends JavaPlugin {
         getServer().getScheduler().runTaskTimer(this, editor::drawOverlays, 5L, 10L);
         runtime = new DungeonRuntime(this, getConfig().getBoolean("dungeons.runtime.enabled", false));
         runtime.start(published);
+        dispatcher.setPlaytestGateway(runtime::requestPlaytest);
         getLogger().info("CopiMineDungeon enabled: schema v" + store.schemaVersion()
                 + ", " + store.catalog().totalDefinitions() + " definitions loaded.");
     }

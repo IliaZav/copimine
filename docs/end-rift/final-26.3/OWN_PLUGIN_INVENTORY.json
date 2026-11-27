@@ -120,7 +120,7 @@
         "tests/dungeon_probe.py"
       ],
       "installedJar": "local-runtime/end-rift-server-26.3/plugins/CopiMineDungeon.jar",
-      "candidateSha256": "f447404b32293edf41fb6e1bf40649e9748159ea030c2a919a3a9cb959a74ae2",
+      "candidateSha256": "9fcbfc31701f73d341677e6a44756a10935e0d154c07e779e3cece413cb8936c",
       "sha256": "416e40917e08e956230e2e602dbb51233986174f7988ac4d62bf857185d73e61",
       "sourceBuild": "PASS",
       "unitContract": "PASS",
@@ -236,7 +236,7 @@
         "tests/PrisonerAbilityControllerTest.java"
       ],
       "installedJar": "local-runtime/end-rift-server-26.3/plugins/CopiMineEndEvent.jar",
-      "candidateSha256": "716181f5d196c31900264d2b4be8afbc3672b9b8eff4111c0fb258af06fa1fa5",
+      "candidateSha256": "de02000bf50e4710fad1fc22afbd7e3c2486a5e0a277e71ee563fa9d94625907",
       "sha256": "22f511f347bfb3e55b71fd2713be5db71b080a19c8ab6f7f169b2dd0cad30cc5",
       "sourceBuild": "PASS",
       "unitContract": "PASS",

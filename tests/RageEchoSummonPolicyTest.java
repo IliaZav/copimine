@@ -192,7 +192,10 @@ public final class RageEchoSummonPolicyTest {
                         decision.get().itemSlot() >= 0);
             }
         }
-        session.updateDuel(session.duel());
+        double observedHealth = session.duel().actor().currentHealth() - 1.0D;
+        session.synchronizeHealth(observedHealth);
+        check("accepted native health is the next decision baseline",
+                session.duel().actor().currentHealth() == observedHealth);
         session.deactivate();
         var deadDecision = EchoDuelCombatRuntimeAdapter.tick(
                 session.duel(), session.replica(), session.scope(), obs);

@@ -150,6 +150,28 @@ public final class BossSpellGeometryPolicy {
         };
     }
 
+    /** Mesh assigned to the actual authored cue, with historical shape IDs as fallback. */
+    public static int cueModelData(String cue, Shape shape) {
+        if (cue == null) return modelData(shape);
+        return switch (cue.toLowerCase(Locale.ROOT)) {
+            case "void_blast" -> 830223;
+            case "melee_swipe", "guardian_fan" -> 830224;
+            case "rift_step" -> 830225;
+            case "guardian_heavy" -> 830226;
+            case "hunt_dash" -> 830227;
+            case "guardian_separation" -> 830228;
+            case "final_strike" -> 830229;
+            case "ring_of_kagune" -> 830230;
+            case "ambush_grab" -> 830231;
+            case "infernal_surge" -> 830232;
+            case "mirror_carnage" -> 830233;
+            case "arena_inferno" -> 830234;
+            case "ram_stomp" -> 830235;
+            case "spire_harbinger" -> 830236;
+            default -> modelData(shape);
+        };
+    }
+
     public static Anchor anchor(Shape shape, Beat beat) {
         if (shape == null || beat == null) return Anchor.FEET;
         return switch (shape) {

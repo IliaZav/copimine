@@ -69,6 +69,8 @@ public class BossIncomingRosterProbe {
     final LivingEntity currentBoss=new LivingEntity();
     EventPhase phase=EventPhase.BOSS_ACTIVE;
     long generation=4, cocoonFallGeneration=Long.MIN_VALUE;
+    long eventTickCounter;
+    long infernalForgeVulnerableUntilTick=Long.MIN_VALUE;
     CocoonFallPolicy.Stage cocoonFallStage=CocoonFallPolicy.Stage.COCOONED;
     BossPhase bossPhase=BossPhase.AWAKENING;
     BossAbilityState bossAbilityState=BossAbilityState.NONE;
@@ -106,6 +108,16 @@ public class BossIncomingRosterProbe {
     void handleOfficialLethalHit(LivingEntity boss,Entity source,double before,double raw,double damage,boolean projectile){
         check(isActiveBossParticipant(playerDamageOwner(source)),"legitimate indirect lethal hit lost player attribution");
         lethalCalls++;
+    }
+    // Impact-flavour classification is not part of the admission contract under
+    // test here, and the real classifiers pull in Bukkit cause/EntityType enums
+    // this focused probe intentionally does not model. Neutral flavour keeps the
+    // accepted-hit assertions honest without changing any admission branch.
+    BossHitFlavorPolicy.Flavor meleeHitFlavor(EntityDamageEvent event,LivingEntity boss,Entity source){
+        return BossHitFlavorPolicy.none();
+    }
+    BossHitFlavorPolicy.Flavor projectileHitFlavor(Projectile projectile){
+        return BossHitFlavorPolicy.none();
     }
 ''' + methods + r'''
     static void check(boolean value,String message){if(!value)throw new AssertionError(message);}

@@ -45,8 +45,8 @@ never a pass without real Minecraft 26.3 evidence.
 | V7-23 | Last Seal: 6–8 defenders, shield per living, ring gap, real grab/throw | Kagune runtime | `test_tentacle_guardian_role_separation.py`, `test_end_rift_last_seal_ring_runtime.py` | SRC+TEST (native BLOCKED) |
 | V7-24 | Victory/defeat: square restored, no stuck damage/tasks, no rewards on defeat | `EndRiftVictoryCoordinatorPolicy` | victory probes | SRC+TEST (native BLOCKED) |
 | V7-25 | Post-boss: legal hit, permanent flag, names, rewards, WorldCore End access | `CoreMemorial*`, WorldCore integration | memorial/reward probes | SRC+TEST (native BLOCKED) |
-| V7-26 | Restart/races at phase/gate/reward/WorldCore boundaries | journal + receipts | recovery probes | IMPLEMENTED_UNVERIFIED (cold-restart matrix partial) |
-| V7-27 | Load: 2/5/10/11/20 + dungeon 32+, MSPT/client/packets, no leaks | — | — | NOT_MEASURED (native profiling BLOCKED) |
+| V7-26 | Restart/races at phase/gate/reward/WorldCore boundaries | journal + receipts | `test_end_rift_cold_restart_boundary_matrix.py` (15 boundary assertions: bootstrap rehydration, per-wave restore dispatch, gate snapshot recovery, reward idempotency, WorldCore unlock, stale-callback rejection, recovery-required fail-closed) | IMPLEMENTED_UNVERIFIED (cold-restart matrix automated 2026-11-27; native cold-restart timing BLOCKED) |
+| V7-27 | Load: 2/5/10/11/20 + dungeon 32+, MSPT/client/packets, no leaks | `scripts/minecraft/EndRiftSyntheticLoadHarness.py` + `EndRiftSpellLoadReport.py` | `test_end_rift_synthetic_load_harness.py` (8 tests: reads real `stride()`/`MAX_VIEWERS`/`MAX_POINTS`, O(casts) candidate vs O(points·viewers) baseline, complete 2/5/10/11/20 ladder, honest `SYNTHETIC_MODEL`/native `BLOCKED` labeling, report integration) | SYNTHETIC_MODEL (deterministic 99.2–99.96% packet reduction at 2/5/10/11/20; native MSPT/bytes/GPU profiling BLOCKED) |
 | V7-28 | Assets/release: active sources, real hashes, CI at final SHA, no old sphere/camera/Echo bar | build + CI | validators, `RunEndRiftEventChecks.ps1` | IMPLEMENTED_UNVERIFIED (CI P0 encoding resolved; native visual BLOCKED) |
 
 ## Deployment (2026-11-27, commit `269506a9`)
@@ -354,5 +354,14 @@ contains `BossCopyCooperationPolicy`, `RageEchoSummonPolicy` and
   environment; the owner playtest is the native/visual acceptance path.
 - Underground site plan / production-world mutation: BLOCKED without an approved
   location-bound plan.
-- V7-27 load profiling and V7-15 Wave7 V4 asset integration: BLOCKED (no native
-  client; ZIP content not extractable in this environment).
+- V7-15 Wave7 V4 asset integration: BLOCKED (no native client; the
+  `CopiMine_Wave7_V4.zip` content is not present anywhere on this workstation and
+  cannot be extracted to author/verify the models, textures or bars).
+- V7-27 native load profiling: BLOCKED (no real 2/5/10/11/20-player Paper +
+  Fabric session). The deterministic model lives at
+  `scripts/minecraft/EndRiftSyntheticLoadHarness.py`, emits
+  `docs/end-rift/final-26.3/SYNTHETIC_LOAD_PROFILE.json` and shows a 99.2–99.96%
+  packet reduction, but **is not** a native benchmark. Run the commands in
+  `native_upgrade_commands` to upgrade it to MEASURED.
+- V7-26 native cold-restart timing: BLOCKED (no live server with RCON). The
+  automated boundary matrix is `tests/test_end_rift_cold_restart_boundary_matrix.py`.

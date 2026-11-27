@@ -1,0 +1,72 @@
+{
+  "evidence_kind": "SYNTHETIC_MODEL",
+  "model_inputs": {
+    "max_points": 96,
+    "max_viewers": 32,
+    "stride_table": {
+      "far_squared": 784,
+      "far_stride": 4,
+      "mid_squared": 196,
+      "mid_stride": 2,
+      "mid_viewers": 10
+    }
+  },
+  "native_blocked_reason": "No graphical Minecraft 26.3 client / real Paper load in this agent environment.  The model is deterministic and reads the shipped stride()/MAX_VIEWERS/MAX_POINTS, but it is not a native benchmark.",
+  "native_measurement": "BLOCKED",
+  "native_upgrade_commands": [
+    "Start Paper 26.3 with the deployed CopiMineEndEvent jar and 2 real Fabric clients.",
+    "Run /cmend boss spawn then cause continuous combat for 120 s.",
+    "Capture latest.log; the plugin emits END_EVENT_RUNTIME_DIAGNOSTICS every 500 ms.",
+    "py -3 scripts/minecraft/EndRiftSpellLoadReport.py latest.log --json",
+    "Repeat at 5/10/11/20 players and with spark profiler for MSPT/bytes-per-second."
+  ],
+  "not_captured": [
+    "real bytes_per_second (Netty/plugin channel)",
+    "real mspt (spark profile)",
+    "real packet queue depth",
+    "real client gpu frame time / FPS"
+  ],
+  "rungs": [
+    {
+      "baseline_particle_packets_sec": 345.6,
+      "candidate_particle_packets_sec": 2.7,
+      "casts_per_second": 0.6,
+      "players": 2,
+      "points_per_cast": 48,
+      "reduction_percent": 99.22
+    },
+    {
+      "baseline_particle_packets_sec": 1836.0,
+      "candidate_particle_packets_sec": 3.82,
+      "casts_per_second": 0.85,
+      "players": 5,
+      "points_per_cast": 72,
+      "reduction_percent": 99.79
+    },
+    {
+      "baseline_particle_packets_sec": 6336.0,
+      "candidate_particle_packets_sec": 4.95,
+      "casts_per_second": 1.1,
+      "players": 10,
+      "points_per_cast": 96,
+      "reduction_percent": 99.92
+    },
+    {
+      "baseline_particle_packets_sec": 8553.6,
+      "candidate_particle_packets_sec": 6.08,
+      "casts_per_second": 1.35,
+      "players": 11,
+      "points_per_cast": 96,
+      "reduction_percent": 99.93
+    },
+    {
+      "baseline_particle_packets_sec": 15552.0,
+      "candidate_particle_packets_sec": 6.08,
+      "casts_per_second": 1.35,
+      "players": 20,
+      "points_per_cast": 96,
+      "reduction_percent": 99.96
+    }
+  ],
+  "schemaVersion": 1
+}

@@ -40562,6 +40562,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             Location start = impact.clone().add(0, 6.5D + (i % 3) * .65D, 0);
             if (!start.getBlock().isPassable()) continue;
             Arrow arrow = start.getWorld().spawnArrow(start, new Vector(0, -1, 0), 1.15F, 0);
+            arrow.setVisibleByDefault(true);
             if (!arrow.isValid()) continue;
             arrow.setShooter(shooter);
             arrow.setPersistent(false);

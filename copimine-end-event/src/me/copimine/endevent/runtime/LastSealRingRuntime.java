@@ -30,6 +30,9 @@ public final class LastSealRingRuntime {
         void finished(Scope scope, String reason);
         void failed(String reason);
         default void repelPrelude(Location origin, double progress, boolean release) { }
+        default boolean contactAllowed(Location ringPoint, Player player) { return true; }
+        default double liftSpeed(Player player) { return .98D; }
+        default void present(Location origin, KaguneRingFrame frame, boolean entered) { }
         default double combatRadius(Location origin) {
             return KaguneRingGapPolicy.ROW_EMERGE_RADIUS[0] + KaguneRingGapPolicy.ROW_TRAVEL_BLOCKS;
         }
@@ -50,6 +53,7 @@ public final class LastSealRingRuntime {
     private boolean repelled;
     private double travelBlocks;
     private int travelTicks, rowTicks;
+    private int previousRow = -1, previousStage = -1;
 
     public LastSealRingRuntime(Host host) { this.host = Objects.requireNonNull(host); }
     public boolean active() { return active; }
@@ -111,6 +115,7 @@ public final class LastSealRingRuntime {
         if (scope == null || scope.event() == null || scope.event().isBlank() || scope.generation() <= 0) return false;
         origin = at.clone(); layout = planned; startedTick = tick; lastTick = Long.MIN_VALUE;
         hitPlayers.clear(); previousPlayers.clear(); preludeTick = -1L; repelled = false;
+        previousRow = -1; previousStage = -1;
         try {
             carrier = host.createCarrier(origin.clone());
             if (carrier == null || !carrier.isValid()) throw new IllegalStateException("carrier-refused");
@@ -156,6 +161,9 @@ public final class LastSealRingRuntime {
         try {
             // Publish first. A failed frame cannot deal invisible damage.
             host.publish(carrier, frame);
+            host.present(origin, frame, previousRow != frame.row() || previousStage != frame.stage());
+            previousRow = frame.row();
+            previousStage = frame.stage();
             for (Player player : host.participants()) {
                 if (!active || !host.active(boss) || !Objects.equals(scope, host.scope(boss))) {
                     cancel("owner-changed-during-contact"); return;
@@ -168,6 +176,11 @@ public final class LastSealRingRuntime {
                 if (!frame.contacts(before.getX()-origin.getX(),before.getY()-origin.getY(),before.getZ()-origin.getZ(),
                         at.getX()-origin.getX(),at.getY()-origin.getY(),at.getZ()-origin.getZ(),
                         player.getWidth()/2D,player.getHeight())) continue;
+                double angle = Math.atan2(at.getZ() - origin.getZ(), at.getX() - origin.getX());
+                double radius = Math.clamp(Math.hypot(at.getX() - origin.getX(), at.getZ() - origin.getZ()),
+                        frame.previousRadius(), frame.radius());
+                Location ringPoint = origin.clone().add(Math.cos(angle) * radius, 0D, Math.sin(angle) * radius);
+                if (!host.contactAllowed(ringPoint, player)) continue;
                 hitPlayers.add(player.getUniqueId());
                 if (!host.hit(boss, player, KaguneGuardianFightPolicy.BASE_STRIKE_DAMAGE)) {
                     hitPlayers.remove(player.getUniqueId()); continue;
@@ -175,11 +188,13 @@ public final class LastSealRingRuntime {
                 if (!active || !host.active(boss) || !Objects.equals(scope, host.scope(boss))) {
                     cancel("owner-changed-after-contact"); return;
                 }
-                // About five blocks vertically under vanilla gravity; no horizontal fling into walls.
+                double lift = host.liftSpeed(player);
+                if (lift <= 0D) continue;
                 safeFalls.put(player.getUniqueId(), new FallLease(player.getWorld().getUID(),
                         scope.generation(), System.nanoTime() + 6_000_000_000L));
                 player.setFallDistance(0F);
-                player.setVelocity(new Vector(0D, .98D, 0D));
+                Vector velocity = player.getVelocity();
+                player.setVelocity(velocity.setY(lift));
             }
         } catch (RuntimeException failure) { cancel("frame-failed"); host.failed(failure.getMessage()); }
     }

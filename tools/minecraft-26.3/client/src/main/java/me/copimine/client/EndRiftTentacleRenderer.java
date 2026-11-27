@@ -323,6 +323,15 @@ public final class EndRiftTentacleRenderer {
                             alpha << 24 | 0x8e3ee0, 0x00dfc8ff};
                     SpellVisualRenderer.tube(buffer, matrices.last(), centers,
                             List.of(.035F, .08F, .045F, .01F), colors, section);
+                    if (frame.stage() != KaguneRingFrame.TRAVEL || (i / stride) % 3 != 0) continue;
+                    // Curved trailing spines stay behind the solid front and out of its gaps.
+                    Vec3[] wake = {root.add(-x * 1.12D, .025D, -z * 1.12D),
+                            root.add(-x * .67D - z * .13D, .13D, -z * .67D + x * .13D),
+                            root.add(-x * .3D - z * .23D, .42D, -z * .3D + x * .23D),
+                            root.add(0, .66D, 0)};
+                    int[] wakeColors = {0x00432163, 0x694872ec, 0xc88c54f5, 0x20dcaaff};
+                    SpellVisualRenderer.tube(buffer, matrices.last(), wake,
+                            List.of(.018F, .066F, .085F, .02F), wakeColors, section);
                 }
             });
         }

@@ -131,11 +131,12 @@ public final class SpellVisualRenderer {
         int nodes = 2 * tier.samples();
         int vertices = (nodes + 1) * section.length * 4;
         double visibility = Math.min(1, remaining / 100.0);
+        boolean cocoon = "cocoon_beam".equals(cast.spellId());
         boolean charging = cast.stage() == 0;
         boolean cooling = cast.stage() == 2;
         double cool = 1D - Math.min(1D, elapsed / 720D);
         double clock = reducedMotion ? 0 : elapsed * 0.009;
-        int passes = charging ? 2 : cooling ? 2 : 5;
+        int passes = charging || cooling ? 2 : cocoon ? 7 : 5;
         int count = 0;
         if (charging) {
             count += drawCollar(pose, buffer, origin, normal, binormal, lane.radius(), 0.035F,
@@ -153,6 +154,18 @@ public final class SpellVisualRenderer {
                 }
             }
         }
+        if (cocoon && !charging && !cooling) {
+            // Pressure rings travel back into the chest while the finite beam ends at real cover.
+            int rings = tier == SpellVisualGeometry.Quality.REDUCED ? 3 : 7;
+            double drift = reducedMotion ? .35D : elapsed / 1_250D;
+            for (int ring = 0; ring < rings && budget - count - vertices >= section.length * 8; ring++) {
+                double t = 1D - ((ring + .5D) / rings + drift) % 1D;
+                Vec3 point = origin.add(forward.scale(lane.length() * t));
+                int alpha = (int) (150 * visibility * Math.sin(Math.PI * t));
+                count += drawCollar(pose, buffer, point, normal, binormal, lane.radius() * (.64D + .32D * t),
+                        .065F, alpha << 24 | 0xddaaff, section, budget - count);
+            }
+        }
         for (int pass = 0; pass < passes && count + vertices <= budget; pass++) {
             var path = new Vec3[nodes];
             var radii = new java.util.ArrayList<Float>(nodes);
@@ -160,7 +173,8 @@ public final class SpellVisualRenderer {
             for (int i = 0; i < nodes; i++) {
                 double t = i / (double) (nodes - 1);
                 double edge = 0.2 + 0.8 * Math.sin(Math.PI * Math.pow(t, 0.55));
-                double angle = t * (pass == 4 ? 29 : 14) - clock * (pass == 3 ? -1 : 1) + pass * 2.0944;
+                double angle = t * (cocoon ? 18 + (pass % 3) * 9 : pass == 4 ? 29 : 14)
+                        - clock * ((cocoon ? pass % 2 == 1 : pass == 3) ? -1 : 1) + pass * 2.0944;
                 double offset = pass < 2 ? 0 : lane.radius() * (0.43 + 0.32 * edge);
                 path[i] = origin.add(forward.scale(lane.length() * t))
                         .add(normal.scale(offset * Math.cos(angle))).add(binormal.scale(offset * Math.sin(angle)));
@@ -174,7 +188,13 @@ public final class SpellVisualRenderer {
                 int alpha = (int) ((pass == 0 ? 243 : pass == 1 ? 82 : 182) * visibility * flow);
                 if (charging) alpha /= 2;
                 if (cooling) alpha = (int) (alpha * cool * .55);
-                int color = pass == 0 ? 0xffefed : pass == 1 ? 0x9e32f4 : pass == 3 ? 0xd7bdff : 0xff7ad9;
+                int color = cocoon ? switch (pass) {
+                    case 0 -> 0xfff7f2;
+                    case 1 -> 0x722edb;
+                    case 2, 5 -> 0xf9a6ff;
+                    case 3 -> 0x6f8aff;
+                    default -> 0xc071ff;
+                } : pass == 0 ? 0xffefed : pass == 1 ? 0x9e32f4 : pass == 3 ? 0xd7bdff : 0xff7ad9;
                 colors[i] = alpha << 24 | color;
             }
             count += tube(buffer, pose, path, radii, colors, section);

@@ -57,6 +57,7 @@ public final class SpellVisualGeometry {
             if (candidate == null) {
                 return null;
             }
+            if ("cocoon_beam".equals(candidate)) return BEAM;
             for (Spell spell : values()) {
                 if (spell.token.equals(candidate)) {
                     return spell;

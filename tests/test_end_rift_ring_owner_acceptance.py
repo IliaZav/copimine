@@ -13,7 +13,7 @@ STUBS = {
  public Location clone(){return new Location(w,x,y,z);} public Location add(double x,double y,double z){this.x+=x;this.y+=y;this.z+=z;return this;}
  public double distanceSquared(Location p){return (x-p.x)*(x-p.x)+(y-p.y)*(y-p.y)+(z-p.z)*(z-p.z);}}
  ''',
- 'org/bukkit/util/Vector.java': 'package org.bukkit.util; public record Vector(double x,double y,double z){}',
+ 'org/bukkit/util/Vector.java': 'package org.bukkit.util; public record Vector(double x,double y,double z){public Vector setY(double value){return new Vector(x,value,z);}}',
  'org/bukkit/entity/LivingEntity.java': '''package org.bukkit.entity; public class LivingEntity {
  public org.bukkit.Location at; public boolean valid=true; public LivingEntity(org.bukkit.Location p){at=p;}
  public double getWidth(){return 0.6d;} public double getHeight(){return 1.8d;}
@@ -23,6 +23,7 @@ STUBS = {
  'org/bukkit/entity/Player.java': '''package org.bukkit.entity; public class Player extends LivingEntity {
  public org.bukkit.util.Vector launched; public Player(org.bukkit.Location p){super(p);} public boolean isOnline(){return true;}
  public org.bukkit.World getWorld(){return at.getWorld();} public void setFallDistance(float f){}
+ public org.bukkit.util.Vector getVelocity(){return new org.bukkit.util.Vector(.25,0,-.15);}
  public void setVelocity(org.bukkit.util.Vector v){launched=v;}}'''
 }
 
@@ -43,6 +44,8 @@ public class RingRuntimeProbe implements LastSealRingRuntime.Host {
  public Location floorOrigin(LivingEntity b){return b.getLocation();}
  public List<Player> participants(){return List.of(player);}
  public boolean traversable(Location p){return true;}
+ public boolean contactAllowed(Location p,Player player){return !mode.equals("cover");}
+ public double liftSpeed(Player player){return mode.equals("low-ceiling")?0:.98;}
  public ItemDisplay createCarrier(Location p){return carrier=new ItemDisplay(p);}
  public void publish(ItemDisplay d,KaguneRingFrame f){
   frame=f;var old=frozen.putIfAbsent(f.row(),f.gaps());
@@ -80,10 +83,14 @@ public class RingRuntimeProbe implements LastSealRingRuntime.Host {
   h.boss.at.x=40;
   for(int t=0;t<=LastSealRingRuntime.CAST_TICKS;t++){r.tick(h.boss,t);r.tick(h.boss,t);}
   check(!r.active()&&!h.carrier.valid&&h.finishes==1,"cast did not retire exactly once");
-  if(mode.equals("gap")||mode.equals("publish"))check(h.hits==0,"gap/failed frame caused damage");
+  if(mode.equals("gap")||mode.equals("publish")||mode.equals("cover"))check(h.hits==0,"gap, cover or failed frame caused damage");
+  else if(mode.equals("low-ceiling")) {
+   check(h.hits==1&&h.player.launched==null&&!r.consumeFall(h.player,7),"no ceiling clearance should refuse only the lift");
+  }
   else {
    check(h.hits==1,"row missed or repeated damage: "+h.hits);
    check(h.player.launched!=null&&Math.abs(h.player.launched.y()-.98)<.0001,"launch was missing or not bounded vertically");
+   check(h.player.launched.x()==.25&&h.player.launched.z()==-.15,"lift discarded lateral movement");
    check(r.consumeFall(h.player,7)&&!r.consumeFall(h.player,7),"fall lease was lost or repeated");
   }
   if(mode.equals("cancelled"))check(h.attempts==2,"cancelled hit consumed the cast receipt");
@@ -115,6 +122,6 @@ def run_ring(out,mode,row=0,party=2):
 def test_each_real_row_contacts_only_after_its_visible_emergence(ring_runtime,row,party):
     run_ring(ring_runtime,'row',row,party)
 
-@pytest.mark.parametrize('mode',['all','cancelled','gap','owner','publish','cleanup','sweep'])
+@pytest.mark.parametrize('mode',['all','cancelled','gap','owner','publish','cleanup','sweep','cover','low-ceiling'])
 def test_cast_receipts_motion_gaps_and_cancellation(ring_runtime,mode):
     run_ring(ring_runtime,mode)

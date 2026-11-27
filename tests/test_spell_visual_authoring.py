@@ -389,7 +389,7 @@ def test_the_miniboss_body_lease_is_keyed_to_the_miniboss():
     assert "playMiniBossSpellModel(" in cast
     assert "playBossSpellModel(" not in cast
 
-    lease = _method(event, "private void playCasterSpellBody(")
+    lease = _method(event, "private void playCasterSpellBody(LivingEntity caster, BossSpellGeometryPolicy.Shape shape,\n            String label, Location at, int ticks, java.util.function.BooleanSupplier active)")
     for guardian_key in ("bossUuid", "bossCastSequence"):
         assert guardian_key not in lease, (
             f"the miniboss lease must not depend on {guardian_key}")

@@ -9,7 +9,7 @@ ROOT=Path(__file__).resolve().parents[1]
 def model_probe(tmp_path_factory):
     out=tmp_path_factory.mktemp("boss-model-life")
     source=(ROOT/'copimine-end-event/src/me/copimine/endevent/CopiMineEndEvent.java').read_text(encoding='utf-8')
-    methods='\n'.join(declaration(source,s) for s in ['private void playBossSpellModel(', 'private void removeBossSpellModel(', 'private void clearBossSpellModels(', 'private ItemDisplay spawnSpellModelDisplay(', 'private void playMiniBossSpellModel(', 'private void playCasterSpellBody(', 'private void removeMiniBossSpellModel(', 'private void clearMiniBossSpellModels('])
+    methods='\n'.join(declaration(source,s) for s in ['private void playBossSpellModel(', 'private void removeBossSpellModel(', 'private void clearBossSpellModels(', 'private ItemDisplay spawnSpellModelDisplay(', 'private void playMiniBossSpellModel(', 'private void playCasterSpellBody(LivingEntity caster, BossSpellGeometryPolicy.Shape shape,\n            String label, Location at, int ticks) {', 'private void playCasterSpellBody(LivingEntity caster, BossSpellGeometryPolicy.Shape shape,\n            String label, Location at, int ticks, java.util.function.BooleanSupplier active)', 'private void removeMiniBossSpellModel(', 'private void clearMiniBossSpellModels('])
     boss_shape = source.index("private void playBossSpellModel(")
     methods += "\n" + declaration(source[boss_shape + 1:], "private void playBossSpellModel(")
     methods += "\n" + declaration(source, "private ItemDisplay spawnSpellModelDisplay(Location at, int modelData, int")
@@ -114,7 +114,7 @@ public class SpellModelProbe {
  void runMiniBossScenario(String scenario){
   playMiniBossSpellModel(boss,"rift_step",new Location(),20);
   check(WORLD.created.size()==1,"miniboss cast spawned no body");
-  check(WORLD.created.get(0).stack.meta.parameters.equals(List.of(830212F,20F,0F)),
+  check(WORLD.created.get(0).stack.meta.parameters.equals(List.of(830225F,20F,0F)),
       "miniboss body must carry its own compact effect preset and duration");
   check(owned.size()==1,"miniboss body was never owned");
   check(miniBossSpellModelIds.size()==1,"miniboss body missing from its own index");

@@ -18,8 +18,10 @@ def visual_probe(tmp_path_factory):
     folder = tmp_path_factory.mktemp("ram-actual-visual-builders")
     source = RUNTIME.read_text("utf-8")
     gate = extract(source, "void advance()")
-    # Execute the complete production admission before independent AI decisions.
-    gate = gate[:gate.index("        List<Player> players=")] + "\n    }"
+    # Execute the complete production admission (armour + physical pillar) before
+    # the AI switch that needs live Player bodies. The merged tick drains the
+    # durable swarm first, so the cut moves to the second skeleton tick.
+    gate = gate[:gate.index("        tickPillarSkeleton(players);")] + "\n    }"
     methods = "\n".join(extract(source, signature) for signature in (
         "void createArmor()", "void addArmor(", "boolean buildPillar()",
     )) + gate
@@ -50,7 +52,8 @@ public class RamVisualAdmissionProbe {
     static class Ravager {Location at;Ravager(World w){at=new Location(w);}
         boolean isValid(){return true;}boolean isDead(){return false;}
         Location getLocation(){return at;}}
-    static class Host {boolean inArena(Location l){return true;}List<Object> players(){return List.of();}
+    static class Player {}
+    static class Host {boolean inArena(Location l){return true;}List<Player> players(){return List.of();}
         // The pillar collider is host-owned and journaled; the probe only has to
         // answer the callback. The runtime still refuses when it returns false.
         boolean placePillarCollider(Location centre,int halfWidth,int height){return true;}
@@ -62,8 +65,9 @@ public class RamVisualAdmissionProbe {
     // Resting placements of the live shells, recorded by buildPillar() so the
     // crack animation can restore the authored pose.
     final Map<UUID,Location> pillarRestPositions=new HashMap<>();
-    boolean pillarSkeletonSpawned, pillarSkeletonDefeated, ramDefeated;
-    void tickPillarSkeleton(List<Object> players){}
+    boolean closed,completed,pillarSkeletonSpawned, pillarSkeletonDefeated, ramDefeated;
+    void tickSwarms(List<Player> players){}
+    void tickPillarSkeleton(List<Player> players){}
     // Presentation seam: the pose packet the tick publishes on a cadence.
     void publishPose(){}
     String failure;

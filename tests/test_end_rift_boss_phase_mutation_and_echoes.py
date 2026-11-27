@@ -34,7 +34,7 @@ SCOPE = DOMAIN / "BossPhase.java"
 
 # (probe class, policy sources it needs)
 PROBES = (
-    ("RiftFractureEruptionPolicyTest", ("RiftFractureEruptionPolicy.java",)),
+    ("RiftFractureEruptionPolicyTest", ("RiftFractureEruptionPolicy.java", "RiftGeyserWave.java")),
     ("InfernoArenaLifecyclePolicyTest", ("InfernoArenaLifecyclePolicy.java",)),
     # The replica policy now retimes the family keyframe through the shared
     # authored-to-combat mapping and reads its contact geometry from

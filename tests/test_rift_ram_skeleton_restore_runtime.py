@@ -52,12 +52,14 @@ public class RamSkeletonRestoreProbe {
         // The pillar collider is a host-owned, journaled barrier volume.
         int collidersPlaced;boolean placePillarCollider(Location centre,int halfWidth,int height){collidersPlaced++;return true;}
         boolean clearPillarCollider(){return true;}
+        int scalePlayers(){return 1;}
     }
     final Host host=new Host();Ravager ram;UUID persistentId,pillarId,pillarSkeletonId;
     Skeleton pillarSkeleton;Location pillar;Action action;
     int impacts,tick,actionTick,lastCharge,lastStomp,nextPillarTick,pillarImpacts,newSkeletons,armourBuilds;
     int skeletonLastTriple=-1,skeletonLastBone=-1,skeletonLastMove=-1,skeletonStep;
     boolean completed,closed,skeletonFallen,pillarSkeletonSpawned,pillarSkeletonDefeated,ramDefeated;
+    int scalePlayers;
     String failure;final List<BlockDisplay> pillarDisplays=new ArrayList<>();
     // Resting placements of the live pillar shells, recorded by buildPillar() so
     // the crack animation can restore the exact authored pose.
@@ -75,6 +77,9 @@ public class RamSkeletonRestoreProbe {
         pillarSkeletonSpawned=true;Bukkit.actors.put(pillarSkeletonId,pillarSkeleton);
     }
     boolean skeletonAlive(){return pillarSkeleton!=null&&pillarSkeleton.valid&&!pillarSkeleton.dead;}
+    // Swarm restoration is exercised by its own probe; the guard-adoption
+    // contract only needs a legitimately empty swarm ledger here.
+    void restoreSwarmReleases(Map<String,String> data,World world){}
 ''' + methods + r'''
     static void check(boolean value,String message){if(!value)throw new AssertionError(message);}
     public static void main(String[] args){

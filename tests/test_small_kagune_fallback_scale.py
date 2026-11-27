@@ -29,6 +29,7 @@ public class SmallCarrierScaleProbe {
     final float TENTACLE_FALLBACK_CENTER=3,TENTACLE_FALLBACK_SCALE=6;
     long eventTickCounter=1;
     void renderTentaclePulse(Object location){ }
+    void renderTentacleEmergence(ItemDisplay display, TentacleController.VisualState state, float scale){ }
 ''' + method + r'''
     static void close(float value,float wanted){
         if(Math.abs(value-wanted)>0.0001f) throw new AssertionError(value+" != "+wanted);

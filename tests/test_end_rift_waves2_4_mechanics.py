@@ -284,7 +284,12 @@ public final class Waves24MechanicsHarness {
     void clearWaveCombatCue(UUID owner) {}
     int countLiveWaveEntitiesForWave(int wave) { return wave == 2 ? liveWaveEntitiesForWave2 : 0; }
     // The real method warns FIRST and books the group on a LATER call, so a
-    void tickWaveTwoIntroPresentation(long now){}
+    void tickWaveTwoIntroPresentation(){}
+    // The merged tick gates the first booking on the intro actually playing;
+    // this harness drives booking through finishPhantomWarning() instead, so the
+    // ready gate is answered true once no warning is outstanding.
+    boolean waveTwoIntroReady(){ return waveSpawnGroupIndex > 0 || !phantomWarningOutstanding; }
+    long waveTwoIntroAgeMillis(){ return 0L; }
     // stub that answers a flat false leaves waveSpawnGroupIndex frozen at 0
     // and no wave 2 subwave can ever be booked. Model both halves instead:
     // the first call starts the warning and reports \"started\", and every
@@ -1086,6 +1091,14 @@ public final class WaveTwoEntityLoadHarness {
     Map<UUID, Set<UUID>> waveTwoHiddenEntitiesByViewer = new LinkedHashMap<>();
     Map<UUID,Entity> ownedEntities = new LinkedHashMap<>();
     Map<UUID,Long> ritualConvertedMobUntilMillis = new HashMap<>();
+    // Wave 6 hands a reloaded swarm member back to the durable ram: the real
+    // onPersistedCombatEntitiesLoad calls this pair, so the harness carries it.
+    Map<String,String> riftRamCheckpoint = Map.of();
+    static final class RiftRamReloadStub {
+        int adopted;
+        void adoptReloadedSwarm(Entity entity, Map<String,String> checkpoint) { adopted++; }
+    }
+    RiftRamReloadStub riftRam;
     boolean ritualWaveActive() { return activeWave == 6 && phase == EventPhase.WAVE_6; }
     void removeRitualEntity(UUID id) {
         unregisterOwnedEntity(id, "ritual-entity-cleanup");

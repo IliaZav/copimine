@@ -71,6 +71,8 @@ public class DungeonCommandProbe {
 
         Rig() {
             dispatcher.setPublicationGateway((id, enable) -> check(id.equals("rose"), "wrong publication owner"));
+            dispatcher.setPlaytestGateway((actor, roomId, solo) ->
+                    CommandResponse.ok("playtest " + roomId + (solo ? " solo" : " party")));
             EditorSession session = sessions.open(BUILDER, "Builder");
             session.setWorld("world");
             session.setCorner1(1, 2, 3);

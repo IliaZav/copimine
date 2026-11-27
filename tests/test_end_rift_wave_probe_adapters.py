@@ -202,6 +202,9 @@ public final class WaveProbeAdapterHarness {
     Location coreCombatAnchorLocation() { return new Location(Bukkit.world, true); }
     boolean isArenaLocation(Location location) { return location.inArena; }
     boolean isInsideOwnedPrisonerAnchor(Player player) { return false; }
+    // Production admission excludes the permanent rest area (the protected safe
+    // zone). This fixture has no configured safe zone, so no probe seat is one.
+    boolean isPermanentRestArea(Location location) { return false; }
     boolean isOfficialAttemptActive() { return officialActive; }
     boolean isOfficialCurrentAttempt() { return officialCurrent; }
     boolean isOfficialAttempt() { return officialAttempt; }

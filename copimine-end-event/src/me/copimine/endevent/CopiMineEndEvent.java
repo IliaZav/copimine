@@ -1274,7 +1274,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private long currentCarrierVisualRefreshMillis;
     /** Player currently loading a charge into the Core, and since when. */
     private UUID coreChargeHoldPlayer;
-    private long coreChargeHoldStartTick;
+    private long coreChargeHoldStartedMillis;
     private int coreChargeHoldLastSegment = -1;
     private int currentHuntCycles;
     /** Durable checkpoint retained while a Wave 2 identity exhaustion awaits admin recovery. */
@@ -2164,6 +2164,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * shot does not fire a second one.
      */
     private boolean arenaMergeRevealOwnsAscension;
+    /**
+     * Exactly-once guard for the physical square→round reveal during the
+     * directed merge scene. The commit happens at the wall-collapse shot, and
+     * this latch makes it idempotent even if a shot is re-delivered.
+     */
+    private final java.util.concurrent.atomic.AtomicBoolean revealCommitted
+            = new java.util.concurrent.atomic.AtomicBoolean();
+    /**
+     * True while an official boss still owes the physical reveal at the
+     * wall-collapse shot of the running merge scene.
+     */
+    private boolean arenaMergeRevealPending;
     private BukkitTask waveFrontVisualTask;
     private BukkitTask portalVisualTask;
     private BukkitTask diagnosticsWatchdogTask;
@@ -8707,6 +8719,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private boolean startLastSealArenaReveal(LivingEntity boss) {
         return startLastSealArenaReveal(boss, false);
+    }
+
+    /**
+     * Cheap, side-effect-free pre-check used by the merge scene so an official
+     * LAST_SEAL can fail closed before the 12–16 s cinematic when no approved
+     * plan is even configured. The full block-level validation still happens
+     * when the physical reveal is committed at the wall-collapse shot.
+     */
+    private boolean officialLastSealPlanReady() {
+        String approved = getConfig().getString("last-seal-reveal.approved-plan-sha256", "");
+        return lastSealArena != null && lastSealArena.configured() && !approved.isBlank();
     }
 
     private boolean startLastSealArenaReveal(LivingEntity boss, boolean demo) {
@@ -17857,7 +17880,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         coreChargeHoldPlayer = id;
-        coreChargeHoldStartTick = eventTickCounter;
+        coreChargeHoldStartedMillis = System.currentTimeMillis();
         coreChargeHoldLastSegment = -1;
         player.playSound(player.getLocation(), Sound.BLOCK_BEACON_ACTIVATE, 0.55F, 1.4F);
         renderCoreChargeHoldRing(player, 0);
@@ -17869,7 +17892,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         coreChargeHoldPlayer = null;
-        coreChargeHoldStartTick = 0L;
+        coreChargeHoldStartedMillis = 0L;
         coreChargeHoldLastSegment = -1;
         Player player = Bukkit.getPlayer(id);
         if (player != null && player.isOnline()) {
@@ -18181,10 +18204,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * stepped-away player never loses a delivery to a timer.</p>
      */
     private long coreChargeHoldElapsedMillis() {
-        return Math.max(0L, eventTickCounter - coreChargeHoldStartTick) * 50L;
+        return Math.max(0L, System.currentTimeMillis() - coreChargeHoldStartedMillis);
     }
 
-    private void tickCoreChargeHold() {
+    private void tickCoreChargeHold(long now) {
         UUID id = coreChargeHoldPlayer;
         if (id == null) {
             return;
@@ -18200,8 +18223,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             cancelCoreChargeHold(id, "holder-changed");
             return;
         }
-        if (!isActiveArenaParticipant(player) || !hasCurrentCarrierInventoryCharge(player)) {
-            cancelCoreChargeHold(id, "carrier-unavailable");
+        if (!hasCurrentCarrierInventoryCharge(player)) {
+            cancelCoreChargeHold(id, "charge-missing");
             return;
         }
         Location core = coreCombatAnchorLocation();
@@ -18217,13 +18240,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             cancelCoreChargeHold(id, "released");
             return;
         }
-        long elapsed = coreChargeHoldElapsedMillis();
+        long elapsed = Math.max(0L, now - coreChargeHoldStartedMillis);
         if (elapsed >= CORE_CHARGE_HOLD_MILLIS) {
             // Clear the hold BEFORE delivering: deliverCurrentCarrierCharge
             // re-enters the state machine, and a stale hold id would try to
             // cancel an attempt that has just succeeded.
             coreChargeHoldPlayer = null;
-            coreChargeHoldStartTick = 0L;
+            coreChargeHoldStartedMillis = 0L;
             coreChargeHoldLastSegment = -1;
             player.clearActiveItem();
             player.sendActionBar(Component.text("Ядро принимает заряд…", NamedTextColor.AQUA));
@@ -18257,8 +18280,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private boolean isCarrierPresentingCharge(Player holder) {
-        return holder.hasActiveItem()
-                && isCurrentCarrierInventoryChargeItem(holder, holder.getActiveItem());
+        if (holder == null || !holder.isOnline()) return false;
+        ItemStack main = holder.getInventory().getItemInMainHand();
+        if (main != null && main.getAmount() == 1 && isCurrentCarrierInventoryChargeItem(holder, main)) {
+            return true;
+        }
+        ItemStack off = holder.getInventory().getItemInOffHand();
+        return off != null && off.getAmount() == 1 && isCurrentCarrierInventoryChargeItem(holder, off);
     }
 
     private boolean isCurrentCarrierInventoryChargeItem(Player holder, ItemStack stack) {
@@ -22997,8 +23025,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             else startCurrentLastSealVisuals(boss);
             return;
         }
-        arenaMergeRevealOwnsAscension = isOfficialBoss(boss) && startLastSealArenaReveal(boss);
-        if (isOfficialBoss(boss) && !arenaMergeRevealOwnsAscension) {
+        arenaMergeRevealOwnsAscension = false;
+        revealCommitted.set(false);
+        arenaMergeRevealPending = isOfficialBoss(boss);
+        if (isOfficialBoss(boss) && !officialLastSealPlanReady()) {
+            arenaMergeRevealPending = false;
             blockOfficialLastSeal(boss, "missing-or-invalid-approved-plan");
             return;
         }
@@ -23037,8 +23068,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         announceEventTitle("§5" + beat.title(), "§f" + beat.subtitle(), true);
         playArenaMergeCue(boss, beat);
         sendBossAnimationVisualUpdate(boss, beat.pose());
-        if (beat.shot() == ArenaMergeCinematicPolicy.Shot.WALL_COLLAPSE && !arenaMergeRevealOwnsAscension)
-            startCurrentLastSealVisuals(boss);
+        // The approved physical square→round reveal commits exactly once, at the
+        // wall-collapse shot: the arena visibly changes as the walls fall. The
+        // latch keeps the commit idempotent even if a shot is ever re-delivered.
+        if (beat.shot() == ArenaMergeCinematicPolicy.Shot.WALL_COLLAPSE) {
+            if (arenaMergeRevealPending && revealCommitted.compareAndSet(false, true)) {
+                arenaMergeRevealPending = false;
+                arenaMergeRevealOwnsAscension = startLastSealArenaReveal(boss);
+                if (!arenaMergeRevealOwnsAscension) {
+                    if (isOfficialBoss(boss)) blockOfficialLastSeal(boss, "missing-or-invalid-approved-plan");
+                    else startCurrentLastSealVisuals(boss);
+                }
+            }
+            if (!arenaMergeRevealOwnsAscension) startCurrentLastSealVisuals(boss);
+        }
         if (beat.shot() == ArenaMergeCinematicPolicy.Shot.LAST_SEAL_IGNITES
                 && !arenaMergeRevealOwnsAscension) {
             spawnLastSealAscensionBurst(boss);
@@ -30862,7 +30905,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             resolveWaveOneReinforcements(now);
             return;
         }
-        tickCoreChargeHold();
+        tickCoreChargeHold(now);
         boolean allGroupsSpawned = waveSpawnGroupIndex >= waveSpawnSchedule.size();
         if (currentCarrierState.phase() == RiftCarrierPolicy.Phase.CARRIER_ACTIVE) {
             Location fallback = currentCarrierChargeLocation == null
@@ -59703,22 +59746,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         Location bossAt = boss.getLocation().clone();
         Location copyAt = livingCopy.getLocation().clone();
-        if (!cooperationDestinationClear(boss, copyAt)
-                || !cooperationDestinationClear(livingCopy, bossAt)) {
+        if (!isFiniteLocation(bossAt) || !isFiniteLocation(copyAt)
+                || !isArenaLocation(bossAt) || !isArenaLocation(copyAt)
+                || !bossAt.getBlock().isPassable() || !copyAt.getBlock().isPassable()) {
             cancelBossCopyCooperation("mirror-route-refused");
             return;
         }
-        if (!teleportCombatEntity(boss, copyAt)) {
-            cancelBossCopyCooperation("mirror-boss-teleport-refused");
-            return;
-        }
-        if (!teleportCombatEntity(livingCopy, bossAt)) {
-            if (!teleportCombatEntity(boss, bossAt)) {
-                getLogger().warning("BOSS_COPY_MIRROR_ROLLBACK_REFUSED event=" + eventId + " generation=" + generation);
-            }
-            cancelBossCopyCooperation("mirror-copy-teleport-refused");
-            return;
-        }
+        boss.teleport(copyAt);
+        livingCopy.teleport(bossAt);
         for (Player viewer : eventAudience()) {
             viewer.spawnParticle(Particle.REVERSE_PORTAL,
                     bossAt.clone().add(0.0D, 1.0D, 0.0D), 32,
@@ -59787,6 +59822,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void executeCoordinatedSalvo(LivingEntity boss) {
+        int volley = bossCopyCooperationVolleyIndex++;
         List<LivingEntity> casters = new ArrayList<>();
         casters.add(boss);
         for (UUID copyId : bossCopyCooperationCopies) {
@@ -59795,7 +59831,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 casters.add(living);
             }
         }
-        Set<UUID> hits = new HashSet<>();
         for (LivingEntity caster : casters) {
             Location origin = bossCopyCooperationOrigins.get(caster.getUniqueId());
             Location aim = bossCopyCooperationAims.get(caster.getUniqueId());
@@ -59807,9 +59842,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (direction.lengthSquared() < 1.0E-4D) {
                 continue;
             }
-            double reach = Math.min(48D, direction.length() + 2D);
-            cooperationBolts.add(new CooperationBolt(caster.getUniqueId(), origin.clone(),
-                    direction.normalize(), reach, hits));
+            sweepCooperationDamage(caster, origin, direction, 1.35D, 9.0D,
+                    "coordinated_salvo-" + volley);
             for (Player viewer : eventAudience()) {
                 if (isEventParticleViewer(viewer, origin)) {
                     viewer.spawnParticle(Particle.ELECTRIC_SPARK, origin, 12,
@@ -64033,7 +64067,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (visualStage >= 0) {
                 var lane = spellLane(center, new Vector(0, 1, 0), (float) radius, (float) height);
                 List<Player> viewers = audience.stream().filter(viewer -> isEventParticleViewer(viewer, center)).toList();
-                spellCasts.publish(new me.copimine.endevent.runtime.SpellCastRuntime.CastKey(geyser.shape.cue(), seed, null),
+                spellCasts.publish(riftFractureCue(geyser.shape, seed),
                         eventId, generation, worldVfxDimension(center), center, List.of(lane), eventTickCounter,
                         16, visualStage, true, viewers, this::sendSpellCast);
                 if (entered && visualStage == 0) {
@@ -64105,6 +64139,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private static long geyserCueSeed(UUID fracture, int root) {
         return cueSeedFor(fracture) * 31L + root;
+    }
+
+    /**
+     * The rift fracture's eruption column is the client-authored ``geyser``
+     * cast; the square and super footprints reuse the same authored column
+     * geometry with the footprint's distinct token so the client can match the
+     * collision footprint. Every token here is one the client renderer knows,
+     * so a fracture never broadcasts a spectacle the player cannot see.
+     */
+    private static me.copimine.endevent.runtime.SpellCastRuntime.CastKey riftFractureCue(
+            RiftFractureEruptionPolicy.Footprint shape, long seed) {
+        return shape == RiftFractureEruptionPolicy.Footprint.ROUND
+                ? new me.copimine.endevent.runtime.SpellCastRuntime.CastKey("geyser", seed, null)
+                : new me.copimine.endevent.runtime.SpellCastRuntime.CastKey(shape.cue(), seed, null);
     }
 
     private void removeCurrentRiftFracture(RiftFractureRuntimeState state, String reason) {

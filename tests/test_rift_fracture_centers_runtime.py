@@ -5,6 +5,7 @@ from tests.test_wave_navigation_adapter import extract
 ROOT=Path(__file__).resolve().parents[1]
 def test_fracture_columns_follow_floor_cells_and_hit_once(tmp_path):
  source=(ROOT/"copimine-end-event/src/me/copimine/endevent/CopiMineEndEvent.java").read_text("utf-8")
+ geyser=extract(source,"static final class RiftGeyser")
  state=extract(source,"static final class RiftFractureRuntimeState")
  damage=extract(source,"void damageRiftFractureColumn(RiftFractureRuntimeState state,")
  java=tmp_path/"FractureCentersProbe.java"
@@ -16,6 +17,7 @@ public class FractureCentersProbe {
  static class Location {World world;double x,y,z;Location(World w,double x,double y,double z){world=w;this.x=x;this.y=y;this.z=z;}
   public Location clone(){return new Location(world,x,y,z);}World getWorld(){return world;}
   double getX(){return x;}double getY(){return y;}double getZ(){return z;}int getBlockY(){return (int)Math.floor(y);}
+  Location add(double dx,double dy,double dz){x+=dx;y+=dy;z+=dz;return this;}
   Vector toVector(){return new Vector(x,y,z);}}
  static class Vector {double x,y,z;Vector(double x,double y,double z){this.x=x;this.y=y;this.z=z;}
   Vector subtract(Vector v){x-=v.x;y-=v.y;z-=v.z;return this;}Vector setY(double v){y=v;return this;}
@@ -29,22 +31,25 @@ public class FractureCentersProbe {
  LivingEntity liveBoss(){return new LivingEntity();}
  boolean applyBossAbilityDamage(LivingEntity boss,Player player,double damage){if(player.reject)return false;player.damage(damage,boss);return true;}
  java.util.logging.Logger getLogger(){return java.util.logging.Logger.getAnonymousLogger();}
-'''+state+damage+r'''
+ static class HazardMutationJournal {}
+ boolean isArenaLocation(Location l){return true;}
+ boolean hasProjectileBlockLineOfSight(Location a,Location b){return true;}
+'''+geyser+state+damage+r'''
  static void check(boolean b,String m){if(!b)throw new AssertionError(m);}
  public static void main(String[] args){var p=new FractureCentersProbe();var w=new World();
   var cells=List.of(new RiftFractureEruptionPolicy.Cell(-8,3),new RiftFractureEruptionPolicy.Cell(8,-3));
   var originals=Map.of(new BlockCellKey(w.id,-8,64,3),"stone",new BlockCellKey(w.id,8,64,-3),"stone");
-  var stage=RiftFractureEruptionPolicy.Stage.forBatch(0,7);p.eventTickCounter=stage.eruptionTick();
-  var state=new RiftFractureRuntimeState(UUID.randomUUID(),new Location(w,0,65,0),cells,originals,stage,200);
+  var state=new RiftFractureRuntimeState(UUID.randomUUID(),new Location(w,0,65,0),cells,originals,0L,7L,false,null);
+  p.eventTickCounter=state.geysers.stream().mapToLong(g->g.stage.eruptionTick()).max().orElse(0L);
   var left=new Player(new Location(w,-7.5,65,3.5));var right=new Player(new Location(w,8.5,65,-2.5));
   var unrelated=new Player(new Location(w,0,65,0));var high=new Player(new Location(w,8.5,100,-2.5));
   var blocked=new Player(left.at);blocked.reject=true;
   var players=List.of(left,right,unrelated,high,blocked);
-  p.damageRiftFractureColumn(state,stage,players);p.damageRiftFractureColumn(state,stage,players);
+  p.damageRiftFractureColumn(state,players);p.damageRiftFractureColumn(state,players);
   check(left.hits==1&&right.hits==1,"selected floor geysers did not own real collision");
   check(unrelated.hits==0&&high.hits==0,"invisible central or height-mismatched volume hit a player");
-  left.at=right.at;p.damageRiftFractureColumn(state,stage,players);
-  check(left.hits==1,"one batch eruption hit a moving player twice");
+  left.at=new Location(w,-7.2,65,3.2);p.damageRiftFractureColumn(state,players);
+  check(left.hits==1,"one geyser eruption hit a moving player twice");
   check(blocked.hits==0&&blocked.impulses==0,"canceled hit produced damage or knockback");
  }
 }

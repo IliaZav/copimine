@@ -109,6 +109,7 @@ public class Wave2ReturnBootstrapProbe {
     java.io.File getDataFolder(){return new java.io.File(".");}
     void restoreLastSealArena(){}
     void recoverHazardJournal(){}
+    void recoverRiftFractureJournals(){}
     void restorePersistedGateIfNeeded(){}
     void recoverTransientSession(){generation++;phase=EventPhase.READY_FOR_PLAYERS;}
     void forcePhase(EventPhase value,String reason){phase=value;recoveryReason=reason;}

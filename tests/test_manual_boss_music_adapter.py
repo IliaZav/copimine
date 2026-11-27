@@ -20,6 +20,7 @@ public class ManualBossMusicProbe {
  }
  EventConfig config=new EventConfig();EventPhase phase=EventPhase.COLLECTING;
  int activeWave;boolean testWaveFrontVisualMode,manual,live;long waveTwoIntroStartedMillis;
+ boolean waveTwoIntroReady(){return waveTwoIntroStartedMillis>0;}
  boolean isBossHarnessMusicActive(){return manual&&live;}
  boolean isRitualMusicPhase(){return phase==EventPhase.READY_FOR_PLAYERS||phase==EventPhase.START_RITUAL;}
  EventConfig.MusicTrack currentBossMusic(){return config.phaseMusic("boss-awakening");}

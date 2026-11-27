@@ -114,6 +114,8 @@ public class BossPathBudgetProbe {
     boolean isCurrentBossMeleeFury(){return false;}
     boolean isBossPursuitCandidate(Player p){return true;}
     boolean isCombatTarget(Player p){return true;}Location coreCombatAnchorLocation(){return new Location();}
+    Location bossArenaAnchor(){return coreCombatAnchorLocation();}
+    double bossArenaRadius(){return config.bossRadius();}
     boolean isCoreBlockPosition(Location p){return false;}double horizontalDistanceSquared(Location a,Location b){return 25;}
     Location bossTacticalDestination(Location a,Mob b,Player p,CombatTacticsPolicy.BossPlan plan){planned++;return noFloor?null:new Location();}
     double boundedCombatRadius(double r){return r;}

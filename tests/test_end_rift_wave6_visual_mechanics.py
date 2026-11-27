@@ -362,8 +362,11 @@ public final class RaisedPrisonerAbilityFixture {
     static final class LastSealArenaReveal {
         boolean protects(Location at,long generation) { return false; }
         boolean contains(Location at,long generation) { return false; }
+        Object opened(long generation) { return null; }
     }
     LastSealArenaReveal lastSealArena; long generation=7L;
+    // No configured permanent rest area in this fixture, so the arena box rules.
+    boolean isPermanentRestArea(Location location) { return false; }
     Player prisoner; Location ritualPrisonerAnchor; boolean wave6PrisonBroken;
     boolean isConfigured() { return true; }
     boolean isCurrentRitualPrisoner(Player p) { return p==prisoner; }

@@ -509,6 +509,11 @@ $pureTests = @(
   # capsule hit test, single damage window and the refuse rules are all pure, so
   # a regression in the center-core chest beam must fail here without a server.
   'ChestBeamPolicyTest',
+  # V7 Phase 6 cocoon beam and the Phase 3 sequential 3x3 geyser wave. Both are
+  # pure policies with their own executable tests; registering them keeps the
+  # lockstep cadence and the beam's single-target contract under the gate.
+  'CocoonBeamPolicyTest',
+  'SequentialGeyserWavePolicyTest',
         'BossRepelPolicyTest',
   'BossFinalSealAnchorPolicyTest',
   'LastSealArenaRitualPolicyTest',

@@ -71,6 +71,8 @@ def lifecycle_probe(converted_probe, tmp_path_factory):
     WaveTwoLoad waveTwoEntityLoadDisposition(Entity entity){return WaveTwoLoad.IGNORE;}
     void stampCurrentWaveTwoCleanupEpochIfMissing(Entity entity){}void rehydrateWaveTwoEntity(Entity entity){}
     void forcePhase(EventPhase phase,String reason){}void suspendWaveTwoRecoveryEntity(Entity entity){}
+    RiftRamEncounter riftRam;Map<String,String> riftRamCheckpoint=Map.of();
+    static class RiftRamEncounter {void adoptReloadedSwarm(Entity entity,Map<String,String> checkpoint){}}
 ''' + methods + r'''
     void tagConverted(Mob mob){
         mob.converted=true;mob.data.values.put(keyRitualConverted,(byte)1);

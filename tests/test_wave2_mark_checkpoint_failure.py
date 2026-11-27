@@ -37,7 +37,8 @@ public class WaveTwoClearCheckpointProbe {
         phase=EventPhase.RECOVERY_REQUIRED;
         return false;
     }
-    void tickWaveTwoIntroPresentation(long now){}
+    void tickWaveTwoIntroPresentation(){}
+    boolean waveTwoIntroReady(){return true;}
     boolean spawnNextWaveGroup(World w,Location l){spawns++;waveSpawnGroupIndex++;return true;}
     void updateMarkedTargetObjective(long now){newMarks++;}
     // The hunt tick also drains an owed phantom activation; this probe only

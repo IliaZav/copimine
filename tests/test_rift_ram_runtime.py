@@ -11,7 +11,7 @@ def test_pillar_receipts_bounded_adds_and_real_death(tmp_path):
     source = RUNTIME.read_text(encoding='utf-8').replace('    public ', '    private ')
     methods = '\n'.join(extract(source, signature) for signature in [
         'void impact()', 'void died(UUID entity)', 'boolean clearPillar()', 'boolean skeletonAlive()', 'void suspend()',
-        'void cleanupDisplays()', 'void cleanupDisplays(boolean preserveSkeleton)', 'void close()', 'void fail(String reason)',
+        'void cleanupDisplays()', 'void cleanupDisplays(boolean preserveActors)', 'void close()', 'void fail(String reason)',
         'void begin(Action next)',
         'Map<String,String> snapshot()', 'void restore(Map<String,String> data)',
     ])
@@ -76,6 +76,7 @@ public class RamRuntimeProbe {
     // encounter never writes terrain itself, so the probe only answers the seam.
     int collidersPlaced;boolean placePillarCollider(Location centre,int halfWidth,int height){collidersPlaced++;return true;}
     boolean clearPillarCollider(){return true;}
+    int scalePlayers(){ return players().size(); }
     void fail(String s){failures++;}
     // Presentation seams the runtime calls when the pose or an ability cue moves.
     void abilitySound(Ravager actor,String cue){}
@@ -95,11 +96,30 @@ public class RamRuntimeProbe {
   boolean pillarSettlePending,pillarColliderPending;
   UUID pillarId,persistentId,target; Location pillar;Vector direction;
   List<BlockDisplay> pillarDisplays=new ArrayList<>(); List<Piece> armor=new ArrayList<>();
-  List<Debris> debris=new ArrayList<>(); Set<Endermite> mites=new HashSet<>();
+  List<Debris> debris=new ArrayList<>(); Map<UUID,Endermite> mites=new HashMap<>();
   // Cleanup restores armour plates to where they stood; the probe keeps the same
   // rest ledger so the real cleanupDisplays() body compiles unmodified.
   Map<UUID,Location> pillarRestPositions=new HashMap<>();
   Set<UUID> trampleHits=new HashSet<>(),trampleRoster=new HashSet<>(),trampleBeatResolved=new HashSet<>(),chargeHits=new HashSet<>();
+  // V7 durable pillar swarm: a spent pillar records an owed release that a
+  // later admitted spawn drains. Victory waits for every owed release and every
+  // live pack actor, so this ledger is part of the real contract.
+  static final class SwarmRelease {
+    final Location site; final int count; int admitted;
+    SwarmRelease(Location site,int count,int admitted){this.site=site;this.count=count;this.admitted=admitted;}
+  }
+  final Map<Integer,SwarmRelease> swarmReleases=new TreeMap<>();
+  final Set<UUID> activeSwarm=new HashSet<>();
+  int scalePlayers;
+  boolean hasPendingSwarms(){return swarmReleases.values().stream().anyMatch(r->r.admitted<r.count);}
+  void commitActorProgress(String failure){
+    completed=ramDefeated&&pillarSkeletonDefeated&&!hasPendingSwarms()&&activeSwarm.isEmpty();
+    if(!host.checkpoint()){completed=false;fail(failure);return;}
+    if(completed)cleanupDisplays();
+  }
+  // Swarm restore is covered by its own runtime probe; here it must not refuse
+  // a legitimate restart receipt.
+  void restoreSwarmReleases(Map<String,String> data,World world){}
   UUID id(){return ram==null?persistentId:ram.uuid;}
   static class Bukkit { static Entity loaded;static Map<UUID,Entity> guards=new HashMap<>();
     static Entity getEntity(UUID id){return loaded instanceof Ravager r && r.uuid.equals(id)?loaded:guards.get(id);} }
@@ -168,16 +188,28 @@ public class RamRuntimeProbe {
         // A surviving final pillar retains its local damage between impacts.
       }
     }
-    check(p.world.spawned>0,"pillars actually released adds");
-    check(p.world.spawned<=RiftRamPolicy.ENDERMITES_CAP,
-        "adds never exceed the encounter-wide cap: "+p.world.spawned);
-    // The final pillar must never release Endermites, even when every earlier
-    // add is already dead: the plate is spent, the encounter is not an add phase.
+    check(p.swarmReleases.size()==RiftRamPolicy.PILLAR_COUNT,
+        "every physically destroyed pillar owes exactly one durable swarm release");
+    for(Map.Entry<Integer,SwarmRelease> e:p.swarmReleases.entrySet()){
+      check(e.getKey()>=1&&e.getKey()<=RiftRamPolicy.PILLAR_COUNT,"swarm release key is a real pillar ordinal");
+      check(e.getValue().count>=RiftRamPolicy.ENDERMITES_MIN&&e.getValue().count<=RiftRamPolicy.ENDERMITES_MAX,
+          "a pillar's swarm stays inside the bounded pack: "+e.getValue().count);
+      check(e.getValue().admitted<=e.getValue().count,"no release over-admits its owed pack");
+    }
+    check(p.activeSwarm.size()<=RiftRamPolicy.ENDERMITES_CAP,"living swarm never exceeds the shared cap");
+    // V7: the final tower owes its own bounded swarm too; it is not silently
+    // dropped just because the encounter is about to end.
     RamRuntimeProbe finalPillar=new RamRuntimeProbe();
     finalPillar.impacts=plates-1;finalPillar.raiseTestPillar();finalPillar.impact();
-    check(finalPillar.impacts==plates&&finalPillar.world.spawned==0,
-        "the final pillar never releases Endermites even when previous adds are dead");
+    check(finalPillar.impacts==plates&&finalPillar.swarmReleases.containsKey(RiftRamPolicy.PILLAR_COUNT),
+        "the final tower still owes its own bounded swarm");
+    check(finalPillar.swarmReleases.get(RiftRamPolicy.PILLAR_COUNT).count>=RiftRamPolicy.ENDERMITES_MIN,
+        "the final tower swarm is a real release, not a token");
     check(!p.completed,"the final impact alone cannot complete");
+    // Victory waits for every owed release and every live pack actor, so drain
+    // the ledger before asserting the death contract.
+    for(SwarmRelease release:p.swarmReleases.values())release.admitted=release.count;
+    check(!p.hasPendingSwarms(),"the drained ledger has no owed release left");
     p.died(UUID.randomUUID());check(!p.completed,"foreign death ignored");
     p.died(p.id());check(!p.completed&&p.ramDefeated,"Ram death deleted a live elite or completed early");
     p.pillarSkeleton.skeletonValid=false;p.died(p.pillarSkeletonId);

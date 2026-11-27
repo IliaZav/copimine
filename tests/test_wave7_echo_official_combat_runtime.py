@@ -39,7 +39,7 @@ def test_official_named_echo_tick_routes_through_scoped_finite_combat_adapter():
 def test_official_echo_compensates_rejected_native_effects_after_durable_cost_checkpoint():
     source = EVENT_SOURCE.read_text(encoding="utf-8")
     commit = method_body(source, "private boolean commitNamedEchoCombatAction(")
-    execute = method_body(source, "private boolean executeNamedEchoCombatAction(")
+    execute = method_body(source, "private boolean executeEchoCombatAction(")
 
     register = commit.index("registerPersonalEchoDuel(")
     persist = commit.index("saveStateSync()")
@@ -54,13 +54,13 @@ def test_official_echo_compensates_rejected_native_effects_after_durable_cost_ch
     assert "consumeAcceptedOwnerCombatAction" in execute
     assert "discardServerLaunchedEchoArrow" in execute
     assert "arrow.isValid()" in execute and "velocity.lengthSquared()" in execute
-    assert "carrier.getHealth(), expectedHealth" in execute
+    assert "applied.getY() < 0.35D || applied.getY() > 0.5D" in execute
 
 
 def test_official_echo_persists_bounded_jump_critical_and_finite_owner_shield():
     source = EVENT_SOURCE.read_text(encoding="utf-8")
     tick = method_body(source, "private boolean tickNamedEchoDuel(")
-    execute = method_body(source, "private boolean executeNamedEchoCombatAction(")
+    execute = method_body(source, "private boolean executeEchoCombatAction(")
     block = method_body(source, "private boolean blockNamedEchoOwnerHit(")
     sync = method_body(source, "private boolean synchronizeNamedEchoShield(")
     adapter_source = (ROOT / "copimine-end-event/src/me/copimine/endevent/runtime/wave7/EchoDuelCombatRuntimeAdapter.java").read_text(encoding="utf-8")
@@ -69,7 +69,7 @@ def test_official_echo_persists_bounded_jump_critical_and_finite_owner_shield():
 
     assert "carrier.isOnGround()" in tick and "isNamedEchoCriticalWindow(carrier)" in tick
     assert "synchronizeNamedEchoShield(carrier, current, replica)" in tick
-    assert "Action.CRITICAL" in execute and "attack.getValue() * (critical ? 1.5D : 1.0D)" in execute
+    assert "Action.CRITICAL" in execute and "attack.getValue() * (critical && !smash ? 1.5D : 1.0D)" in execute
     assert "carrier.setVelocity(jump)" in execute
     assert "startUsingItem(EquipmentSlot.OFF_HAND)" in execute
     assert "shieldActiveUntilTick()" in sync and "carrier.clearActiveItem()" in sync

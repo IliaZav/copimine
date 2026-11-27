@@ -202,6 +202,7 @@ public class CarrierInventoryAcceptanceProbe {
     static final int CARRIER_SLOWNESS_AMPLIFIER=1;
     java.util.logging.Logger getLogger(){return java.util.logging.Logger.getLogger("carrier-test");}
     void spawnCurrentCarrierCharge(Location position){}
+    void configureCarrierChargeUse(ItemStack charge){}
     void renderCurrentCarrierCharge(Entity entity){}
     boolean teleportCombatEntity(Entity e,Location pos){e.pos=pos;return true;}
     void sendCurrentCarrierPlayerVisual(Player p,boolean active,int cycle){}

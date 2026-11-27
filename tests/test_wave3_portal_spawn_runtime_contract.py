@@ -82,7 +82,7 @@ def test_portal_spawns_are_bounded_and_only_use_the_active_incomplete_portal():
         "portal admission must use the current party's shared simultaneous-pressure cap"
     )
     assert re.search(
-        r"spawnCountWithinBudget\s*\(\s*livePortalMobs\s*,\s*liveWaveMobs\s*,\s*pressureCap\s*,\s*1\s*\)",
+        r"spawnCountWithinBudget\s*\(\s*livePortalMobs\s*,\s*liveWaveMobs\s*,\s*Math\.max\(\s*0\s*,\s*pressureCap\s*-\s*reservedForGiant\s*\)\s*,\s*1\s*\)",
         scheduler,
     ), "Wave 3 portals must obey both the portal roster and the global wave pressure cap"
     assert re.search(r"ordinal\s*<\s*spawnCount", scheduler), (

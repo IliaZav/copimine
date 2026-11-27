@@ -98,7 +98,10 @@ def test_armour_fragments_are_temporary_and_lootless():
 
 def test_the_core_is_untouched_when_the_ram_finishes():
     complete = runtime_body("public void died(", "private boolean clearPillar()")
-    assert "completed = ramDefeated && pillarSkeletonDefeated;" in complete
+    # The Ram and its pillars must both be defeated; V7 also holds completion
+    # while admitted swarms are still pending, so the formula may carry extra
+    # durable-owner terms after the two required ones.
+    assert "completed = ramDefeated && pillarSkeletonDefeated" in complete
     assert "if (completed) cleanupDisplays();" in complete
     assert "getBlock().set" not in RUNTIME.read_text(encoding="utf-8")
 

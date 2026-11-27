@@ -32,6 +32,8 @@ public class DisposableBossDefeatProbe {
  void cancelBossCastTask(){}void cancelBossFinalStrike(){}void clearTentacles(String reason){}
  void clearBossServants(){}void clearArenaInferno(){}void clearVoidMarkZones(){}
  void clearActiveRiftProjectiles(){}void clearCurrentRiftFractures(String reason){}
+ void clearSequentialGeyserWaves(String reason){}
+ void clearRiftGeyserWaves(String reason){}
  void sendBossAnimationVisualUpdate(LivingEntity b,String animation){if(!animation.equals("DYING"))throw new AssertionError("wrong clip");}
  void playBossImpactPresentation(Object... args){effects++;}Vector contactFacing(Location l){return new Vector();}
  void stopEventMusic(){stopped++;}void clearBossOnly(){cleanup++;bossDefeatCinematicStarted=false;bossUuid=null;}

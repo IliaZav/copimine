@@ -103,6 +103,7 @@ public class Wave7ReturnBootstrapProbe {
     java.io.File getDataFolder(){return new java.io.File(".");}
     void restoreLastSealArena(){}
     void recoverHazardJournal(){}void restorePersistedGateIfNeeded(){}
+    void recoverRiftFractureJournals(){}
     void recoverTransientSession(){recoveries++;generation++;phase=EventPhase.READY_FOR_PLAYERS;attemptLifecycle.clear();}
     void forcePhase(EventPhase value,String reason){phase=value;}
     boolean saveStateSync(){return true;}

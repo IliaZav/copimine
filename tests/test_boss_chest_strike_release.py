@@ -165,7 +165,7 @@ public class BossChestStrikeReleaseProbe {
     // the real production bodies; the assertions below stay on the strike state.
     static final class FuryCombo { void clear(){} }
     final FuryCombo bossFuryCombo=new FuryCombo();
-    BukkitTask bossCastTask;
+    BukkitTask bossCastTask, overloadFireRingTask;
     int bossCastStaleReconcileTicks;
     void cancelBossFinalStrike(){}
     long bossChestStrikeSequence, bossCastSequence, bossEdgeVolleySequence, bossChestBeamSequence;

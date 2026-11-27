@@ -10546,7 +10546,19 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         try {
             replica = me.copimine.endevent.runtime.wave7.EchoReplicaInventory.capture(
                     owner.getInventory(), eventUuid, generation, duelId, owner.getUniqueId());
-            for (int slot = 0; slot < 42; slot++) if (replica.state().item(slot).custom()) return false;
+            // Skip custom (plugin-managed) items rather than rejecting the entire copy.
+            // V7 §18.5 / V7-16: personal Echo uses the player's loadout profile.
+            // A single custom item should not block the entire Echo summon.
+            int customCount = 0;
+            for (int slot = 0; slot < 42; slot++) {
+                if (replica.state().item(slot).custom()) {
+                    customCount++;
+                }
+            }
+            if (customCount > 0) {
+                getLogger().info("RAGE_ECHO_CUSTOM_ITEMS owner=" + owner.getName()
+                        + " count=" + customCount + " proceeding with available items");
+            }
         } catch (RuntimeException invalidLoadout) {
             return false;
         }
@@ -57470,7 +57482,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     || bossPhase != BossPhase.OVERLOAD || !owner.isValid() || owner.isDead()
                     || taskRegistry != null && !taskRegistry.owns(callbackGeneration)) {
                 if (!detonated[0]) {
-                    detonateRiftFireRing(owner, centre[0]);
+                    // V7 §18.5 / V7-19 — safe cancel: dissipating visual only,
+                    // NO damage to players (detonateRiftFireRing would deal
+                    // unintended late damage after phase transition or cancel).
+                    world.playSound(centre[0], Sound.BLOCK_FIRE_EXTINGUISH, SoundCategory.HOSTILE, 0.8F, 1.2F);
+                    getLogger().info("BOSS_SPELL_RIFT_FIRE_RING_CANCEL event=" + eventId);
                     detonated[0] = true;
                 }
                 holder[0].cancel();
@@ -59015,9 +59031,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private void tryStartBossCopyCooperation(LivingEntity boss) {
         List<Player> roster = activeBossParticipants();
         List<UUID> copies = new ArrayList<>();
-        for (Map.Entry<UUID, EchoReplicaActor> entry : echoReplicaActors.entrySet()) {
-            if (entry.getValue() != null && echoReplicaActorIsPresent(entry.getValue())) {
-                copies.add(entry.getKey());
+        // V7 §10.4.2 / V7-20 — cooperation uses the Phase 5 combat decoys
+        // (echoDecoyIds, 50HP Pillagers with full movement/attack AI), NOT the
+        // personal Echo replicas (echoReplicaActors) which are player-specific.
+        for (UUID decoyId : echoDecoyIds) {
+            if (isEchoDecoyPresent(decoyId)) {
+                copies.add(decoyId);
             }
         }
         if (roster.isEmpty() || copies.isEmpty()) {
@@ -59722,6 +59741,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return false;
         }
         Entity entity = ownedEntities.get(actor.entityId());
+        return entity != null && entity.isValid() && !entity.isDead();
+    }
+
+    /** True if a combat decoy entity is alive and valid. */
+    private boolean isEchoDecoyPresent(UUID decoyId) {
+        if (decoyId == null) return false;
+        Entity entity = Bukkit.getEntity(decoyId);
         return entity != null && entity.isValid() && !entity.isDead();
     }
 

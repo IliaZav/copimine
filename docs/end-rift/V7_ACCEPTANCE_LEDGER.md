@@ -439,3 +439,29 @@ The reviewed source and the exact deployed jar are on the server at
   (130,523,099 bytes).
 - Exact destructive-cell snapshot: `plugins/CopiMineEndEvent/last-seal-arena.tsv`
   (761,176 bytes); `/cmend arena reveal-stop` restores from it idempotently.
+
+### Automated suite status
+
+A full `pytest tests` run over the merged tree was executed with JDK 25 on `PATH`
+(the Java probe harnesses need `javac`/`java`). The only End Rift-caused failure was
+`test_boss_edge_volley_runtime.py`, whose hand-built Java probe did not declare the
+`stopCocoonBeam(String)` seam that the merged `cancelBossCastForPhaseChange` now calls;
+the probe stub was added and all 12 cases pass (`12 passed in 11.15s`). This is a
+harness fixture, not production code — the production method signature is authoritative.
+
+The remaining failures are **environment/packaging pre-conditions, not End Rift
+defects**, and are reproducible on the untouched deployment branch too:
+
+| Test | Cause |
+|---|---|
+| `test_copimine_client_mob_artifact.py` (4) | Gradle client build absent: `CopiMineClient/build/{libs,devlibs}/CopiMineClient-0.1.1*.jar` not built in this checkout |
+| `test_end_event_current_contract.py::test_staged_client_artifact_matches_current_source_build` | same missing source-built client jar |
+| `test_minecraft_26_3_pack.py::test_built_26_3_candidate_matches_locked_source_and_archive_digests` | pinned Minecraft 26.3 client not downloaded (`build/minecraft-26.3/toolchain/minecraft-26.3-client.jar`) |
+| `test_minecraft_26_3_paper.py::test_paper_server_candidate_matches_locked_build_and_download_object` | `PrepareMigrationCandidates.ps1` did not stage `paper-26.3-205.jar` |
+| `test_minecraft_26_3_paper.py::test_copimine_client_candidate_matches_locked_build_artifact` | on-disk `CopiMineClient-0.1.5+26.3.jar` size 30,706,420 ≠ lock 30,705,791 |
+| `test_minecraft_migration_server_plugins.py` (7) | stale first-party 26.3 candidates (Dungeon lock `0020ee86…` vs disk `f447404b…`; EndEvent lock size 3,001,381 vs disk 2,958,162) and un-staged `CoreProtect-CE-…-26.3-upstream.jar`, `ClearLag …-26.3.jar`, `Chunky-Bukkit-1.5.3.jar` |
+| `test_minecraft_26_3_custom_plugin_database_contracts.py` | same Dungeon candidate lock drift |
+
+Closing these requires running the full 26.3 migration pipeline
+(`PrepareMigrationCandidates.ps1` + downloads + Gradle client build), which is outside
+the End Rift runtime and does not change any deployed End Rift behaviour.

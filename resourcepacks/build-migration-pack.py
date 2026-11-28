@@ -293,8 +293,8 @@ def build(legacy_path, vanilla_path, output):
         raise ValueError("Minecraft client SHA-1 differs from the pinned 26.3 release")
     entries = json.loads((ROOT / "resourcepacks/models_manifest.json").read_text(encoding="utf-8-sig"))["items"]
     entries.append(BUILDER_WAND)
-    native_assets = {BUILDER_WAND_MODEL:
-                     (ROOT / "resourcepacks/migration/dungeon_builder_wand.json").read_bytes()}
+    wand_source = ROOT / "resourcepacks/migration/dungeon_builder_wand.json"
+    native_assets = {BUILDER_WAND_MODEL: wand_source.read_text(encoding="utf-8").encode("utf-8")}
     grouped = {}
     for entry in entries:
         grouped.setdefault(entry["base_material"], []).append(entry)

@@ -24886,9 +24886,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Location center = anchor.clone();
         List<BossMovementPolicy.Candidate> candidates = new ArrayList<>();
         Map<String, Location> candidateLocations = new LinkedHashMap<>();
+        double ringStep = Math.max(0.0D, (safeRadius - safeMinDistance - 0.75D) / 6.0D);
         for (int attempt = 0; attempt < 48; attempt++) {
             double angle = attempt * 2.399963229728653D;
-            double distance = attempt == 0 ? 0.0D : safeMinDistance + 0.75D + (attempt % 7) * 1.65D;
+            double distance = attempt == 0 ? 0.0D : safeMinDistance + 0.75D + (attempt % 7) * ringStep;
             Location candidate = attempt < 4 && preferred != null
                     ? preferred.clone().add(Math.cos(angle) * (attempt * 0.25D), 0.0D,
                     Math.sin(angle) * (attempt * 0.25D))
@@ -24910,6 +24911,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     chamberCount)) {
                 continue;
             }
+            if (isConfigured() && !isArenaLocation(resolved)) continue;
             if (occupant instanceof Player && isOfficialWave7ReturnContext()
                     && !isLoadedWave7ReturnCandidate(resolved, occupant)) {
                 continue;
@@ -49289,8 +49291,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private Location spawnLocation(Location core, int index, double offset) {
         double angle = (index * 2.399963229728653D) % (Math.PI * 2.0D);
-        double radius = 5.0D + ((index % 4) * offset);
-        return core.clone().add(Math.cos(angle) * radius, 0.0D, Math.sin(angle) * radius);
+        double x = Math.cos(angle);
+        double z = Math.sin(angle);
+        double radius = 5.0D + (index % 4) * offset;
+        if (isConfigured() && isArenaLocation(core)) {
+            double edgeX = x > 0 ? arenaMaxX + 0.5D - core.getX() : core.getX() - arenaMinX - 0.5D;
+            double edgeZ = z > 0 ? arenaMaxZ + 0.5D - core.getZ() : core.getZ() - arenaMinZ - 0.5D;
+            double edge = Math.min(edgeX / Math.max(.00001D, Math.abs(x)),
+                    edgeZ / Math.max(.00001D, Math.abs(z)));
+            double fraction = .30D + (index % 4) * .17D;
+            radius = Math.max(0.0D, edge - 2.0D) * fraction;
+        }
+        return core.clone().add(x * radius, 0.0D, z * radius);
     }
 
     private Location safeSpawnLocation(Location core, int index, double offset) {
@@ -68990,6 +69002,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
+    public void onEventResourcePackLoaded(org.bukkit.event.player.PlayerResourcePackStatusEvent event) {
+        if (event.getStatus() != org.bukkit.event.player.PlayerResourcePackStatusEvent.Status.SUCCESSFULLY_LOADED) {
+            return;
+        }
+        UUID viewer = event.getPlayer().getUniqueId();
+        clientBindingReadyPlayers.remove(viewer);
+        clientBindingSnapshots.invalidateViewer(viewer);
+        bossBindingSignatures.remove(viewer);
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerRespawn(PlayerRespawnEvent event) {
         Player player = event.getPlayer();
         UUID playerUuid = player.getUniqueId();
@@ -69003,7 +69026,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (rosterPlayer && !preserveNormalWave7Respawn) saveStateAsync();
         clientBindingReadyPlayers.remove(player.getUniqueId());
         if (!isCombatPhase() && !isEventMusicPhase() && !testCombatAiMode
-                && !testWaveFrontVisualMode && liveBoss() == null) {
+                && !testWaveFrontVisualMode && !ownsDisposableWaveRuntime(activeWave) && liveBoss() == null) {
             return;
         }
         // The client clears its event state while the death screen is active.
@@ -70593,7 +70616,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      */
     private void refreshClientBindingsForOnlinePlayers() {
         if (!isCombatPhase() && !isEventMusicPhase() && !testCombatAiMode
-                && !testWaveFrontVisualMode && liveBoss() == null) {
+                && !testWaveFrontVisualMode && !ownsDisposableWaveRuntime(activeWave) && liveBoss() == null) {
             return;
         }
         long now = System.currentTimeMillis();

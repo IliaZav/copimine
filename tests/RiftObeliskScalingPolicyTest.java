@@ -12,12 +12,12 @@ public final class RiftObeliskScalingPolicyTest {
             check(profile.requiredHits() == profile.obeliskCount() * 3,
                     "required hits must be the sum of three integrity HP per obelisk for " + players + " players");
         }
-        check(ObeliskScalingPolicy.profileForPlayers(2).obeliskCount() == 4,
-                "two players use the bounded four-obelisk profile");
-        check(ObeliskScalingPolicy.profileForPlayers(10).obeliskCount() == 5,
-                "ten players use five obelisks");
-        check(ObeliskScalingPolicy.profileForPlayers(20).obeliskCount() == 6,
-                "twenty players use six obelisks");
+        check(ObeliskScalingPolicy.profileForPlayers(2).obeliskCount() == 5,
+                "two players use the bounded five-obelisk profile");
+        check(ObeliskScalingPolicy.profileForPlayers(10).obeliskCount() == 6,
+                "ten players use six obelisks");
+        check(ObeliskScalingPolicy.profileForPlayers(20).obeliskCount() == 7,
+                "twenty players use seven obelisks");
         int[] players = {2, 5, 8, 11, 16};
         int[] expectedMobCounts = {6, 8, 10, 12, 16};
         for (int index = 0; index < players.length; index++) {
@@ -25,14 +25,14 @@ public final class RiftObeliskScalingPolicyTest {
                             == expectedMobCounts[index],
                     "Wave 4 doubles its bounded pressure pack for " + players[index] + " players");
         }
-        check(ObeliskScalingPolicy.profileForPlayers(2).fireballCap() == 20,
-                "four towers need five bounded projectile/sequence slots each at the minimum roster");
-        check(ObeliskScalingPolicy.profileForPlayers(10).fireballCap() == 25,
-                "five towers reserve enough projectile capacity for each tower");
-        check(ObeliskScalingPolicy.profileForPlayers(20).fireballCap() == 30,
-                "six towers retain their 160-tick projectile lifetime within the hard cap");
-        check(ObeliskScalingPolicy.MAX_OBELISKS == 6,
-                "Wave 4 hard cap is six physical obelisks");
+        check(ObeliskScalingPolicy.profileForPlayers(2).fireballCap() == 25,
+                "five towers need five bounded projectile/sequence slots each at the minimum roster");
+        check(ObeliskScalingPolicy.profileForPlayers(10).fireballCap() == 30,
+                "six towers reserve enough projectile capacity for each tower");
+        check(ObeliskScalingPolicy.profileForPlayers(20).fireballCap() == 35,
+                "seven towers retain their 160-tick projectile lifetime within the hard cap");
+        check(ObeliskScalingPolicy.MAX_OBELISKS == 7,
+                "Wave 4 hard cap is seven physical obelisks");
         System.out.println("RiftObeliskScalingPolicyTest OK");
     }
 

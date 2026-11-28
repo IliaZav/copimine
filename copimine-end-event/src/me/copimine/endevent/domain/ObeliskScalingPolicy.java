@@ -4,7 +4,7 @@ package me.copimine.endevent.domain;
 public final class ObeliskScalingPolicy {
     public static final int MIN_PLAYERS = 2;
     public static final int MAX_PLAYERS = 20;
-    public static final int MAX_OBELISKS = 6;
+    public static final int MAX_OBELISKS = 7;
     public static final int MAX_FIREBALL_ADMISSION_SLOTS = 48;
 
     private ObeliskScalingPolicy() {
@@ -15,18 +15,24 @@ public final class ObeliskScalingPolicy {
             return Profile.NONE;
         }
         if (livingPlayers <= 4) {
-            return new Profile(4, 3, 12, 6, ObeliskFireDirectorPolicy.fireballAdmissionSlots(4));
+            return configuredProfile(5, 6);
         }
         if (livingPlayers <= 7) {
-            return new Profile(4, 3, 12, 8, ObeliskFireDirectorPolicy.fireballAdmissionSlots(4));
+            return configuredProfile(5, 8);
         }
         if (livingPlayers <= 10) {
-            return new Profile(5, 3, 15, 10, ObeliskFireDirectorPolicy.fireballAdmissionSlots(5));
+            return configuredProfile(6, 10);
         }
         if (livingPlayers <= 15) {
-            return new Profile(5, 3, 15, 12, ObeliskFireDirectorPolicy.fireballAdmissionSlots(5));
+            return configuredProfile(6, 12);
         }
-        return new Profile(6, 3, 18, 16, ObeliskFireDirectorPolicy.fireballAdmissionSlots(6));
+        return configuredProfile(7, 16);
+    }
+
+    private static Profile configuredProfile(int towers, int mobs) {
+        int integrity = 3;
+        return new Profile(towers, integrity, towers * integrity, mobs,
+                ObeliskFireDirectorPolicy.fireballAdmissionSlots(towers));
     }
 
     public static int obeliskCount(int livingPlayers) {

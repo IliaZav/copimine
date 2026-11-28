@@ -638,14 +638,32 @@ pre-conditions** (absent Gradle client build, un-staged `paper-26.3-205.jar`,
 absent resource-pack `build/` + `_stage/`, un-staged first-party/official 26.3
 migration candidates), all reproducible without any End Rift behaviour change.
 
-### Open item for the owner
+### Open items for the owner
 
-The rule "потолок на 20 блоков ниже блоков квадратной арены" (a ceiling 20 blocks
-below the square-arena blocks) is **not** stated in the V7 master spec or either
-canonical file, and the site arena region (`[2014,10,2014]..[2082,134,2082]`) is
-taller than the built square (`[2014,72,2014]..[2082,131,2082]`). Guessing would
-violate the canonical “do not invent layout” rule, so the exact meaning is
-**BLOCKED-OWNER** pending the owner's clarification.
+1. **Ceiling rule.** The rule "потолок на 20 блоков ниже блоков квадратной арены"
+   (a ceiling 20 blocks below the square-arena blocks) is **not** stated in the V7
+   master spec or either canonical file, and the site arena region
+   (`[2014,10,2014]..[2082,134,2082]`, volume 595,125) is taller than the built
+   square (`[2014,72,2014]..[2082,131,2082]`, volume 290,421). Guessing would
+   violate the canonical "do not invent layout" rule, so the exact meaning is
+   **BLOCKED-OWNER** pending the owner's clarification.
+
+2. **Arena Y-band (V7 §20.2; master-spec line 967).** The master spec explicitly
+   rejects the observed `Y=10..134` combat bounds and requires the real floor and
+   ceiling. The built structure is floor `y72` (fissure `y71`) to ceiling `y131`;
+   the approved reveal plan (`last-seal-arena.tsv`, 16,736 cells, digest
+   `e72c64c8…`) already records that exact vertical extent, and every
+   reveal/restore/collision check runs from the **plan**, not from `arena info`.
+   The `arena info` box is still derived symmetrically from
+   `arena.vertical-radius=62` around `coreY=72` (`10..134`), which cannot express
+   the asymmetric built square (the same config key also feeds the playable-surface
+   search). Tightening it to `y71..131` is recommended and awaits owner approval.
+
+3. **Portal-room coordinates** remain `BLOCKED-OWNER`: the configured point
+   `CopiMine_the_end 0.5,80,0.5` is not standable (`y=80` is above the island
+   surface at `y=60`), and no real `end_portal`/`end_portal_frame` blocks were
+   found near the arena. The spec forbids inventing coordinates, so the exact
+   portal-room location or builder confirmation is required.
 
 ### Native acceptance
 

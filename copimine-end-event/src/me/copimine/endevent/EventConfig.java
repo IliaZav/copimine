@@ -200,8 +200,14 @@ public record EventConfig(
         int bossRecentTargetMemory = positiveInt(boss, "recent-target-memory");
         int bossTargetLockSeconds = positiveInt(boss, "target-lock-seconds");
         int bossTeleportCooldownSeconds = positiveInt(boss, "teleport-cooldown-seconds");
-        if (boss.getInt("spell-telegraph-ticks", 30) < 1) {
-            throw new IllegalStateException("boss.spell-telegraph-ticks must be positive");
+        // Read each boss tuning value exactly once so the pre-flight guard and the
+        // value actually loaded into the runtime cannot disagree (a missing key
+        // used to pass the "default 30" guard and then fail the required read).
+        int bossSpellTelegraphTicks = positiveInt(boss, "spell-telegraph-ticks");
+        double bossAttackDamageBonus = boss.getDouble("attack-damage-bonus", 11.0D);
+        if (bossAttackDamageBonus < 0.0D || Double.isInfinite(bossAttackDamageBonus)
+                || Double.isNaN(bossAttackDamageBonus)) {
+            throw new IllegalStateException("boss.attack-damage-bonus must be non-negative");
         }
         MiniBossTuning miniBossTuning = miniBossTuning(miniBosses);
         LinkedHashMap<String, Integer> waveMobLoot = readOptionalMaterials(eventLoot, "wave-mob");
@@ -264,9 +270,9 @@ public record EventConfig(
                 testLoot,
                 lootProfiles,
                 health,
-                boss.getDouble("attack-damage-bonus", 3.0D),
+                bossAttackDamageBonus,
                  target[0], target[1], spells[0], spells[1],
-                 positiveInt(boss, "spell-telegraph-ticks"), bossRecentTargetMemory,
+                 bossSpellTelegraphTicks, bossRecentTargetMemory,
                  bossTargetLockSeconds,
                 bossTeleportCooldownSeconds, miniBossTuning,
                 Math.max(0, boss.getInt("max-summoned-servants", 4)),

@@ -80,7 +80,16 @@ if (-not $sources -or $sources.Count -eq 0) {
 
 Remove-Item -LiteralPath $classes -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Path $classes | Out-Null
-javac -proc:none -encoding UTF-8 -cp ($cp -join [IO.Path]::PathSeparator) -d $classes $sources
+# `javac` on PATH may be an older JDK than JAVA_HOME. The Paper 26.3 API is
+# compiled at class-file version 69 (Java 25); a Java 21 compiler on PATH then
+# fails with "class file has wrong version 69.0, should be 65.0". Pin the
+# compiler to the JDK that JAVA_HOME names, matching the End Event build.
+$javacCommand = 'javac'
+if ($env:JAVA_HOME -and -not $env:COPIMINE_DEPENDENCY_PROBE) {
+  $javacInHome = Join-Path $env:JAVA_HOME 'bin/javac.exe'
+  if (Test-Path -LiteralPath $javacInHome -PathType Leaf) { $javacCommand = $javacInHome }
+}
+& $javacCommand -proc:none -encoding UTF-8 -cp ($cp -join [IO.Path]::PathSeparator) -d $classes $sources
 if ($LASTEXITCODE -ne 0) { throw "javac failed for CopiMineDungeon." }
 
 Copy-Item -LiteralPath (Join-Path $pluginDir 'plugin.yml') -Destination (Join-Path $classes 'plugin.yml') -Force

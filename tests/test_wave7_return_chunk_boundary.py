@@ -133,6 +133,7 @@ long safeCombatLocationMemoTick = -1L;
         return true;
     }
     boolean isSafeCombatParticipantLocation(Location location,Entity entity){return isSafeCombatOccupantLocation(location,entity);}
+    boolean isConfigured(){return true;}
     boolean isArenaLocation(Location location){return true;}
     Location realitySplitChamberCenter(Location anchor,int claim,int count){return anchor.clone().add(8,0,4);}
     Location coreCombatAnchorLocation(){throw new AssertionError("staging commit invoked inherited Core floor scan");}

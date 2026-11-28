@@ -97,6 +97,27 @@ public class DungeonDomainProbe {
         check(OverlayType.SECRET.builderOnly() && OverlayType.PROTECTED.builderOnly(),
                 "secret and protected overlays are builder-only");
 
+        // ---- clipped, dense visible outline (dungeon zone/effect wand) ------
+        // A 69x60x69 arena has ~780 blocks of visible perimeter. The old
+        // 150-point budget dotted it once every ~6 blocks and read as empty.
+        Cuboid zone = Cuboid.of(0, 0, 0, 68, 59, 68);
+        List<EditorOverlay.OutlinePoint> outline =
+                EditorOverlay.visibleOutline(zone, 34.5D, 40.0D, 34.5D, 64.0D, 640, true);
+        check(!outline.isEmpty(), "visible outline must produce points");
+        check(outline.size() <= 640, "visible outline must honour the budget");
+        int nearEdge = 0;
+        for (EditorOverlay.OutlinePoint p : outline) {
+            double dx = p.x() - 34.5D, dy = p.y() - 40.0D, dz = p.z() - 34.5D;
+            check(dx * dx + dy * dy + dz * dz <= 64.0D * 64.0D + 0.5D,
+                    "outline points must be clipped to the requested range");
+            double ex = p.x() - 0.035D, ez = p.z() - 0.035D;
+            if (ex * ex + ez * ez < 0.25D && p.y() >= 0.0D && p.y() <= 59.0D) nearEdge++;
+        }
+        check(nearEdge >= 20,
+                "a visible 59-block zone edge must be a continuous line, got " + nearEdge + " points");
+        check(EditorOverlay.visibleOutline(zone, 34.5D, 40.0D, 34.5D, 0.0D, 640, true).isEmpty(),
+                "zero range must draw nothing");
+
         // ---- enumerated styles ---------------------------------------------
         check(GateStyle.tokens().equals("appearing|grille|lift|slide|collapse|secret"),
                 "gate style tokens drifted: " + GateStyle.tokens());

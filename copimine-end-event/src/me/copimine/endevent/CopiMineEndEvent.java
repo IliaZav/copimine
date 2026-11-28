@@ -24888,7 +24888,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Location center = anchor.clone();
         List<BossMovementPolicy.Candidate> candidates = new ArrayList<>();
         Map<String, Location> candidateLocations = new LinkedHashMap<>();
-        double ringStep = Math.max(0.0D, (safeRadius - safeMinDistance - 0.75D) / 6.0D);
+        // Spread the probe rings across the requested combat radius instead of a
+        // fixed ~13-block disc. An oversized arena previously collapsed every
+        // candidate near Core because the seven ring offsets were constants.
+        double outerRing = Double.isFinite(safeRadius) && safeRadius > 0.0D
+                ? Math.max(safeMinDistance + 1.0D, safeRadius) : safeMinDistance + 9.9D;
+        double ringStep = Math.max(1.65D, (outerRing - safeMinDistance - 0.75D) / 6.0D);
         for (int attempt = 0; attempt < 48; attempt++) {
             double angle = attempt * 2.399963229728653D;
             double distance = attempt == 0 ? 0.0D : safeMinDistance + 0.75D + (attempt % 7) * ringStep;
@@ -24913,6 +24918,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     chamberCount)) {
                 continue;
             }
+            // Never place a combat actor over the permanent rest area or outside
+            // the assigned arena cuboid, even after the Last Seal expansion.
+            // Unconfigured harness paths keep their previous behaviour.
             if (isConfigured() && !isArenaLocation(resolved)) continue;
             if (occupant instanceof Player && isOfficialWave7ReturnContext()
                     && !isLoadedWave7ReturnCandidate(resolved, occupant)) {
@@ -69572,15 +69580,22 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         long staleGeneration = generation;
         AttemptLifecycleController.WipeResult result = attemptLifecycle.performAttemptWipe(
                 staleGeneration, reason);
-        if (result.status() != AttemptLifecycleController.WipeStatus.ACCEPTED) {
+        // A previous cleanup attempt may have failed after the wipe window opened.
+        // The generation stays frozen (stale callbacks are blocked) and the pending
+        // generation is retained, so the only safe recovery is to retry cleanup and
+        // commit that same transaction instead of returning forever.
+        boolean retryingFrozenWipe = result.status()
+                == AttemptLifecycleController.WipeStatus.ALREADY_IN_PROGRESS;
+        if (result.status() != AttemptLifecycleController.WipeStatus.ACCEPTED && !retryingFrozenWipe) {
             return;
         }
         getLogger().warning("ATTEMPT_WIPE_ACCEPTED event=" + eventId
                 + " generation=" + staleGeneration + " next_generation="
                 + result.nextGeneration() + " reason=" + result.reason()
-                + " wipe_count=" + result.wipeCount());
+                + " wipe_count=" + result.wipeCount()
+                + " retry=" + retryingFrozenWipe);
         if (!cancelSessionTasks()) {
-            attemptLifecycle.abortWipe(staleGeneration);
+            if (!retryingFrozenWipe) attemptLifecycle.abortWipe(staleGeneration);
             recoveryReason = "END_RIFT_ATTEMPT_WIPE_CLEANUP_FAILED";
             getLogger().severe("ATTEMPT_WIPE_FROZEN event=" + eventId
                     + " generation=" + staleGeneration
@@ -69593,10 +69608,21 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         clearClientEffects();
         clearBossOnly();
         clearCombatAiState();
+        // Commit the pending generation through the controller transaction: this
+        // publishes the new fence, restores the roster and increments wipeCount.
+        // Calling clear() here used to advance only the plugin counter, leaving the
+        // controller frozen forever and wipeCount permanently stale.
+        if (!attemptLifecycle.commitWipe(staleGeneration)) {
+            recoveryReason = "END_RIFT_ATTEMPT_WIPE_COMMIT_FAILED";
+            getLogger().severe("ATTEMPT_WIPE_COMMIT_FAILED event=" + eventId
+                    + " generation=" + staleGeneration
+                    + " next_generation=" + result.nextGeneration());
+            saveStateSync();
+            return;
+        }
         generation = result.nextGeneration();
         encounterController.restore(eventId, generation, phase, null);
         resetEncounterTaskRegistry(generation);
-        attemptLifecycle.clear();
         realitySplitChamberController.clear();
         realitySplitTrialController.clear();
         offlineRosterGraceUntilMillis.clear();

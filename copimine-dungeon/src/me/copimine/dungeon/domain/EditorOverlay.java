@@ -127,7 +127,12 @@ public final class EditorOverlay {
         if (lines.isEmpty()) return List.of();
         int limit = Math.min(HARD_BUDGET, budget);
         double length = lines.stream().mapToDouble(VisibleLine::length).sum();
-        double spacing = Math.max(.35D, length / Math.max(1, limit - 2 * lines.size()));
+        // Density first, budget second. A 69x60x69 arena perimeter is ~840
+        // blocks long; dividing it into the old 150-point budget produced one
+        // dot every ~6 blocks, which read as "almost nothing". Cap the spacing
+        // so a visible edge is a line the builder can actually see, and let the
+        // caller pass a budget large enough for the clipped geometry.
+        double spacing = Math.max(.65D, length / Math.max(1, limit - 2 * lines.size()));
         List<OutlinePoint> result = new ArrayList<>(limit);
         for (int lineIndex = 0; lineIndex < lines.size() && result.size() < limit; lineIndex++) {
             var line = lines.get(lineIndex);

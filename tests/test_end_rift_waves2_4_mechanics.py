@@ -220,6 +220,7 @@ public final class Waves24MechanicsHarness {
     List<Player> activeBossParticipants() { return Bukkit.players.stream().filter(this::isActiveBossParticipant).toList(); }
     int arenaMinX = -128, arenaMinY = -128, arenaMinZ = -128;
     int arenaMaxX = 128, arenaMaxY = 128, arenaMaxZ = 128;
+    boolean isConfigured() { return true; }
     boolean isArenaLocation(Location location) {
         return location.inArena && location.getBlockX() >= arenaMinX && location.getBlockX() <= arenaMaxX
                 && location.getBlockY() >= arenaMinY && location.getBlockY() <= arenaMaxY

@@ -50,6 +50,9 @@ int effectsReleased,wipes,overlayChanges,carrierSlownessReleases;
     void releaseBlackFogEffects(Player p){effectsReleased++;}
     void releaseSpiderPotionLeases(Player p){effectsReleased++;}
     void cancelWaveCombatTarget(UUID id){effectsReleased++;}
+    // Signed viewer presentation is dropped on death; mirrors the production
+    // invalidation by dropping the probe's bridge-readiness entry.
+    void invalidateViewerPresentation(UUID id){clientBindingReadyPlayers.remove(id);}
     // Wave 2 squad ownership is server-owned now, so a departing player's mobs are
     // reassigned on death and disconnect instead of being left without an owner.
     int waveTwoReassignments;

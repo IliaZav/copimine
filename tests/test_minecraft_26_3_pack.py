@@ -269,6 +269,12 @@ def test_built_26_3_candidate_matches_locked_source_and_archive_digests(tmp_path
         assert receipt["legacyPackSha256"] == migration["legacyPackSha256"]
         assert receipt["vanillaClientSha1"] == profile["minecraftClient"]["sha1"]
         assert receipt["resourceFormat"] == [97, 1]
+        wand = json.loads(archive.read("assets/minecraft/items/blaze_rod.json"))["model"]
+        assert wand["fallback"]["model"] == "minecraft:item/blaze_rod"
+        by_threshold = {entry["threshold"]: entry["model"] for entry in wand["entries"]}
+        assert by_threshold[830100]["model"] == "copimine:item/dungeon_builder_wand"
+        assert by_threshold[pack.next_float32(830100)] == wand["fallback"]
+        assert "assets/copimine/models/item/dungeon_builder_wand.json" in archive.namelist()
 
     wrong_lock = tmp_path / "wrong-profile.lock.json"
     profile["resourcePackMigration"]["candidateSha256"] = "0" * 64

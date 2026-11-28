@@ -48,8 +48,8 @@
   },
   "resourcePackMigration": {
     "legacyPackSha256": "580cc84f3a5e1072a67053290b9a9720b82c4e1d198411a8afa87cb3e1901a83",
-    "candidateSha256": "112dd60568a19c940baff981991c175746301de814ab1c9e95d774a9e0a1786d",
+    "candidateSha256": "de280c8420b4057a4229af597922cce9341177e8feab17912dd0224dbb062c6a",
     "legacyPackSize": 27862402,
-    "candidateSize": 34297023
+    "candidateSize": 34299506
   }
 }

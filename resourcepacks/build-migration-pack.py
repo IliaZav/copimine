@@ -16,6 +16,12 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 LOCK = ROOT / "tools/minecraft-26.3/profile.lock.json"
+BUILDER_WAND = {
+    "base_material": "blaze_rod",
+    "custom_model_data": 830100,
+    "model": "copimine:item/dungeon_builder_wand",
+}
+BUILDER_WAND_MODEL = "assets/copimine/models/item/dungeon_builder_wand.json"
 
 
 def set_archive_output_mode(temporary_output, output):
@@ -286,6 +292,9 @@ def build(legacy_path, vanilla_path, output):
     if hashlib.sha1(vanilla_path.read_bytes()).hexdigest() != profile["minecraftClient"]["sha1"]:
         raise ValueError("Minecraft client SHA-1 differs from the pinned 26.3 release")
     entries = json.loads((ROOT / "resourcepacks/models_manifest.json").read_text(encoding="utf-8-sig"))["items"]
+    entries.append(BUILDER_WAND)
+    native_assets = {BUILDER_WAND_MODEL:
+                     (ROOT / "resourcepacks/migration/dungeon_builder_wand.json").read_bytes()}
     grouped = {}
     for entry in entries:
         grouped.setdefault(entry["base_material"], []).append(entry)
@@ -302,7 +311,7 @@ def build(legacy_path, vanilla_path, output):
             for reference in referenced_models(definition):
                 namespace, model_path = reference.split(":", 1)
                 location = f"assets/{namespace}/models/{model_path}.json"
-                if location not in custom_names and location not in native_names:
+                if location not in custom_names and location not in native_names and location not in native_assets:
                     raise ValueError(f"Missing model in migrated item definition: {reference}")
             definitions[path] = json.dumps(definition, ensure_ascii=False, indent=2).encode("utf-8")
         # Old vanilla root overrides can point at renamed textures. Native
@@ -311,6 +320,7 @@ def build(legacy_path, vanilla_path, output):
         files = {name: legacy.read(name) for name in custom_names
                  if not name.endswith("/") and name != "pack.mcmeta" and name not in excluded}
         files.update(definitions)
+        files.update(native_assets)
         migrated_block_textures = migrate_block_model_item_textures(files)
         normalized_model_uv_faces = normalize_legacy_model_uvs(files)
         resource = [version["pack_version"]["resource_major"], version["pack_version"]["resource_minor"]]

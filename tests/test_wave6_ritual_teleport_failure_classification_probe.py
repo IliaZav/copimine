@@ -202,6 +202,14 @@ public class W6RitualTeleportFailureProbe {
     Location finalSealCoreAnchorLocation() { return null; }
     boolean isOwnedRitualSphereDestination(Entity entity, Location target) { return false; }
     double boundedCombatRadius(double radius) { return Math.max(1.0D, Math.min(48.0D, radius)); }
+    // The teleport guard now derives its coarse radius from the assigned arena
+    // and additionally rejects targets outside the arena cuboid. This probe
+    // models no arena bounds, so it mirrors the pre-arena-bounds radius the
+    // scenario expectations above were measured with and keeps the cuboid check
+    // neutral (every target the scenarios use is a real, in-world location).
+    double waveMovementRadius() { return boundedCombatRadius(config.containmentRadius()); }
+    double bossArenaRadius() { return boundedCombatRadius(config.bossRadius()); }
+    boolean isArenaLocation(Location location) { return location != null; }
     int realitySplitChamberId(Entity entity) { return -1; }
     boolean outsideCombatVertical(Location location, Location anchor) {
         return Math.abs(location.getBlockY() - anchor.getBlockY()) > 3;

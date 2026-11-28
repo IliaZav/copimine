@@ -36,6 +36,8 @@ public class BedRespawnProbe {
     boolean isOfficialWave7ReturnContext(){return activeWave==7;}
     boolean isEventMusicPhase(){return false;} Object liveBoss(){return null;}
     int chamberWaveNumber(){return 7;}
+    boolean ownsDisposableWaveRuntime(int wave){return testWaveFrontVisualMode && activeWave==wave;}
+    void invalidateViewerPresentation(UUID viewer){clientBindingReadyPlayers.remove(viewer);}
     void containRealitySplitParticipant(Player player,long generation,String reason){teleports++;}
     void teleportRespawnedOfficialParticipant(Player player,long generation){teleports++;}
     void refreshClientBindingsForPlayer(Player player){bindings++;}

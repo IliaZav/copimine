@@ -51,6 +51,9 @@ public class W6RitualTeleportFailureProbe {
     int ritualRetags;
     final World arena = new World("world-arena-recovered-20261019");
     final Location core = new Location(arena, 8.5D, 68.0D, -38.5D);
+    UUID bossUuid;
+    long cocoonFallGeneration = Long.MIN_VALUE;
+    Location cocoonFallTeleportDestination;
     final Config config = new Config();
     final ChamberController realitySplitChamberController = new ChamberController();
     final ProbeLogger logger = new ProbeLogger(warnings);

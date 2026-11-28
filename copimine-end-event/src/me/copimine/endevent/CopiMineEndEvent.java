@@ -913,8 +913,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final int WAVE_FRONT_PARTICLE_MAX_POINTS = 64;
     private static final int FOG_VISUAL_MAX_CELLS = 72;
     private static final int MAX_FOG_SAFE_ZONE_DISPLAYS = 24;
-    private static final int RIFT_PROJECTILE_MAX_TICKS = 80;
-    private static final double RIFT_PROJECTILE_SPEED = 0.65D;
+    private static final int RIFT_PROJECTILE_MAX_TICKS = 100;
+    private static final double RIFT_PROJECTILE_SPEED = 1.10D;
     private static final double RIFT_FIREBALL_SPEED = 0.48D;
     private static final int RIFT_FIREBALL_MAX_TICKS = ObeliskFireDirectorPolicy.MAX_FIREBALL_LIFETIME_TICKS;
     /**
@@ -1888,6 +1888,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      */
     private long cocoonFallGeneration = Long.MIN_VALUE;
     private Location cocoonFallTeleportDestination;
+    private Location cocoonFallLanding;
     private boolean cocoonFallStarted;
     private boolean cocoonLandingPlayed;
     private CocoonFallPolicy.Stage cocoonFallStage = CocoonFallPolicy.Stage.COCOONED;
@@ -8729,8 +8730,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
-    private boolean startLastSealArenaReveal(LivingEntity boss) {
-        return startLastSealArenaReveal(boss, false);
+    private boolean allowsDisposableLastSealReveal(LivingEntity boss) {
+        return isTestBoss(boss) && !isOfficialAttemptActive()
+                && "local".equalsIgnoreCase(config.environment());
     }
 
     /**
@@ -12313,22 +12315,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     double fraction = requestedPhase == BossPhase.AWAKENING
                             ? 1.0D : requestedPhase.upperExclusive() - 0.01D;
                     boss.setHealth(Math.min(boss.getMaxHealth() * fraction, boss.getHealth()));
-                    if (isTestBoss(boss)
-                            && config != null
-                            && ("local".equalsIgnoreCase(config.environment())
-                            || "staging".equalsIgnoreCase(config.environment()))) {
-                        BossPhase previous = bossPhase;
-                        bossPhase = requestedPhase;
-                        boss.getPersistentDataContainer().set(keyBossPhase,
-                                PersistentDataType.STRING, bossPhase.name());
+                    BossPhase previous = bossPhase;
+                    synchronizeBossPhase(boss);
+                    if (isTestBoss(boss) && bossPhase != requestedPhase) {
+                        message(sender, "&eТекущая фаза " + bossPhase.name()
+                                + ". Для возврата к более ранней фазе создайте нового тестового Стража.");
+                        return;
+                    }
+                    if (isTestBoss(boss) && previous != bossPhase) {
                         getLogger().info("TEST_BOSS_STAGE_TRANSITION event=" + eventId
                                 + " boss=" + boss.getUniqueId() + " from=" + previous
                                 + " to=" + bossPhase + " health=" + boss.getHealth()
                                 + " max=" + boss.getMaxHealth());
-                        sendCurrentBossPhaseVisualUpdate(boss, bossPhase,
-                                BossAnimationId.PHASE_TRANSITION.wireId());
-                    } else {
-                        synchronizeBossPhase(boss);
                     }
                     message(sender, "&aBoss phase " + requestedPhase.name() + " вызвана.");
                 } else {
@@ -23068,8 +23066,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         arenaMergeRevealOwnsAscension = false;
         revealCommitted.set(false);
-        arenaMergeRevealPending = isOfficialBoss(boss);
-        if (isOfficialBoss(boss) && !officialLastSealPlanReady()) {
+        arenaMergeRevealPending = isOfficialBoss(boss) || allowsDisposableLastSealReveal(boss);
+        if (arenaMergeRevealPending && !officialLastSealPlanReady()) {
             arenaMergeRevealPending = false;
             blockOfficialLastSeal(boss, "missing-or-invalid-approved-plan");
             return;
@@ -23115,10 +23113,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (beat.shot() == ArenaMergeCinematicPolicy.Shot.WALL_COLLAPSE) {
             if (arenaMergeRevealPending && revealCommitted.compareAndSet(false, true)) {
                 arenaMergeRevealPending = false;
-                arenaMergeRevealOwnsAscension = startLastSealArenaReveal(boss);
+                arenaMergeRevealOwnsAscension = startLastSealArenaReveal(boss, allowsDisposableLastSealReveal(boss));
                 if (!arenaMergeRevealOwnsAscension) {
-                    if (isOfficialBoss(boss)) blockOfficialLastSeal(boss, "missing-or-invalid-approved-plan");
-                    else startCurrentLastSealVisuals(boss);
+                    blockOfficialLastSeal(boss, "missing-or-invalid-approved-plan");
+                    return;
                 }
             }
             if (!arenaMergeRevealOwnsAscension) startCurrentLastSealVisuals(boss);
@@ -50753,8 +50751,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void tickBoss() {
         LivingEntity boss = liveBoss();
-        if (boss == null) {
-            stopCocoonBeam("boss-missing");
+        if (boss == null || phase == EventPhase.RECOVERY_REQUIRED) {
+            stopCocoonBeam(boss == null ? "boss-missing" : "encounter-recovery");
             return;
         }
         // Client bridge packets can be lost while a player changes chunks or
@@ -50783,6 +50781,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     /** A test actor owns combat locally without advancing the official encounter phase. */
     private boolean isBossCombatRuntimeActive(LivingEntity boss) {
         return boss != null && boss.isValid() && !boss.isDead() && !bossDefeatCinematicStarted
+                && phase != EventPhase.RECOVERY_REQUIRED
                 && Objects.equals(bossUuid, boss.getUniqueId())
                 && ownedBySession(boss, eventId, generation)
                 && (phase == EventPhase.BOSS_ACTIVE || testCombatAiMode && isTestBoss(boss));
@@ -51079,6 +51078,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 mob.setAware(true);
             }
             boss.setGravity(true);
+            if (isCurrentBossMeleeFury() && boss.isInvulnerable()) boss.setInvulnerable(false);
             return false;
         }
         // Contract 22.1: once the cocoon has broken the boss is descending or
@@ -51509,7 +51509,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * are the only phase gate besides the defeat cinematic.
      */
     private BossPhasePolicy.DamageImmunityReason bossDamageImmunityReason() {
-        if (bossDefeatCinematicStarted) {
+        if (bossDefeatCinematicStarted || bossPhase == BossPhase.LAST_SEAL
+                && lastSealArena != null && lastSealArena.playing(generation, eventTickCounter)) {
             return BossPhasePolicy.DamageImmunityReason.BOSS_CINEMATIC;
         }
         if (tentacleGuardianShielded()) {
@@ -51570,6 +51571,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 }
                 renderLastSealArenaRitual(viewer, sealFloor, hover, sigil, tick);
             }
+            if (tick % 4 == 0) renderGuardianCocoonRibs(boss, tick);
             if (tick % 40 == 0) {
                 boss.getWorld().playSound(boss.getLocation(), Sound.ENTITY_WITHER_AMBIENT,
                         0.55F, 0.55F);
@@ -51583,6 +51585,27 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         registerEncounterTask(holder[0]);
         getLogger().info("BOSS_LAST_SEAL_VISUALS_STARTED event=" + eventId
                 + " boss=" + boss.getUniqueId() + " generation=" + generation);
+    }
+
+    private void renderGuardianCocoonRibs(LivingEntity boss, int tick) {
+        List<Integer> slots = livingTentacleGuardianSlots();
+        if (slots.isEmpty()) return;
+        Location center = boss.getLocation().add(0D, ShieldOrbitPolicy.TORSO_HEIGHT, 0D);
+        var ribs = ShieldOrbitPolicy.positions(center.getX(), boss.getY(), center.getZ(), eventTickCounter, slots.size());
+        var glow = new Particle.DustOptions(Color.fromRGB(139, 61, 210), 1.2F);
+        for (var rib : ribs) {
+            double heading = rib.yaw();
+            for (int node = -4; node <= 4; node++) {
+                double latitude = node * Math.PI / 10D;
+                double radius = ShieldOrbitPolicy.ORBIT_RADIUS * Math.cos(latitude);
+                double twist = heading + .37D * Math.sin(latitude);
+                Location at = center.clone().add(Math.cos(twist) * radius,
+                        2.35D * Math.sin(latitude), Math.sin(twist) * radius);
+                spawnEventParticle(at, Particle.DUST, 1, 0D, 0D, 0D, 0D, glow);
+                if (Math.floorMod(tick / 4 + rib.slot(), 9) == node + 4)
+                    spawnEventParticle(at, Particle.ELECTRIC_SPARK, 2, .04D, .05D, .04D, .014D);
+            }
+        }
     }
 
     /**
@@ -52450,8 +52473,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         emitBossDamageDiagnostic("DAMAGE_ATTEMPT", "INFO", boss, source,
                 event.getDamage(), event.getFinalDamage(), 0.0D,
                 boss.getHealth(), boss.getHealth(), "incoming-damage-event");
-        if (bossHitboxController != null && bossHitboxController.hasBoss(boss.getUniqueId())
-                && !isPlayerAreaDamageToBoss(event, boss, source)
+        boolean trackedCarrier = bossHitboxController != null && bossHitboxController.hasBoss(boss.getUniqueId());
+        boolean areaHit = isPlayerAreaDamageToBoss(event, boss, source);
+        if (trackedCarrier && !areaHit
+                && !isGroundedFuryCarrierHit(event, boss, source)
                 && (source == null || !bossHitboxController.carrierRayIntersects(
                 boss, source, bossHitboxPoseOffsets(), 8.0D))) {
             event.setCancelled(true);
@@ -52515,7 +52540,27 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // event and commits the computed final damage to the real entity HP,
         // which prevents Paper's native hurt window from dropping a second
         // player hit in the same tick.
+        if (trackedCarrier && !areaHit && damageSourceEvent != null
+                && activeBossDamageOwner(event, boss, source) != null
+                && !bossHitboxController.acceptCarrierHit(boss, damageSourceEvent,
+                        generation, Bukkit.getCurrentTick(), System.currentTimeMillis())) {
+            event.setCancelled(true);
+            return;
+        }
         handleCurrentBossDamage(event, boss, source);
+    }
+
+    private boolean isGroundedFuryCarrierHit(EntityDamageEvent event, LivingEntity boss, Entity source) {
+        if (!isCurrentBossMeleeFury() || boss.isInvulnerable() || source == null
+                || activeBossDamageOwner(event, boss, source) == null
+                || !source.getWorld().equals(boss.getWorld())) return false;
+        // The native event already resolved contact on the living body, whose
+        // moving animation does not always coincide with the sampled proxy.
+        if (source instanceof Projectile) return event.getCause() == EntityDamageEvent.DamageCause.PROJECTILE;
+        return source instanceof Player player
+                && event.getCause() == EntityDamageEvent.DamageCause.ENTITY_ATTACK
+                && player.getLocation().distanceSquared(boss.getLocation()) <= 64D
+                && player.hasLineOfSight(boss);
     }
 
     private boolean isPlayerAreaDamageToBoss(EntityDamageEvent event, LivingEntity boss, Entity source) {
@@ -54510,6 +54555,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         final Location castMark = resolvedMark;
         aimBossCastAt(boss, castMark);
         int telegraphTicks = spellTelegraphTicks(spell);
+        boolean physicalDelivery = me.copimine.endevent.domain.BossSpellDeliveryPolicy.physicalProjectile(spell);
+        int projectileLockTick = me.copimine.endevent.domain.BossSpellDeliveryPolicy.projectileAimLockTick(telegraphTicks);
+        Location[] projectileAim = {null};
         bossAbilityState = BossAbilityState.TELEGRAPHING;
         holdBossCastPosition(boss);
         bossCastDeadlineMillis = System.currentTimeMillis()
@@ -54557,6 +54605,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 return;
             }
             ticks[0]++;
+            if (physicalDelivery && ticks[0] == projectileLockTick && isCombatTarget(target)
+                    && boss.getWorld().equals(target.getWorld())) {
+                projectileAim[0] = cocoonBeamTorso(target);
+                aimBossCastAt(boss, projectileAim[0]);
+                renderBossProjectileAim(boss, spell, projectileAim[0]);
+            }
             if (ticks[0] % 5 == 0 || ticks[0] >= telegraphTicks) {
                 // The authored signature decides the particles; the old switch
                 // is only the fallback for a spell with no composition yet.
@@ -54572,6 +54626,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     Location chestOrigin = boss.getLocation().clone().add(0.0D, 1.6D, 0.0D);
                     Location signatureTarget = spell == EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS
                             ? boss.getLocation().clone().add(0.0D, 0.2D, 0.0D) : castMark;
+                    if (physicalDelivery) {
+                        chestOrigin = bossProjectileMuzzle(boss, spell);
+                        // Until the lock, the cue is a charge local to the caster.
+                        signatureTarget = projectileAim[0] == null ? chestOrigin : projectileAim[0];
+                    }
                     if (spell == EndRiftAiPolicy.BossSpell.ARENA_INFERNO) {
                         Location core = coreCombatAnchorLocation();
                         if (core != null && core.getWorld().equals(boss.getWorld())) signatureTarget = core;
@@ -54613,9 +54672,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 if (bossCastTask == holder[0]) {
                     bossCastTask = null;
                 }
+                Location deliveryMark = physicalDelivery ? projectileAim[0] : castMark;
+                if (deliveryMark == null) {
+                    releaseBossHazardReservation("projectile-target-lost-before-aim-lock");
+                    bossAbilityState = BossAbilityState.NONE;
+                    bossCastDeadlineMillis = 0L;
+                    releaseBossCastMobility(boss, "projectile-target-lost-before-aim-lock");
+                    return;
+                }
                 if (taskRegistry.owns(callbackGeneration) && allowedPhase
                         && boss.isValid() && !boss.isDead() && bossId.equals(bossUuid)) {
-                    executeBossSpell(boss, target, castMark, spell, forced, callbackGeneration);
+                    executeBossSpell(boss, target, deliveryMark, spell, forced, callbackGeneration);
                 }
             }
         }, 1L, 1L);
@@ -56708,7 +56775,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                      }
                      switch (spell) {
                         case VOID_BLAST -> voidBlast(boss, mark);
-                        case RIFT_PROJECTILE -> riftProjectile(boss, target, mark.clone().add(0, 1.5D, 0));
+                        case RIFT_PROJECTILE -> riftProjectile(boss, target, mark);
                         case RIFT_ARROWS -> {
                             if (BossEdgeVolleyPolicy.allowsPhase(bossPhase)
                                     && bossEdgeVolleyClusterDwell.satisfied()) {
@@ -56720,7 +56787,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                                         EndRiftAiPolicy.BossSpell.RIFT_ARROWS.id(),
                                         new SkeletonCombatPolicy.ArrowProfile(
                                                 3, BOSS_PROJECTILE_DAMAGE, 60, "rift_salvo"),
-                                        mark.clone().add(0, 1.5D, 0));
+                                        mark);
                             }
                         }
                         case VOID_MARK -> {
@@ -56744,7 +56811,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                          }
                          case SUMMON_SERVANTS -> summonServants(boss);
                          case ARENA_INFERNO -> arenaInferno(boss, target);
-                         case BOSS_FIREBALL -> launchBossFireball(boss, target, mark.clone().add(0, 1.5D, 0));
+                         case BOSS_FIREBALL -> launchBossFireball(boss, target, mark);
                          case FINAL_STRIKE -> startBossFinalStrike(boss, target, forced);
                        }
                       if (spell != EndRiftAiPolicy.BossSpell.FINAL_STRIKE
@@ -58656,6 +58723,27 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return true;
     }
 
+    private Location bossProjectileMuzzle(LivingEntity boss, EndRiftAiPolicy.BossSpell spell) {
+        return spell == EndRiftAiPolicy.BossSpell.RIFT_PROJECTILE ? cocoonBeamChest(boss) : boss.getEyeLocation();
+    }
+
+    private void renderBossProjectileAim(LivingEntity boss, EndRiftAiPolicy.BossSpell spell, Location aim) {
+        Location origin = bossProjectileMuzzle(boss, spell);
+        Vector direction = aim.toVector().subtract(origin.toVector());
+        double distance = direction.length();
+        if (distance < .1D) return;
+        direction.multiply(1D / distance);
+        var hit = boss.getWorld().rayTraceBlocks(origin, direction, distance, org.bukkit.FluidCollisionMode.NEVER, true);
+        if (hit != null) distance = hit.getHitPosition().distance(origin.toVector());
+        var color = new Particle.DustOptions(Color.fromRGB(146, 215, 255), .78F);
+        double interval = Math.max(.65D, distance / 24D);
+        for (double step = interval; step < distance; step += interval) {
+            Location at = origin.clone().add(direction.clone().multiply(step));
+            if (!isArenaLocation(at)) break;
+            spawnEventParticle(at, Particle.DUST, 2, .015D, .015D, .015D, 0D, color);
+        }
+    }
+
     private void riftProjectile(LivingEntity boss, Player target) {
         riftProjectile(boss, target, target == null ? null : target.getEyeLocation());
     }
@@ -58666,7 +58754,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || boss == null || target == null || boss.getWorld() == null) {
             return;
         }
-        Location start = boss.getLocation().add(0.0D, 1.0D, 0.0D);
+        Location start = bossProjectileMuzzle(boss, EndRiftAiPolicy.BossSpell.RIFT_PROJECTILE);
         Vector offset = committedAim.toVector().subtract(start.toVector());
         if (offset.lengthSquared() < 0.01D) {
             return;
@@ -60815,6 +60903,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 target.sendActionBar(Component.text("Кокон наводит луч", NamedTextColor.LIGHT_PURPLE));
             } else if (stage == 1) {
                 sendBossAnimationVisualUpdate(boss, BossVisualCuePolicy.releaseAnimation("chest_beam"));
+            } else {
+                nextCocoonBeamTick = eventTickCounter + CocoonBeamPolicy.COOLDOWN_TICKS;
             }
         }
         double length = clipCocoonBeam(chest, cast.axis);
@@ -60846,11 +60936,21 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Vector side = axis.getCrossProduct(new Vector(0, 1, 0));
         if (side.lengthSquared() < .001D) side.setX(1D);
         side.normalize().multiply(CocoonBeamPolicy.RADIUS);
+        Vector upright = side.getCrossProduct(axis).normalize().multiply(CocoonBeamPolicy.RADIUS);
+        var coreDust = new Particle.DustOptions(Color.fromRGB(245, 181, 255), 1.25F);
+        double spin = eventTickCounter * .22D;
         int samples = Math.max(1, Math.min(20, (int) Math.ceil(length / 2.5D)));
         for (int i = 0; i <= samples; i++) {
             Location center = chest.clone().add(axis.clone().multiply(length * i / samples));
             spawnEventParticle(center.clone().add(side), Particle.DUST, 1, 0, 0, 0, 0, dust);
             spawnEventParticle(center.clone().subtract(side), Particle.DUST, 1, 0, 0, 0, 0, dust);
+            if (stage == 1) {
+                double angle = spin - i * .7D;
+                Vector shell = side.clone().multiply(Math.cos(angle)).add(upright.clone().multiply(Math.sin(angle)));
+                spawnEventParticle(center.clone().add(shell), Particle.DUST, 1, 0, 0, 0, 0, dust);
+                spawnEventParticle(center.clone().subtract(shell), Particle.DUST, 1, 0, 0, 0, 0, dust);
+                spawnEventParticle(center, Particle.DUST, 1, 0, 0, 0, 0, coreDust);
+            }
         }
         if (stage == 1 && length > 1D) {
             Location tip = chest.clone().add(axis.clone().multiply(length));
@@ -60891,8 +60991,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         CocoonBeam cast = cocoonBeam;
         if (cast == null) return;
         cocoonBeam = null;
-        // Cooldown starts when the beam terminates (or is cancelled), 2400 ticks.
-        nextCocoonBeamTick = eventTickCounter + CocoonBeamPolicy.COOLDOWN_TICKS;
+        // Recovery has already started the cooldown at the end of emission.
+        if (cast.stage < 2) nextCocoonBeamTick = eventTickCounter + CocoonBeamPolicy.COOLDOWN_TICKS;
         if (cast.task != null) cast.task.cancel();
         spellCasts.cancel(cast.cue, cast.generation, eventAudience(), this::sendSpellCast);
         if (Objects.equals(cast.reservation, bossHazardReservationId)) releaseBossHazardReservation(reason);
@@ -61325,6 +61425,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         clearWorldVfxBeamsByPrefix("boss-cue-");
         cocoonFallStarted = true;
         cocoonFallLastServerTick = Long.MIN_VALUE;
+        cocoonFallLanding = null;
         cocoonFallElapsedTicks = 0;
         cocoonFallStage = CocoonFallPolicy.stageAfterLastDefender(
                 cocoonFallStarted, cocoonLandingPlayed);
@@ -61343,6 +61444,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * so the caller can skip its own hovering logic for this tick.
      */
     private boolean tickCocoonFall() {
+        if (phase == EventPhase.RECOVERY_REQUIRED) return true;
         if (!cocoonFallStarted || cocoonFallElapsedTicks < 0 || generation != cocoonFallGeneration) {
             return false;
         }
@@ -61368,15 +61470,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         boss.setGravity(false);
         boss.setVelocity(new Vector(0.0D, 0.0D, 0.0D));
-        Location landing = floor.clone();
-        Location next = landing.clone();
-        double height = CocoonFallPolicy.heightDuringFall(
-                BossFinalSealAnchorPolicy.HOVER_HEIGHT, cocoonFallElapsedTicks);
-        next.setY(Math.max(landing.getY(), landing.getY() + height));
+        if (cocoonFallLanding == null) cocoonFallLanding = resolveCocoonFallLanding(boss, floor);
+        if (cocoonFallLanding == null) {
+            recoveryReason = "COCOON_FALL_NO_CLEAR_LANDING";
+            forcePhase(EventPhase.RECOVERY_REQUIRED, recoveryReason);
+            return true;
+        }
+        Location landing = cocoonFallLanding;
+        Location next = cocoonFallPosition(floor, landing, cocoonFallElapsedTicks);
         boolean relocated;
         cocoonFallTeleportDestination = next.clone();
         try {
-            relocated = next.getBlock().isPassable() && teleportCombatEntity(boss, next);
+            relocated = cocoonFallBodyClear(boss, next) && teleportCombatEntity(boss, next);
         } finally {
             cocoonFallTeleportDestination = null;
         }
@@ -61420,6 +61525,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 lastBossPathRequestMillis = 0L;
                 if (boss instanceof Mob mob) { mob.setAI(true); mob.setAware(true); }
                 boss.setGravity(true);
+                boss.setInvulnerable(false);
                 playEventMusic(musicForPhase());
             }
             getLogger().info("RIFT_COCOON_FALL_STAGE event=" + eventId
@@ -61427,6 +61533,61 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " melee_fury=" + CocoonFallPolicy.isMeleeFury(cocoonFallStage));
         }
         return cocoonFallStage != CocoonFallPolicy.Stage.MELEE_FURY;
+    }
+
+    private Location resolveCocoonFallLanding(LivingEntity boss, Location coreTop) {
+        // Prefer the core. If its pedestal obstructs the body, consider the
+        // nearest floor positions in a fixed order, including after restart.
+        for (int slot = -1; slot < 8; slot++) {
+            Location landing = coreTop.clone();
+            if (slot >= 0) {
+                double yaw = slot * Math.PI / 4D;
+                landing.add(Math.cos(yaw) * 3D, 0D, Math.sin(yaw) * 3D);
+                landing.setY(combatFloorY() + 1D);
+            }
+            if (!landing.clone().add(0, -.05D, 0).getBlock().getType().isSolid()) continue;
+            boolean clear = true;
+            for (int tick = 0; tick <= CocoonFallPolicy.FALL_TICKS; tick++) {
+                if (!cocoonFallBodyClear(boss, cocoonFallPosition(coreTop, landing, tick))) {
+                    clear = false;
+                    break;
+                }
+            }
+            if (clear) return landing;
+        }
+        return null;
+    }
+
+    private Location cocoonFallPosition(Location coreTop, Location landing, int elapsedTicks) {
+        double hover = BossFinalSealAnchorPolicy.HOVER_HEIGHT;
+        double height = CocoonFallPolicy.heightDuringFall(hover, elapsedTicks);
+        double progress = 1D - height / hover;
+        return coreTop.clone().add(
+                (landing.getX() - coreTop.getX()) * progress,
+                (landing.getY() - coreTop.getY()) * progress + height,
+                (landing.getZ() - coreTop.getZ()) * progress);
+    }
+
+    private boolean cocoonFallBodyClear(LivingEntity boss, Location at) {
+        if (!isArenaLocation(at)) return false;
+        World world = at.getWorld();
+        double half = boss.getWidth() * .5D;
+        int bottom = at.getBlockY();
+        int top = (int) Math.floor(at.getY() + boss.getHeight() - 1e-6D);
+        int minX = (int) Math.floor(at.getX() - half);
+        int maxX = (int) Math.floor(at.getX() + half - 1e-6D);
+        int minZ = (int) Math.floor(at.getZ() - half);
+        int maxZ = (int) Math.floor(at.getZ() + half - 1e-6D);
+        for (int x = minX; x <= maxX; x++) {
+            for (int z = minZ; z <= maxZ; z++) {
+                if (!world.isChunkLoaded(x >> 4, z >> 4)) return false;
+                for (int y = bottom; y <= top; y++) {
+                    Block block = world.getBlockAt(x, y, z);
+                    if (!block.isPassable() || block.isLiquid()) return false;
+                }
+            }
+        }
+        return true;
     }
 
     /** Existing signed phase packets carry the remaining authored stage time. */
@@ -61963,15 +62124,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             entity.setBrightness(new Display.Brightness(15, 15));
             entity.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.NONE);
             entity.setBillboard(Display.Billboard.FIXED);
-            entity.setViewRange(1.0F);
-            entity.setDisplayWidth(1.25F);
-            entity.setDisplayHeight(1.25F);
+            entity.setViewRange(2.0F);
+            entity.setDisplayWidth(2.25F);
+            entity.setDisplayHeight(3.25F);
             entity.setInterpolationDuration(2);
             entity.setTeleportDuration(2);
             entity.setInterpolationDelay(0);
             entity.setTransformation(new Transformation(
                     new Vector3f(-0.5F, -0.5F, -0.08F), new AxisAngle4f(),
-                    new Vector3f(0.82F, 0.82F, 0.82F), new AxisAngle4f()));
+                    new Vector3f(1.65F, 2.5F, 1.45F), new AxisAngle4f()));
             entity.setPersistent(false);
             entity.setGravity(false);
             entity.setInvulnerable(true);
@@ -62213,14 +62374,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             entity.setDisplayHeight(displayHeight);
             entity.setInterpolationDuration(5);
             entity.setInterpolationDelay(0);
-            // Small Kagune creep in four-tick pursuit steps. Matching the
-            // teleport duration to that stride makes the walk interpolate on
-            // the client instead of snapping 0.6 blocks four times a second.
-            // Nothing else teleports this display: the strike only rotates and
-            // applies damage, so the smoothing cannot desync a landed hit.
-            if (smallKagune) {
-                entity.setTeleportDuration((int) SMALL_KAGUNE_PURSUE_STRIDE_TICKS);
-            }
             entity.setPersistent(false);
             entity.setGravity(false);
             entity.setInvulnerable(true);
@@ -62808,87 +62961,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
-    /** Horizontal creep per pursuit step; small Kagune walk, they do not glide. */
-    private static final double SMALL_KAGUNE_PURSUE_STEP = 0.6D;
-    /** Pursuit runs on a 4-tick stride so it reads as a walk, not a teleport. */
-    private static final long SMALL_KAGUNE_PURSUE_STRIDE_TICKS = 4L;
-    /** Never chase a player more than this far above/below; the arena is flat. */
-    private static final double SMALL_KAGUNE_PURSUE_MAX_DY = 2.0D;
-
-    /**
-     * Contract B-11: a small Kagune is an active enemy, not a static doll. While
-     * it is between attacks it creeps toward the nearest legal participant; the
-     * windup and strike frames stay rooted so the telegraph stays readable and
-     * the player can always step out of the committed swat.
-     *
-     * <p>Both the display carrier and its Giant hitbox move together, because
-     * the hit admission reads the carrier's line of sight and the strike range
-     * reads the display; letting them drift apart would create attacks the
-     * player cannot see coming.</p>
-     */
-    private void pursueSmallKagune(ItemDisplay display, TentacleAnimationPolicy.State animation,
-                                   List<Player> participants) {
-        if (display == null || animation == null || participants == null || participants.isEmpty()) {
-            return;
-        }
-        boolean mobile = animation == TentacleAnimationPolicy.State.EMERGING
-                || animation == TentacleAnimationPolicy.State.READY
-                || animation == TentacleAnimationPolicy.State.RECOVERY
-                || animation == TentacleAnimationPolicy.State.SMALL_RECOVERY
-                || animation == TentacleAnimationPolicy.State.HIT_RECOVERY;
-        if (!mobile || eventTickCounter % SMALL_KAGUNE_PURSUE_STRIDE_TICKS != 0L) {
-            return;
-        }
-        Player target = participants.stream()
-                .filter(this::isActiveBossParticipant)
-                .filter(player -> player.isOnline() && !player.isDead())
-                .filter(player -> !isPlayerUnderTentacleControl(player))
-                .filter(player -> display.getWorld().equals(player.getWorld()))
-                .min(Comparator.comparingDouble(player ->
-                        display.getLocation().distanceSquared(player.getLocation())))
-                .orElse(null);
-        if (target == null || withinSmallKaguneRange(display, target)) {
-            return;
-        }
-        Location from = display.getLocation();
-        Location to = target.getLocation();
-        if (Math.abs(from.getY() - to.getY()) > SMALL_KAGUNE_PURSUE_MAX_DY) {
-            return;
-        }
-        Vector toward = to.toVector().subtract(from.toVector()).setY(0.0D);
-        if (toward.lengthSquared() <= 0.0001D) {
-            return;
-        }
-        // Stop just inside strike reach instead of standing on the player.
-        double travel = toward.length() - Math.max(0.5D, smallKaguneTuning().range() * 0.75D);
-        if (travel <= 0.0001D) {
-            return;
-        }
-        Location destination = from.clone().add(
-                toward.normalize().multiply(Math.min(SMALL_KAGUNE_PURSUE_STEP, travel)));
-        destination.setY(to.getY());
-        destination.setDirection(toward);
-        if (!isArenaLocation(destination)) {
-            return;
-        }
-        if (!teleportCombatEntity(display, destination)) {
-            return;
-        }
-        UUID carrierId = tentacleHitboxesByDisplay.get(display.getUniqueId());
-        Entity carrier = carrierId == null ? null : ownedEntities.get(carrierId);
-        if (carrier != null) {
-            // The carrier may legitimately fail (e.g. another plugin cancelled
-            // the teleport); the display still moved, so the next tick retries.
-            teleportCombatEntity(carrier, destination);
-        }
-    }
-
     private void tickSmallKagune(ItemDisplay display, TentacleController.VisualState state,
                                  List<Player> participants) {
         UUID displayId = display.getUniqueId();
         TentacleAnimationPolicy.State animation = state.state();
         long elapsed = Math.max(0L, eventTickCounter - state.startedTick());
-        pursueSmallKagune(display, animation, participants);
         if (terminalTentacleAnimation(animation)) {
             if (elapsed < TentacleAnimationPolicy.durationTicks(animation)) return;
             tentacleMarker(display, TentacleAnimationPolicy.Marker.HIDE_BELOW_FLOOR, null);
@@ -62921,6 +62998,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         .min(Comparator.comparingDouble(player ->
                                 display.getLocation().distanceSquared(player.getLocation())))
                         .orElse(null);
+                if (target == null && animation == TentacleAnimationPolicy.State.READY) {
+                    // A rooted summon cannot chase a party around the circle.
+                    // Retire a deserted anchor so future batches can emerge elsewhere.
+                    if (elapsed >= 120L) setTentacleState(display, TentacleAnimationPolicy.State.RETRACT, null);
+                    return;
+                }
                 if (target != null) {
                     Vector direction = target.getLocation().toVector()
                             .subtract(display.getLocation().toVector()).setY(0.0D);

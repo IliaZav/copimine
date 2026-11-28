@@ -115,8 +115,8 @@ public class Wave4SpecialProbe {
         // reachable bound rather than dead arithmetic.
         boolean raid="raid".equals(args.length>0?args[0]:"");
         if(raid)main.currentWaveScalePlayers=20;
-        require(ObeliskScalingPolicy.fireballCap(2)==20&&ObeliskScalingPolicy.fireballCap(10)==25
-                &&ObeliskScalingPolicy.fireballCap(20)==30,
+        require(ObeliskScalingPolicy.fireballCap(2)==25&&ObeliskScalingPolicy.fireballCap(10)==30
+                &&ObeliskScalingPolicy.fireballCap(20)==35,
                 "low-player profiles must reserve five bounded slots per active tower");
         var policySequence=ObeliskFireDirectorPolicy.beginFireSequence("synthetic-attempt",43,
                 new UUID(0,1),new UUID(0,99),0,20);
@@ -130,7 +130,8 @@ public class Wave4SpecialProbe {
                 new UUID(0,2),20),"wrong obelisk retained fire authority");
         require(!ObeliskFireDirectorPolicy.validFireSequence(policySequence,"synthetic-attempt",43,
                 new UUID(0,1),24),"expired sequence retained fire authority");
-        for(int id=1;id<=4;id++){
+        int towers=ObeliskScalingPolicy.obeliskCount(main.currentWaveScalePlayers);
+        for(int id=1;id<=towers;id++){
             var state=new Wave4ObeliskRuntimeState(id);main.activeWave4Obelisks.put(state.id(),state);
             UUID channelerId=new UUID(1,id);main.waveChannelerObelisks.put(channelerId,state.id());
             main.ownedEntities.put(channelerId,new Object());
@@ -177,10 +178,10 @@ public class Wave4SpecialProbe {
             require(main.pulseReleases.isEmpty()==false,
                     "the throttled small-party run stopped every pulse as well");
         }
-        require(main.shots.size()==4,"real pulse-first controller starved reflectable fireballs: "+main.shots);
+        require(main.shots.size()==towers,"real pulse-first controller starved reflectable fireballs: "+main.shots);
         int totalShots=main.shots.values().stream().mapToInt(Integer::intValue).sum();
         require(totalShots>=8,"the shorter configured cadence did not increase actual launches: "+main.shots);
-        require(main.pulses.size()==4,"special scheduling starved another tower's pulse: "+main.pulses);
+        require(main.pulses.size()==towers,"special scheduling starved another tower's pulse: "+main.pulses);
         int releaseGapBudget=ObeliskFireDirectorPolicy.releaseGapBudgetTicks(
                 main.currentWaveScalePlayers,main.activeWave4Obelisks.size());
         for(var state:main.activeWave4Obelisks.values()){

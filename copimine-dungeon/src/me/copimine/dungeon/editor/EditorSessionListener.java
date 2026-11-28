@@ -57,6 +57,7 @@ public final class EditorSessionListener implements Listener {
 
     private final DungeonBuilderWand wand;
     private final DungeonDefinitionStore store;
+    private final Map<UUID, Integer> lastRightClickTick = new LinkedHashMap<>();
 
     public EditorSessionListener(EditorSessionManager sessions) {
         this(sessions, null, null);
@@ -73,18 +74,27 @@ public final class EditorSessionListener implements Listener {
     public void onWandClick(PlayerInteractEvent event) {
         Player player = event.getPlayer();
         Action action = event.getAction();
-        if (wand == null || event.getHand() != EquipmentSlot.HAND
+        if (wand == null || event.getHand() == null
                 || (action != Action.LEFT_CLICK_BLOCK && action != Action.RIGHT_CLICK_BLOCK
-                    && action != Action.RIGHT_CLICK_AIR) || !wand.looksLikeWand(event.getItem())) return;
+                    && action != Action.RIGHT_CLICK_AIR)) return;
+        ItemStack tool = heldWand(player);
+        if (tool == null) return;
         event.setCancelled(true);
         if (!mayEdit(player)) {
             sessions.close(player.getUniqueId());
             player.sendActionBar(Component.text("Для жезла нужны права строителя подземелий."));
             return;
         }
-        if (!wand.isAuthentic(event.getItem(), player.getUniqueId())) {
+        if (!wand.isAuthentic(tool, player.getUniqueId())) {
             player.sendActionBar(Component.text("Этот жезл не привязан к вам на этом сервере."));
             return;
+        }
+        // Paper can report one right-click for both hands. Left-click is
+        // normally reported for the main hand even when the tool is offhand.
+        if (action == Action.LEFT_CLICK_BLOCK && event.getHand() != EquipmentSlot.HAND) return;
+        if (action != Action.LEFT_CLICK_BLOCK) {
+            int tick = Bukkit.getCurrentTick();
+            if (java.util.Objects.equals(lastRightClickTick.put(player.getUniqueId(), tick), tick)) return;
         }
         EditorSession session = sessions.open(player.getUniqueId(), player.getName());
         if (action == Action.RIGHT_CLICK_AIR || action == Action.RIGHT_CLICK_BLOCK && player.isSneaking()) {
@@ -99,6 +109,7 @@ public final class EditorSessionListener implements Listener {
             session.setWorld(world);
         }
         if (session.mode().readOnly()) {
+            player.sendActionBar(Component.text("Режим осмотра арены. Выберите режим выделения через Shift+ПКМ."));
             return;
         }
         boolean first = action == Action.LEFT_CLICK_BLOCK;
@@ -108,6 +119,16 @@ public final class EditorSessionListener implements Listener {
         player.sendActionBar(Component.text("Точка " + (first ? 1 : 2) + " · " + session.mode().label() + " · "
                 + block.getX() + ", " + block.getY() + ", " + block.getZ()
                 + (selection == null ? "" : " · " + dimensions(selection))));
+    }
+
+    private ItemStack heldWand(Player player) {
+        ItemStack main = player.getInventory().getItemInMainHand();
+        ItemStack off = player.getInventory().getItemInOffHand();
+        UUID owner = player.getUniqueId();
+        if (wand.isAuthentic(main, owner)) return main;
+        if (wand.isAuthentic(off, owner)) return off;
+        if (wand.looksLikeWand(main)) return main;
+        return wand.looksLikeWand(off) ? off : null;
     }
 
     private void openToolMenu(Player player, EditorSession session) {
@@ -485,13 +506,13 @@ public final class EditorSessionListener implements Listener {
         if (!(event.getView().getTopInventory().getHolder() instanceof Menu menu)) return;
         event.setCancelled(true);
         if (!(event.getWhoClicked() instanceof Player player) || !player.getUniqueId().equals(menu.viewer)
-                || !mayEdit(player) || !wand.isAuthentic(player.getInventory().getItemInMainHand(), menu.viewer)
+                || !mayEdit(player) || !wand.isAuthentic(heldWand(player), menu.viewer)
                 || !sessions.hasSession(menu.viewer)) return;
         Consumer<Player> action = menu.actions.get(event.getRawSlot());
         if (action != null) Bukkit.getScheduler().runTask(wand.plugin(), () -> {
             if (player.isOnline() && mayEdit(player) && sessions.hasSession(menu.viewer)
                     && player.getOpenInventory().getTopInventory().getHolder() == menu
-                    && wand.isAuthentic(player.getInventory().getItemInMainHand(), menu.viewer)) action.accept(player);
+                    && wand.isAuthentic(heldWand(player), menu.viewer)) action.accept(player);
         });
     }
 
@@ -530,7 +551,7 @@ public final class EditorSessionListener implements Listener {
         if (wand == null || store == null) return;
         for (Player player : Bukkit.getOnlinePlayers()) {
             UUID id = player.getUniqueId();
-            if (!mayEdit(player) || !wand.isAuthentic(player.getInventory().getItemInMainHand(), id)) {
+            if (!mayEdit(player) || !wand.isAuthentic(heldWand(player), id)) {
                 if (sessions.hasSession(id)) sessions.close(id);
                 continue;
             }
@@ -691,6 +712,7 @@ public final class EditorSessionListener implements Listener {
 
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
+        lastRightClickTick.remove(event.getPlayer().getUniqueId());
         sessions.close(event.getPlayer().getUniqueId());
     }
 

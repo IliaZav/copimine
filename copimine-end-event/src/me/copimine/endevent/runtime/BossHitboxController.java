@@ -415,6 +415,18 @@ public final class BossHitboxController {
         return true;
     }
 
+    /** Shares the proxy's receipt when Paper reports contact on the living carrier. */
+    public boolean acceptCarrierHit(LivingEntity boss, EntityDamageByEntityEvent event,
+                                    long currentGeneration, long serverTick, long nowMillis) {
+        if (!hasBoss(boss.getUniqueId()) || currentGeneration != generation) return false;
+        Entity source = event.getDamager();
+        if (source instanceof org.bukkit.entity.Projectile
+                && consumedProjectileIds.contains(source.getUniqueId())) return false;
+        if (!dedupe.accept(attackIdentity(event, serverTick), generation, nowMillis)) return false;
+        if (source instanceof org.bukkit.entity.Projectile) consumedProjectileIds.add(source.getUniqueId());
+        return true;
+    }
+
     /** Stops retaining a projectile's trajectory after it has been removed. */
     public void forgetProjectile(UUID projectileId) {
         if (projectileId != null) {

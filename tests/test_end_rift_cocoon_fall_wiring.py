@@ -60,16 +60,16 @@ def test_the_descent_overrides_the_hover_pin():
 
 def test_the_boss_actually_moves_during_the_fall():
     tick = body("private boolean tickCocoonFall(")
-    assert "CocoonFallPolicy.heightDuringFall(" in tick, (
+    trajectory = body("private Location cocoonFallPosition(")
+    assert "CocoonFallPolicy.heightDuringFall(" in trajectory, (
         "descent height must come from the policy"
     )
     assert "teleportCombatEntity(boss, next)" in tick, (
         "descent must use the owned teleport permit and honour cancellation"
     )
     # The boss must never be driven below the floor it is landing on.
-    assert "Math.max(landing.getY()" in tick, (
-        "the descent must clamp onto the arena floor instead of through it"
-    )
+    assert "(landing.getY() - coreTop.getY()) * progress + height" in trajectory
+    assert "cocoonFallBodyClear(boss, next)" in tick
 
 
 def test_the_landing_plays_once_and_reads_as_a_landing():

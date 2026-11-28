@@ -16,7 +16,8 @@ def probe(tmp_path_factory):
     source = (DOMAIN.parent / "CopiMineEndEvent.java").read_text("utf-8")
     methods = "\n".join(declaration(source, signature) for signature in (
         "private void beginCocoonFall(", "private boolean tickCocoonFall(",
-        "private boolean pinBossToFinalSealCore(",
+        "private boolean pinBossToFinalSealCore(", "private boolean isCurrentBossMeleeFury(",
+        "private Location resolveCocoonFallLanding(", "private Location cocoonFallPosition(", "private boolean cocoonFallBodyClear(",
         "private void syncCocoonFallAnimation(", "private long currentBossAnimationCueMillis(",
         "private boolean tickBossCocoonPresentation(",
         "private void tickWaveMobContainment(",
@@ -29,6 +30,9 @@ public class CocoonFallAdapterProbe {
     long generation=4, cocoonFallGeneration=Long.MIN_VALUE, nextTargetMillis;
     long bossVisualCueSequence,eventTickCounter,bossHitboxAnimationStartedMillis;
     long cocoonFallLastServerTick=Long.MIN_VALUE;
+    Location cocoonFallTeleportDestination, cocoonFallLanding;
+    EventPhase phase=EventPhase.BOSS_ACTIVE;
+    int recoveries;
     Object riftRam;boolean localTextureShowcase,bootstrapped=true;
     String bossHitboxAnimationId="IDLE_BREATH",bossBindingInstanceId="instance";
     UUID bossUuid=new UUID(0,1);static final long BOSS_PHASE_VISUAL_TRANSITION_MILLIS=800;
@@ -39,14 +43,25 @@ public class CocoonFallAdapterProbe {
     CocoonFallPolicy.Stage cocoonFallStage=CocoonFallPolicy.Stage.COCOONED;
     BossPhase bossPhase=BossPhase.LAST_SEAL;
     LivingEntity boss=new Mob(); double floorY=69; int impacts, moves, pins;
-    enum EventPhase { RECOVERY_REQUIRED }
+    enum EventPhase { BOSS_ACTIVE, RECOVERY_REQUIRED }
     static class Vector { Vector(double x,double y,double z){} }
-    static class World {UUID getUID(){return new UUID(0,3);}}
+    static class World {
+        static int floor=68; static boolean pedestal;
+        UUID getUID(){return new UUID(0,3);}
+        boolean isChunkLoaded(int x,int z){return true;}
+        Block getBlockAt(int x,int y,int z){return new Block(y<=floor || pedestal && x==0 && z==0 && y==floor+1);}
+    }
     static class Bukkit {static int tick;static int getCurrentTick(){return tick;}
         // Held grab targets are resolved through Bukkit, exactly like production.
         static Player getPlayer(UUID id){return null;}}
     final static World WORLD=new World();
+    record Block(boolean solid) {
+        boolean isPassable(){return !solid;} boolean isLiquid(){return false;}
+        Block getType(){return this;} boolean isSolid(){return solid;}
+    }
     static class Location {
+        Block getBlock(){return WORLD.getBlockAt((int)Math.floor(x),getBlockY(),(int)Math.floor(z));}
+        int getBlockY(){return (int)Math.floor(y);}
         double x,y,z; Location(double y){this.y=y;}
         World getWorld(){return WORLD;} double getX(){return x;} double getY(){return y;}
         double getZ(){return z;} void setY(double y){this.y=y;}
@@ -57,8 +72,10 @@ public class CocoonFallAdapterProbe {
         double y=71.5; boolean gravity; boolean valid=true;
         boolean isDead(){return false;} boolean isValid(){return valid;}
         UUID getUniqueId(){return new UUID(0,1);} World getWorld(){return WORLD;}
-        double getX(){return 0;} double getY(){return y;} double getZ(){return 0;}
-        Location getLocation(){return new Location(y);}
+        double x,z;double getX(){return x;} double getY(){return y;} double getZ(){return z;}
+        double getWidth(){return .6D;} double getHeight(){return 2D;}
+        boolean invulnerable=true; boolean isInvulnerable(){return invulnerable;} void setInvulnerable(boolean value){invulnerable=value;}
+        Location getLocation(){return new Location(y).add(x,0,z);}
         boolean teleport(Location loc){throw new AssertionError("unpermitted teleport");}
         void setGravity(boolean b){gravity=b;} void setVelocity(Vector v){}
     }
@@ -103,8 +120,10 @@ public class CocoonFallAdapterProbe {
     // 9G.07: the authored shell split plays before the descent. The probe
     // stubs it so the fall clock assertions stay about the fall, not the VFX.
     void playCocoonShatter(LivingEntity b,Location floor){}
-    boolean teleportCombatEntity(LivingEntity b,Location l){moves++;if(rejectMove)return false;b.y=l.y+(redirectMove?1.0:0.0);return true;}
-    void forcePhase(EventPhase p,String reason){recoveryReason=reason;}
+    boolean teleportCombatEntity(LivingEntity b,Location l){moves++;if(rejectMove)return false;b.x=l.x;b.z=l.z;b.y=l.y+(redirectMove?1.0:0.0);return true;}
+    void forcePhase(EventPhase p,String reason){phase=p;recoveryReason=reason;recoveries++;}
+    int combatFloorY(){return (int)floorY-1;}
+    boolean isArenaLocation(Location point){return true;}
     boolean saveStateSync(){return true;}
     void saveStateAsync(){}
     void cancelBossCastForPhaseChange(LivingEntity boss){oldCast=false;}
@@ -149,6 +168,7 @@ public class CocoonFallAdapterProbe {
     }
     public static void main(String[] args){
         CocoonFallAdapterProbe p=new CocoonFallAdapterProbe();
+        WORLD.floor=Integer.parseInt(args[1])-1;
         p.floorY=Double.parseDouble(args[1]);p.boss.y=p.floorY+2.5;
         p.beginCocoonFall(p.boss);
         if(args[0].equals("clock")) {
@@ -160,7 +180,8 @@ public class CocoonFallAdapterProbe {
                 near(p.boss.y,p.floorY+authoredHeight(tick));
             }
             check(p.cocoonFallStage==CocoonFallPolicy.Stage.MELEE_FURY&&((Mob)p.boss).ai,"fury did not resume at 60 server ticks");
-            check(p.impacts==1,"landing duplicated across the two tick owners");return;
+            check(p.impacts==1,"landing duplicated across the two tick owners");
+            check(!p.boss.isInvulnerable(),"fury retained native invulnerability");return;
         }
         if(args[0].equals("cast")) {
             check(!p.oldCast && !p.oldRing && !p.oldProjectiles,"cocoon spell survived the fall");
@@ -171,7 +192,15 @@ public class CocoonFallAdapterProbe {
             check(p.cocoonFallElapsedTicks==0,"cancelled move advanced clock");
             check(p.impacts==0,"cancelled move played impact");
             for(int i=0;i<4;i++){Bukkit.tick++;p.pinBossToFinalSealCore(p.boss);}
-            check(!p.recoveryReason.isEmpty(),"rejected moves must have bounded recovery");
+            check(p.recoveries==1 && p.moves==3,"rejected moves must stop after one bounded recovery");
+            return;
+        }
+        if(args[0].equals("pedestal")){
+            WORLD.pedestal=true;
+            for(int tick=0;tick<=60;tick++){ Bukkit.tick=tick;p.pinBossToFinalSealCore(p.boss); }
+            check(p.recoveries==0 && p.impacts==1 && p.cocoonFallStage==CocoonFallPolicy.Stage.MELEE_FURY,
+                    "a blocked core must use clear adjacent ground and enter fury");
+            near(p.boss.x,3D);near(p.boss.y,p.floorY);
             return;
         }
         for(int tick=0;tick<=40;tick++){
@@ -219,7 +248,7 @@ def test_real_fall_landing_and_permanent_fury(probe, floor):
     assert result.returncode == 0, result.stdout + result.stderr
 
 
-@pytest.mark.parametrize("mode", ["cancel", "redirect"])
+@pytest.mark.parametrize("mode", ["cancel", "redirect", "pedestal"])
 def test_rejected_relocation_does_not_advance_fall(probe, mode):
     result = subprocess.run(["java", "-cp", str(probe), "CocoonFallAdapterProbe", mode, "69"],
                             capture_output=True, text=True)

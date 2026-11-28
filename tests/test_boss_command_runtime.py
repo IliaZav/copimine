@@ -24,7 +24,8 @@ public class BossCommandRuntimeProbe {
  var p=new BossCommandRuntimeProbe();var actor=new LivingEntity(p.bossUuid);
  check(!p.isBossCombatRuntimeActive(actor));actor.test=true;
  check(!p.isBossCombatRuntimeActive(actor));p.testCombatAiMode=true;
- for(var phase:EventPhase.values()){p.phase=phase;check(p.isBossCombatRuntimeActive(actor));}
+ for(var phase:EventPhase.values()){p.phase=phase;check(p.isBossCombatRuntimeActive(actor)==(phase!=EventPhase.RECOVERY_REQUIRED));}
+ p.phase=EventPhase.COLLECTING;
  actor.scoped=false;check(!p.isBossCombatRuntimeActive(actor));actor.scoped=true;
  actor.id=UUID.randomUUID();check(!p.isBossCombatRuntimeActive(actor));actor.id=p.bossUuid;
  actor.dead=true;check(!p.isBossCombatRuntimeActive(actor));actor.dead=false;

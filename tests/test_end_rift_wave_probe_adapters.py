@@ -129,6 +129,8 @@ public final class WaveProbeAdapterHarness {
     static final String WAVE_TWO_ATTEMPT_LIFECYCLE_PREFIX = "wave2-attempt-lifecycle.";
     static final long OFFLINE_RECONNECT_GRACE_MILLIS = 25_000L;
     Map<String, String> wave7RecoveryCheckpoint = Map.of();
+    static final String WAVE7_MARKSMAN_DEFEATS_PREFIX = "marksman-defeats.";
+    final Map<Integer,Set<Integer>> wave7DefeatedMarksmanSlots = new HashMap<>();
     Map<String,String> riftRamCheckpoint = Map.of("ram.schema","2");
     static class Ram { Map<String,String> snapshot(){return Map.of("ram.schema","2");} }
     Ram riftRam;

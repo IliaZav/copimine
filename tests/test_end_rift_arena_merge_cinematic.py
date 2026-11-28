@@ -133,7 +133,7 @@ def test_runtime_owns_one_merge_scene_and_commits_the_reveal_once():
 
     beat = runtime[start:runtime.index("private void playArenaMergeCue(", start)]
     wall = beat.index("ArenaMergeCinematicPolicy.Shot.WALL_COLLAPSE")
-    assert "startLastSealArenaReveal(boss)" in beat[wall:beat.index("ArenaMergeCinematicPolicy.Shot.LAST_SEAL_IGNITES")], (
+    assert "startLastSealArenaReveal(boss, allowsDisposableLastSealReveal(boss))" in beat[wall:beat.index("ArenaMergeCinematicPolicy.Shot.LAST_SEAL_IGNITES")], (
         "the approved physical reveal must commit at the wall-collapse shot")
     assert "revealCommitted.compareAndSet(false, true)" in beat, (
         "the physical reveal must be exactly-once")

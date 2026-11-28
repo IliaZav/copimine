@@ -167,3 +167,74 @@ def test_only_an_accepted_hit_touches_real_health():
             body = source[start : cursor + 1]
             break
     assert "BossHitClassificationPolicy" in body
+
+
+def test_grounded_guardian_accepts_native_contact_without_using_a_stale_pose(tmp_path):
+    from tests.test_wave_navigation_adapter import extract
+
+    helper = extract(EVENT.read_text(encoding="utf-8"),
+                     "boolean isGroundedFuryCarrierHit(EntityDamageEvent event, LivingEntity boss, Entity source)")
+    probe = tmp_path / "FuryCarrierContactProbe.java"
+    probe.write_text(r'''
+public class FuryCarrierContactProbe {
+    boolean fury;
+    static class Location {
+        double squared = 10;
+        double distanceSquared(Location other) { return squared; }
+    }
+    static class Entity {
+        Object world;
+        Location location = new Location();
+        Object getWorld() { return world; }
+        Location getLocation() { return location; }
+    }
+    static class LivingEntity extends Entity {
+        boolean invulnerable;
+        boolean isInvulnerable() { return invulnerable; }
+    }
+    static class Player extends LivingEntity {
+        boolean clear = true, eligible = true;
+        boolean hasLineOfSight(LivingEntity boss) { return clear; }
+    }
+    static class Projectile extends Entity { Player owner; }
+    record EntityDamageEvent(DamageCause cause) {
+        enum DamageCause { ENTITY_ATTACK, PROJECTILE, MAGIC }
+        DamageCause getCause() { return cause; }
+    }
+    boolean isCurrentBossMeleeFury() { return fury; }
+    Player activeBossDamageOwner(EntityDamageEvent event, LivingEntity boss, Entity source) {
+        Player player = source instanceof Player p ? p : source instanceof Projectile arrow ? arrow.owner : null;
+        return player != null && player.eligible ? player : null;
+    }
+    static void expect(boolean condition, String message) {
+        if (!condition) throw new AssertionError(message);
+    }
+    public static void main(String[] args) {
+        var probe = new FuryCarrierContactProbe();
+        var boss = new LivingEntity();
+        var player = new Player();
+        boss.world = player.world = new Object();
+        var melee = new EntityDamageEvent(EntityDamageEvent.DamageCause.ENTITY_ATTACK);
+        expect(!probe.isGroundedFuryCarrierHit(melee,boss,player), "cocoon keeps the normal hitbox gate");
+        probe.fury = true;
+        expect(probe.isGroundedFuryCarrierHit(melee,boss,player), "grounded native melee contact");
+        player.location.squared = 90;
+        expect(!probe.isGroundedFuryCarrierHit(melee,boss,player), "cannot hit at a distance");
+        player.location.squared = 8;
+        player.clear = false;
+        expect(!probe.isGroundedFuryCarrierHit(melee,boss,player), "cannot hit through cover");
+        var arrow = new Projectile();
+        arrow.owner = player;
+        arrow.world = boss.world;
+        var impact = new EntityDamageEvent(EntityDamageEvent.DamageCause.PROJECTILE);
+        expect(probe.isGroundedFuryCarrierHit(impact,boss,arrow), "physical arrow arrived at the real body");
+        player.eligible = false;
+        expect(!probe.isGroundedFuryCarrierHit(impact,boss,arrow), "an outsider cannot damage the boss");
+    }
+''' + helper + "}", encoding="utf-8")
+    compile_result = subprocess.run([_tool("javac"), "-d", str(tmp_path), str(probe)],
+                                    capture_output=True, text=True)
+    assert compile_result.returncode == 0, compile_result.stderr
+    result = subprocess.run([_tool("java"), "-cp", str(tmp_path), "FuryCarrierContactProbe"],
+                            capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr

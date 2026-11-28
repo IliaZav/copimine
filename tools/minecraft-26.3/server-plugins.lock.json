@@ -893,13 +893,13 @@
       "candidate": {
         "filename": "CopiMineDungeon-26.3.jar",
         "runtimeFilename": "CopiMineDungeon.jar",
-        "sha256": "d17bb17f2a57653c561cf336dc67565a7b6380b969d8440fb6a7f6a1b9a158f0",
+        "sha256": "4dc7802859ec6c6a1ab60bc6b81b695f982e456525d20b8a8616d4b95962c7f5",
         "apiVersion": "26.3",
         "buildArtifact": "build/minecraft-26.3/plugins/jars/CopiMineDungeon-26.3.jar",
         "compatibilityStatus": "requires-runtime-validation",
         "nativeVerified": false,
-        "sha512": "75e520351e89b5c8fd880ab5b616ca1f67500523285a9fe534a96356be2990e40f082e680e4ce9cf666d65b8ccbbe9cee049eadf08018506cca1feac0435f672",
-        "size": 289537,
+        "sha512": "6054320138a4ad3063f2f1960b9b7d93e0a4c29cd8ddddd7946bd4d3d401bbeea0db18a7904e616a94e25b5c94193348c5ac645b55f92856690080527054ecac",
+        "size": 290072,
         "runtimeEligible": true,
         "replaceSha256": [
           "8789376707c12b157e7bd32fa9a419352f5a78f7498cb2e82d33c08a3ab93276",
@@ -915,7 +915,8 @@
           "356577f8062917bd75709d9da71fcd4ef2193d81a19a5f99e3664bdc7cc63b7b",
           "0020ee863bc54f5448610fdcb8507b9481115b2dd368d9b71e212cead219d854",
           "1f65cf4c3bccbdef456050c84f8950c9dce71aeb44185c535f437b56be6cf04a",
-          "c57187ce1cf0c738d52811cdbb8730d36e12c4896ecb51fbf5f402244b45d93b"
+          "c57187ce1cf0c738d52811cdbb8730d36e12c4896ecb51fbf5f402244b45d93b",
+          "d17bb17f2a57653c561cf336dc67565a7b6380b969d8440fb6a7f6a1b9a158f0"
         ]
       },
       "nativeVerified": false,
@@ -1040,13 +1041,13 @@
       "candidate": {
         "filename": "CopiMineEndEvent-26.3.jar",
         "runtimeFilename": "CopiMineEndEvent.jar",
-        "sha256": "a60c168ad16476c7b1b12119570cd04f2a9791c8c1518b224ddda3312774c89b",
+        "sha256": "5765b06c4c3a5a8ea1d900e63ad1212abc2622ee2b1516b63b9013baddd3766f",
         "apiVersion": "26.3",
         "buildArtifact": "build/minecraft-26.3/plugins/jars/CopiMineEndEvent-26.3.jar",
         "compatibilityStatus": "requires-runtime-validation",
         "nativeVerified": false,
-        "size": 3038415,
-        "sha512": "148d4a24e3e2484994fc8ca0b0de11cc75290aadeeda4b429bcdb6a2db9f0b2513f3fd777e0e90f5f9ec094f8724631cbd765c3b6484ef6237532303a2dd9e10",
+        "size": 3040415,
+        "sha512": "ffb162fce3e00af2b070d9e280b1de37efa35959093b72033f59670a1d128a57eb8840bbb07f8ec721f97cc832e546e7639119b634a42ac6853ef6165e990236",
         "runtimeEligible": true,
         "replaceSha256": [
           "888a547fdc4b8f78fc7d4e5510d9c8d16b51aa6cbb23248bc8fef89fe6914ff6",
@@ -1332,7 +1333,9 @@
           "5bdd63e61a72d1cb2d50191e14bdb26edabe9481013cf6da51d487149ed6bd90",
           "d6917dd46ae9ea80c2eefd7e8a1928091993c44def49e85f58f712cd14979f87",
           "73357343f4b35da96a534a24145af123e43d22ef30266b5b280cd14dae47de91",
-          "af6c44efa0e2eeb46656f3c03134b071f887c95aa9fa379aed81c5baf6afa498"
+          "af6c44efa0e2eeb46656f3c03134b071f887c95aa9fa379aed81c5baf6afa498",
+          "a60c168ad16476c7b1b12119570cd04f2a9791c8c1518b224ddda3312774c89b",
+          "5cdc486b24ca402e589410df896d0bc271f8aa8242ddf2924159b5e7707da26d"
         ]
       },
       "nativeVerified": false

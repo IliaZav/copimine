@@ -6,8 +6,7 @@ import java.util.List;
 /** Deterministic server-owned positions for the Last Seal guardian shields. */
 public final class ShieldOrbitPolicy {
     /** Keep one plate per living guardian slot, close enough to protect the boss body. */
-    /** One-block plates need a little over 0.71 blocks of radius to clear. */
-    public static final double ORBIT_RADIUS = 0.78D;
+    public static final double ORBIT_RADIUS = 1.85D;
     public static final double TORSO_HEIGHT = 3.1D;
     public static final double BOB_HEIGHT = 0.18D;
     public static final long ORBIT_PERIOD_TICKS = 240L;

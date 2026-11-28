@@ -24,6 +24,8 @@ def test_named_checkpoint_resumes_and_legacy_or_malformed_trial_checkpoint_requi
         adapter,
         extract(source, "boolean shouldRestoreWave7RecoveryCheckpoint(Map<String, String> objectiveProgress)"),
         extract(source, "boolean isWave7RecoveryCheckpointActive()"),
+        extract(source, "void restoreMarksmanDefeats(Map<String, String> progress, int frozenRosterSize)"),
+        extract(source, "boolean isNamedMarksmanSquadTrial(RealitySplitTrialController.NamedTrialState trial)"),
     ))
     probe = tmp_path / "Wave7CheckpointProbe.java"
     probe.write_text('''
@@ -40,12 +42,16 @@ public class Wave7CheckpointProbe {
     boolean namedWave7RuntimeRestorePending;
     Set<UUID> sandboxWaveRoster = Set.of();
     Map<String,String> wave7RecoveryCheckpoint = Map.of();
+    static final String WAVE7_MARKSMAN_DEFEATS_PREFIX="marksman-defeats.";
+    final Map<Integer,Set<Integer>> wave7DefeatedMarksmanSlots=new HashMap<>();
     RealitySplitChamberController realitySplitChamberController = new RealitySplitChamberController();
     RealitySplitTrialController realitySplitTrialController = new RealitySplitTrialController();
     Controller encounterController = new Controller();
     static class Controller { EventPhase phase; void restore(String id,long gen,EventPhase phase,Object unused){this.phase=phase;} }
     enum EventPhase { WAVE_7, READY_FOR_PLAYERS, RECOVERY_REQUIRED }
-    record EventSnapshot(Map<String,String> objectiveProgress) { }
+    record EventSnapshot(Map<String,String> objectiveProgress) {
+        Set<UUID> officialRewardRoster(){return Set.of(new UUID(0,1),new UUID(0,2));}
+    }
     Logger getLogger(){return Logger.getAnonymousLogger();}
 ''' + adapter + '''
     static void require(boolean value, String text) { if(!value) throw new AssertionError(text); }
@@ -237,7 +243,7 @@ public class Wave7CheckpointProbe {
         "domain/ChamberIsolationPolicy.java", "domain/RealitySplitBarrierPolicy.java",
         "domain/RealitySplitChamberSnapshot.java",
         "domain/Wave7EchoDuelCellPolicy.java", "domain/wave7/EchoBehaviorStrategy.java",
-        "domain/Wave7RoomLayoutPolicy.java",
+        "domain/Wave7RoomLayoutPolicy.java", "domain/Wave7MarksmanSquadPolicy.java",
             "domain/Wave7TrialRoutePolicy.java", "domain/wave7/EchoLoadoutState.java",
         "runtime/RealitySplitChamberController.java",
         "runtime/RealitySplitEchoDuelState.java", "runtime/RealitySplitTrialController.java",

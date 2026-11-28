@@ -240,7 +240,7 @@ final class LastSealArenaReveal {
     boolean active(long generation) { return plan != null && owner == generation; }
     boolean playing(long generation, long tick) {
         return active(generation) && (!open || !ascensionStarted(generation)
-                || tick - ascentStartTick < ASCENT_TICKS || tick - startTick < DURATION_TICKS);
+                || tick - ascentStartTick <= ASCENT_TICKS || tick - startTick < DURATION_TICKS);
     }
     Plan opened(long generation) { return active(generation) && open ? plan : null; }
     boolean ascensionStarted(long generation) {

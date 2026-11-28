@@ -241,3 +241,19 @@ def test_projectile_group_policy_enforces_live_slots_and_child_cleanup(tmp_path)
         text=True,
     )
     assert run_result.returncode == 0, run_result.stdout + run_result.stderr
+
+
+def test_guardian_physical_cast_locks_late_and_uses_the_same_aim_for_warning_and_release():
+    source = (ROOT / "copimine-end-event/src/me/copimine/endevent/CopiMineEndEvent.java").read_text(encoding="utf-8")
+    start = source.index("private boolean telegraphBossSpell(")
+    end = source.index("private boolean tickBossFuryCombo(", start)
+    telegraph = source[start:end]
+    assert "BossSpellDeliveryPolicy.projectileAimLockTick(telegraphTicks)" in telegraph
+    assert telegraph.count("projectileAim[0] = cocoonBeamTorso(target)") == 1
+    assert "renderBossProjectileAim(boss, spell, projectileAim[0])" in telegraph
+    assert "executeBossSpell(boss, target, deliveryMark, spell" in telegraph
+
+    release = source[source.index("private void executeBossSpell("):source.index("private boolean launchBossSpellDelivery(")]
+    assert "riftProjectile(boss, target, mark)" in release
+    assert "launchBossFireball(boss, target, mark)" in release
+    assert "mark.clone().add(0, 1.5D, 0)" not in release

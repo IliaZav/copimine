@@ -558,3 +558,96 @@ Because the client check aborted the job before them, `Run Python contract tests
 repinned commit now exercises the rest of the migration staging. The rebuilt
 30,706,521 B client also replaces the stale 30,706,420 B jar staged for the owner, so
 the visual-acceptance client includes the `dbd9864e` VFX.
+
+## Phase 6 (LAST_SEAL) release — 2026-11-28 (commit `1654b20f`)
+
+The Phase 6 overhaul is committed as `985e599f` (production behaviour) with one
+later test-only commit `1654b20f`, on `codex/end-rift-v7-release`, and promoted to
+production as a single coherent pinned set.
+
+### Deployment
+
+| Artifact | Runtime path | SHA-256 | Size |
+|---|---|---|---|
+| `CopiMineEndEvent.jar` | `.../minecraft/server/plugins/` | `67f6a22c372e16c60adb37ff3b970d00beb76164587c5407a325ffe53e6deb27` | 3,041,397 B |
+| `CopiMineDungeon.jar` | `.../minecraft/server/plugins/` | `4dc7802859ec6c6a1ab60bc6b81b695f982e456525d20b8a8616d4b95962c7f5` | 290,072 B |
+| `CopiMineNarcotics.jar` | `.../minecraft/server/plugins/` | `b4d026b229bddd46fd09f95c2e3d404997e752958e7f7d6c73a6093a4b734d9e` | 379,628 B |
+
+`copimine-game.service` active after the restart; `/cmend debug invariants` =
+`failures=0`; `/cmend arena admission` = `Площадка готова к официальной попытке`
+(gate `RESTORED`, cube `2014,72..76,2046..2050`, volume 25); `/cmdungeon status` =
+6 rooms / 1 lock / 0 load problems. The event state rehydrated across the restart
+(`READY_FOR_PLAYERS`, generation 15, core `2048,72,2048`).
+
+### Reveal plan re-binding
+
+The arena snapshot was regenerated for the widened structure and re-approved:
+`last-seal-arena.tsv` carries **16,736** cells and `/cmend arena reveal-preview`
+returns `Карта совпадает с блоками. Радиус 62 · SHA-256
+e72c64c8f31b0ea869d9173678872daffdde24ce0a1c8571065850cead950015`, which is
+exactly the site's `last-seal-reveal.approved-plan-sha256`. `reveal-preview`
+compares every plan cell against live world blocks, so the matching hash proves
+the walls, corridor and fissures are physically present. (The older
+`9ba622c8…` / 16,690-cell figure in the `c7195be7` section is superseded; the repo
+ships `approved-plan-sha256: ''` because the plan is site-bound.)
+
+### Fixes in this release
+
+- Rooted permanent defensive Kagune now face **outward from the Core** per slot
+  (each keeps its own yaw) instead of sharing one turret direction; temporary /
+  under-player tentacles still track their target.
+- The Kagune ring renders full-bright at the authored 1.0 rig scale and sweeps the
+  **whole** arena with fixed-spatial contact sampling and faster travel.
+- The merge (5→6) cinematic lands in **14 s** (inside the 12–16 s window) with
+  denser destruction.
+- Ambush grab admission refuses an unreachable / wall-blocked target and the throw
+  retries sideways/backward lanes before giving up.
+- Last Seal Guardian accepts grounded hits (`0525b786`).
+- **Dungeon wand click fixed** (`0525b786`): the editor handler now resolves the
+  held wand from main or off-hand (`heldWand`, null-safe) instead of
+  `event.getHand()==HAND && event.getItem()`, with a right-click tick de-dup; so
+  clicking a block with the zone/effect wand works again.
+- Arena visual restore preserved player progress (`02569c26`).
+
+### Backups / rollback
+
+Previous production set: EndEvent `af6c44ef…` 3,036,601 B, Dungeon
+`c57187ce…` 289,243 B, Narcotics `ec2ef8d5…` 379,018 B. Copies:
+`/opt/copimine-game/deploy-backups/20261128T184042Z/CopiMineEndEvent.jar.pre-af6c44ef`,
+`.../CopiMineDungeon.jar.pre-c57187ce`, `.../CopiMineNarcotics.jar.pre-ec2ef8d5`.
+Restore over the `plugins/` names and restart `copimine-game.service`.
+
+### Code upload
+
+`/opt/copimine-game/code-uploads/20261128-end-rift-v7-1654b20f/` — `README.txt`,
+`end-rift-v7-release-1654b20f-src.tgz` (16,907,675 B, `ee332802…`), candidate jars
+(`CopiMineEndEvent-67F6A22C.jar`, `CopiMineDungeon-4DC78028.jar`,
+`CopiMineNarcotics-B4D026B2.jar`), the deployed jars, and
+`CopiMineClient-0.1.5+26.3.jar` (`5ef04b42…`). Branch pushed to
+`github.com/IliaZav/copimine`.
+
+### Automated suite status (this release)
+
+A full `pytest tests` run over `985e599f` with JDK 25 reported
+`22 failed, 3932 passed, 16 skipped`. Two failures were stale Java probe harnesses
+(the permanent-grab gate now also yields to a live cocoon beam / Kagune ring /
+crushing-gravity anchor, and the prisoner control-pair probe followed a renamed
+`boolean sendCurrentPresentationResume`) and were repaired in `1654b20f` —
+`6 passed`. The remaining **20 failures are environment/packaging
+pre-conditions** (absent Gradle client build, un-staged `paper-26.3-205.jar`,
+absent resource-pack `build/` + `_stage/`, un-staged first-party/official 26.3
+migration candidates), all reproducible without any End Rift behaviour change.
+
+### Open item for the owner
+
+The rule "потолок на 20 блоков ниже блоков квадратной арены" (a ceiling 20 blocks
+below the square-arena blocks) is **not** stated in the V7 master spec or either
+canonical file, and the site arena region (`[2014,10,2014]..[2082,134,2082]`) is
+taller than the built square (`[2014,72,2014]..[2082,131,2082]`). Guessing would
+violate the canonical “do not invent layout” rule, so the exact meaning is
+**BLOCKED-OWNER** pending the owner's clarification.
+
+### Native acceptance
+
+VFX / model / HUD / animation confirmation remains **NATIVE_BLOCKED** — the owner
+playtest on the signed Fabric 26.3 client is the native/visual acceptance path.

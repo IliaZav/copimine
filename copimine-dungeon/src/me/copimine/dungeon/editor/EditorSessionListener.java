@@ -75,13 +75,15 @@ public final class EditorSessionListener implements Listener {
         Action action = event.getAction();
         if (wand == null || event.getHand() != EquipmentSlot.HAND
                 || (action != Action.LEFT_CLICK_BLOCK && action != Action.RIGHT_CLICK_BLOCK
-                    && action != Action.RIGHT_CLICK_AIR)
-                || !wand.isAuthentic(event.getItem(), player.getUniqueId())) {
-            return;
-        }
+                    && action != Action.RIGHT_CLICK_AIR) || !wand.looksLikeWand(event.getItem())) return;
         event.setCancelled(true);
         if (!mayEdit(player)) {
             sessions.close(player.getUniqueId());
+            player.sendActionBar(Component.text("Для жезла нужны права строителя подземелий."));
+            return;
+        }
+        if (!wand.isAuthentic(event.getItem(), player.getUniqueId())) {
+            player.sendActionBar(Component.text("Этот жезл не привязан к вам на этом сервере."));
             return;
         }
         EditorSession session = sessions.open(player.getUniqueId(), player.getName());
@@ -542,21 +544,25 @@ public final class EditorSessionListener implements Listener {
                 player.sendActionBar(Component.text(focused.type().label() + " · " + focused.id()
                         + " · " + dimensions(focused.bounds()) + " · " + focused.details(),
                         net.kyori.adventure.text.format.TextColor.color(focused.type().color())));
+            } else if (objects.isEmpty()) {
+                player.sendActionBar(Component.text("В радиусе " + (int) range + " блоков нет зон"
+                        + (session.overlayFilter() == null ? "" : " · фильтр " + session.overlayFilter().label())));
             }
             var entries = objects.stream()
                     .sorted(Comparator.comparing((Inspect entry) -> entry != focused && !entry.selected())
                             .thenComparingDouble(entry -> distanceToBoundsSquared(eye, entry.bounds())))
                     .limit(10)
                     .toList();
-            int remaining = 444;
+            int remaining = 640;
             for (int index = 0; index < entries.size() && remaining > 0; index++) {
                 Inspect entry = entries.get(index);
                 boolean active = entry == focused || entry.selected() || entry.type() == OverlayType.DRAFT;
-                int budget = Math.min(remaining, active ? 168 : Math.max(24, remaining / (entries.size() - index)));
+                int share = remaining / (entries.size() - index);
+                int budget = Math.min(remaining, active ? Math.max(share, 240) : share);
                 var outline = EditorOverlay.visibleOutline(entry.bounds(), eye.getX(), eye.getY(), eye.getZ(),
-                        range, budget, active || entry.type() == OverlayType.ROOM);
-                var edge = new Particle.DustOptions(Color.fromRGB(entry.type().color()), active ? 1.35f : 1.0f);
-                var guide = new Particle.DustOptions(Color.fromRGB(entry.type().color()), .72f);
+                        range, budget, true);
+                var edge = new Particle.DustOptions(Color.fromRGB(entry.type().color()), active ? 1.7f : 1.2f);
+                var guide = new Particle.DustOptions(Color.fromRGB(entry.type().color()), active ? 1.2f : 1.0f);
                 for (var sample : outline) {
                     Location at = new Location(player.getWorld(), sample.x(), sample.y(), sample.z());
                     player.spawnParticle(Particle.DUST, at, 1, 0, 0, 0, 0, sample.guide() ? guide : edge, true);

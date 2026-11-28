@@ -2365,6 +2365,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private int bossTacticCycle;
     private long nextBossTacticMillis;
     private long nextClientBindingRefreshMillis;
+    private long nextClientBindingFullRefreshTick;
     private EndRiftAiPolicy.BossSpell previousBossSpell;
     /** Current group-combat brain state; all inputs are rebuilt from event-local players only. */
     private final BossBrain bossBrain = new BossBrain();
@@ -6583,6 +6584,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         clientBindingSnapshots.clear();
         bossBindingSignatures.clear();
         nextClientBindingRefreshMillis = 0L;
+        nextClientBindingFullRefreshTick = 0L;
         if (!bossBindingInstanceId.isBlank()) {
             for (Player player : Bukkit.getOnlinePlayers()) {
                 sendClientPacket(player, "END_BOSS_UNBIND", bossBindingInstanceId, 0L, "");
@@ -25399,7 +25401,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * for operators and local spectators standing just outside the pads.
      */
     private boolean isEventVisualViewer(Player player) {
-        if (player == null || !player.isOnline()) {
+        if (player == null || !player.isOnline() || player.isDead() || player.getHealth() <= 0.0D) {
             return false;
         }
         World world = Bukkit.getWorld(worldName);
@@ -50699,10 +50701,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // baseline is dropped once so a genuinely lost packet is repaired by a
         // full snapshot; explicit spawns, late joins and generation changes
         // still force a complete pass immediately.
-        if (eventTickCounter % CLIENT_BINDING_FULL_RESYNC_TICKS == 0L) {
-            clientBindingSnapshots.clear();
-            bossBindingSignatures.clear();
-        }
         if (eventTickCounter % 20L == 0L) {
             bindBossClientForOnlinePlayers(false);
             for (Entity entity : new ArrayList<>(ownedEntities.values())) {
@@ -68991,7 +68989,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             wipeOfficialAttemptIfAllDead("all official roster players died");
             saveStateAsync();
         }
-        clientBindingReadyPlayers.remove(uuid);
+        invalidateViewerPresentation(uuid);
         cancelShardChannel(uuid);
         removeShardPassiveEffects(event.getEntity());
         boolean padChanged = padOccupants.values().removeIf(uuid::equals);
@@ -69003,10 +69001,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onEventResourcePackLoaded(org.bukkit.event.player.PlayerResourcePackStatusEvent event) {
-        if (event.getStatus() != org.bukkit.event.player.PlayerResourcePackStatusEvent.Status.SUCCESSFULLY_LOADED) {
-            return;
-        }
         UUID viewer = event.getPlayer().getUniqueId();
+        switch (event.getStatus().name()) {
+            case "SUCCESSFULLY_LOADED" -> {
+                invalidateViewerPresentation(viewer);
+                getLogger().info("END_RIFT_PACK_LOADED viewer=" + viewer + " pack=" + event.getID());
+            }
+            case "DECLINED", "FAILED_DOWNLOAD", "FAILED_RELOAD", "INVALID_URL" ->
+                    getLogger().warning("END_RIFT_PACK_REFUSED viewer=" + viewer
+                            + " pack=" + event.getID() + " status=" + event.getStatus());
+            default -> { }
+        }
+    }
+
+    private void invalidateViewerPresentation(UUID viewer) {
         clientBindingReadyPlayers.remove(viewer);
         clientBindingSnapshots.invalidateViewer(viewer);
         bossBindingSignatures.remove(viewer);
@@ -69024,7 +69032,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 && officialRewardRoster.contains(playerUuid)
                 && attemptLifecycle.markAlive(playerUuid, respawnGeneration);
         if (rosterPlayer && !preserveNormalWave7Respawn) saveStateAsync();
-        clientBindingReadyPlayers.remove(player.getUniqueId());
+        invalidateViewerPresentation(playerUuid);
         if (!isCombatPhase() && !isEventMusicPhase() && !testCombatAiMode
                 && !testWaveFrontVisualMode && !ownsDisposableWaveRuntime(activeWave) && liveBoss() == null) {
             return;
@@ -70624,11 +70632,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         nextClientBindingRefreshMillis = now + 1_000L;
+        if (eventTickCounter >= nextClientBindingFullRefreshTick) {
+            nextClientBindingFullRefreshTick = eventTickCounter + CLIENT_BINDING_FULL_RESYNC_TICKS;
+            clientBindingReadyPlayers.clear();
+            clientBindingSnapshots.clear();
+            bossBindingSignatures.clear();
+        }
         for (Player player : Bukkit.getOnlinePlayers()) {
             UUID uuid = player.getUniqueId();
+            if (player.isDead() || player.getHealth() <= 0.0D) continue;
             if (!isEventVisualViewer(player)) {
                 clearClientEffects(player);
-                clientBindingReadyPlayers.remove(uuid);
                 continue;
             }
             if (!clientBindingReadyPlayers.contains(uuid)) {
@@ -70638,6 +70652,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void refreshClientBindingsForPlayer(Player player) {
+        if (player == null || player.isDead() || player.getHealth() <= 0.0D) return;
         if (!isEventVisualViewer(player)) {
             if (player != null) {
                 UUID playerUuid = player.getUniqueId();
@@ -70660,10 +70675,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             clientBindingReadyPlayers.remove(playerUuid);
             return;
         }
-        sendCurrentPresentationResume(player);
-        bindBossClient(player);
-        bindEventEntitiesClient(player);
-        clientBindingReadyPlayers.add(playerUuid);
+        if (!sendCurrentPresentationResume(player)) return;
+        bindBossClient(player, false);
+        boolean entitiesBound = bindEventEntitiesClient(player, false);
+        if (entitiesBound && (bossUuid == null || bossBindingSignatures.containsKey(playerUuid))) {
+            clientBindingReadyPlayers.add(playerUuid);
+        }
     }
 
     EndEventBridgeV4Access.EventContext currentEndEventBridgeContext(UUID playerUuid) {
@@ -70752,22 +70769,28 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 request.eventUuid().toString(), ability, request.targetUuid().orElse(null));
     }
 
-    private void sendCurrentPresentationResume(Player player) {
-        if (player == null || !player.isOnline() || player.isDead() || player.getHealth() <= 0.0D) return;
-        if (sendClientPacket(player, "END_PRESENTATION_RESUME", "presentation-resume", 0L,
-                worldVfxDimension(player.getLocation()), "PRESENTATION_RESUME_V1")) {
-            spellCasts.resume(player, eventId, generation, eventTickCounter,
-                    Math.max(1, officialRewardRoster.size()), this::sendSpellCast);
-        }
+    private boolean sendCurrentPresentationResume(Player player) {
+        if (player == null || !player.isOnline() || player.isDead() || player.getHealth() <= 0.0D) return false;
+        if (!sendClientPacket(player, "END_PRESENTATION_RESUME", "presentation-resume", 0L,
+                worldVfxDimension(player.getLocation()), "PRESENTATION_RESUME_V1")) return false;
+        spellCasts.resume(player, eventId, generation, eventTickCounter,
+                Math.max(1, officialRewardRoster.size()), this::sendSpellCast);
+        return true;
     }
 
     private void bindEventEntitiesClient(Player player) {
-        if (!isEventVisualViewer(player)) {
-            return;
-        }
+        bindEventEntitiesClient(player, true);
+    }
+
+    private boolean bindEventEntitiesClient(Player player, boolean force) {
+        if (!isEventVisualViewer(player)) return false;
+        boolean complete = true;
         for (Entity entity : new ArrayList<>(ownedEntities.values())) {
-            bindEventEntityClient(player, entity);
+            if (!entity.isValid() || !entity.getWorld().equals(player.getWorld())
+                    || clientVisualId(entity).isBlank()) continue;
+            complete &= bindEventEntityClient(player, entity, force);
         }
+        return complete;
     }
 
     private void bindEventEntityClientForOnlinePlayers(Entity entity) {

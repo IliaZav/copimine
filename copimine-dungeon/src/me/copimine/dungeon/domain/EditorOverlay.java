@@ -94,9 +94,9 @@ public final class EditorOverlay {
     public static List<OutlinePoint> visibleOutline(Cuboid box, double eyeX, double eyeY, double eyeZ,
                                                     double range, int budget, boolean guides) {
         if (budget < 1 || range <= 0D) return List.of();
-        double[] x = {box.minX() + .035D, box.maxX() + .965D};
-        double[] y = {box.minY() + .035D, box.maxY() + .965D};
-        double[] z = {box.minZ() + .035D, box.maxZ() + .965D};
+        double[] x = {box.minX() - .035D, box.maxX() + 1.035D};
+        double[] y = {box.minY() - .035D, box.maxY() + 1.035D};
+        double[] z = {box.minZ() - .035D, box.maxZ() + 1.035D};
         List<VisibleLine> lines = new ArrayList<>(16);
         for (int a = 0; a < 2; a++) {
             for (int b = 0; b < 2; b++) {
@@ -105,11 +105,24 @@ public final class EditorOverlay {
                 clip(lines, x[a], y[b], z[0], x[a], y[b], z[1], eyeX, eyeY, eyeZ, range, false);
             }
         }
-        if (guides && eyeX >= x[0] && eyeX <= x[1] && eyeZ >= z[0] && eyeZ <= z[1]
-                && eyeY >= y[0] && eyeY <= y[1] + 2D) {
-            double level = Math.clamp(eyeY - 1.6D, y[0] + .02D, y[1]);
-            clip(lines, x[0], level, eyeZ, x[1], level, eyeZ, eyeX, eyeY, eyeZ, range, true);
-            clip(lines, eyeX, level, z[0], eyeX, level, z[1], eyeX, eyeY, eyeZ, range, true);
+        if (guides) {
+            // The outline remains on the selected block faces. Add a second line
+            // inside the volume, above the floor and past any one-block shell.
+            double level = Math.clamp(eyeY - .75D, Math.min(y[1], y[0] + 1.1D), y[1]);
+            double insetX = Math.min(1.1D, (x[1] - x[0]) * .25D);
+            double insetZ = Math.min(1.1D, (z[1] - z[0]) * .25D);
+            double left = x[0] + insetX, right = x[1] - insetX;
+            double front = z[0] + insetZ, back = z[1] - insetZ;
+            for (double side : new double[]{front, back}) {
+                clip(lines, left, level, side, right, level, side, eyeX, eyeY, eyeZ, range, true);
+            }
+            for (double side : new double[]{left, right}) {
+                clip(lines, side, level, front, side, level, back, eyeX, eyeY, eyeZ, range, true);
+            }
+            if (eyeX >= left && eyeX <= right && eyeZ >= front && eyeZ <= back) {
+                clip(lines, left, level, eyeZ, right, level, eyeZ, eyeX, eyeY, eyeZ, range, true);
+                clip(lines, eyeX, level, front, eyeX, level, back, eyeX, eyeY, eyeZ, range, true);
+            }
         }
         if (lines.isEmpty()) return List.of();
         int limit = Math.min(HARD_BUDGET, budget);
@@ -118,7 +131,8 @@ public final class EditorOverlay {
         List<OutlinePoint> result = new ArrayList<>(limit);
         for (int lineIndex = 0; lineIndex < lines.size() && result.size() < limit; lineIndex++) {
             var line = lines.get(lineIndex);
-            int available = Math.max(1, limit - result.size() - (lines.size() - lineIndex - 1));
+            int available = Math.max(1, limit - result.size()
+                    - Math.min(limit - result.size() - 1, 2 * (lines.size() - lineIndex - 1)));
             int count = Math.min(available, Math.max(2, 1 + (int) Math.ceil(line.length() / spacing)));
             for (int i = 0; i < count; i++) {
                 double fraction = count == 1 ? .5D : (double) i / (count - 1);

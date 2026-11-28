@@ -560,9 +560,8 @@ def test_leaving_visual_audience_clears_player_scoped_client_state() -> None:
     assert branch, "viewer-loss branch must remain explicit"
     branch_body = branch.group(1)
     assert "clearClientEffects(player);" in branch_body
-    assert branch_body.index("clearClientEffects(player);") < branch_body.index(
-        "clientBindingReadyPlayers.remove(uuid);"
-    )
+    clear = source[source.index("private void clearClientEffects(Player player)"):]
+    assert "clientBindingReadyPlayers.remove(player.getUniqueId());" in clear.split("private ", 2)[1]
 
 
 def test_wave7_barriers_validate_or_repair_chambers_before_clearing_visuals() -> None:

@@ -83,6 +83,14 @@ public class DungeonDomainProbe {
             check(sample.color() == OverlayType.ROOM.color(), "room samples carry the room colour");
             check(sample.style() == OverlayType.ROOM.lineStyle(), "room samples carry the room line style");
         }
+        Cuboid closedRoom = Cuboid.of(10, 20, 30, 20, 27, 40);
+        var interior = EditorOverlay.visibleOutline(closedRoom, 15.5, 22.6, 35.5, 16, 240, true);
+        check(interior.size() <= 240 && interior.stream().anyMatch(point -> point.guide()
+              && Math.abs(point.y() - 21.85) < .01 && point.x() > 11 && point.z() > 31),
+              "guides stay above the floor and inside the solid shell");
+        check(EditorOverlay.visibleOutline(closedRoom, 15.5, 22.6, 35.5, 2, 48, true)
+              .stream().anyMatch(EditorOverlay.OutlinePoint::guide),
+              "a nearby builder retains visible guides even when all edges are too far away");
         check(OverlayType.TRIGGER.lineStyle() == LineStyle.DASHED, "trigger overlay is dashed");
         check(OverlayType.GATE.lineStyle() == LineStyle.DOUBLE, "gate overlay is double-line");
         check(OverlayType.SECRET.lineStyle() == LineStyle.DOTTED, "secret overlay is dotted");

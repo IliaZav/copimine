@@ -87,3 +87,18 @@ def wave_two_selects_one_frozen_roster_owner(source: str) -> bool:
         and "refreshWaveTwoMarkGlow(participant)" in update
         and "releaseWaveTwoMarkFor(" in update
     )
+
+
+def test_visual_refresh_waits_for_live_viewer_and_transport_acceptance():
+    source = EVENT_SOURCE.read_text(encoding="utf-8")
+    refresh = method_body(source, "private void refreshClientBindingsForPlayer(Player player)")
+    respawn = method_body(source, "public void onPlayerRespawn(PlayerRespawnEvent event)")
+
+    assert refresh.index("player.isDead()") < refresh.index("endEventBridgeV4.bindContext")
+    assert refresh.index("if (!sendCurrentPresentationResume(player)) return;") < refresh.index(
+        "bindEventEntitiesClient(player, false)"
+    )
+    assert refresh.index("if (entitiesBound &&") < refresh.index("clientBindingReadyPlayers.add(playerUuid)")
+    assert respawn.index("invalidateViewerPresentation(playerUuid)") < respawn.index(
+        "refreshClientBindingsForPlayer(player)"
+    )

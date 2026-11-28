@@ -19,8 +19,12 @@ def _method(source: str, signature: str, next_signature: str) -> str:
 def test_boss_tick_sends_a_delta_not_a_full_repeat():
     source = EVENT.read_text(encoding="utf-8")
     tick = _method(source, "private void tickBoss()", "private boolean isBossCombatRuntimeActive(")
-    assert "CLIENT_BINDING_FULL_RESYNC_TICKS" in source
-    assert "clientBindingSnapshots.clear()" in tick
+    refresh = _method(source, "private void refreshClientBindingsForOnlinePlayers()",
+                      "private void refreshClientBindingsForPlayer(Player player)")
+    assert "eventTickCounter + CLIENT_BINDING_FULL_RESYNC_TICKS" in refresh
+    assert "clientBindingSnapshots.clear()" in refresh
+    assert "clientBindingReadyPlayers.clear()" in refresh
+    assert "clientBindingSnapshots.clear()" not in tick
     assert "bindBossClientForOnlinePlayers(false)" in tick
     assert "bindEventEntityClientForOnlinePlayers(entity, false)" in tick
     # The unforced path is the only one allowed in the per-second loop.

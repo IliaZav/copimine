@@ -32,7 +32,7 @@ def test_prisoner_requests_are_bound_to_current_generation_and_server_targets() 
     legacy_listener = event[event.index("public void onPluginMessageReceived"):
                             event.index("private void registerClientBridgeSession")]
     bridge_handler = event[event.index("void handleEndEventBridgeAbility"):
-                           event.index("private void sendCurrentPresentationResume")]
+                           event.index("private boolean sendCurrentPresentationResume")]
     prisoner_handler = event[event.index("private void handleRitualPrisonerAbilityRequest"):
                              event.index("private void sendRitualPrisonerState")]
 

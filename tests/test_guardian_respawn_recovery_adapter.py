@@ -44,6 +44,11 @@ public class GuardianRespawnRecoveryProbe {
     long cocoonFallGeneration=Long.MIN_VALUE;
     boolean cocoonFallStarted,cocoonLandingPlayed;
     int cocoonFallElapsedTicks=-1,cocoonFallMoveFailures;
+    // The permanent ambush grab yields to other committed LAST_SEAL casts
+    // (cocoon beam / Kagune ring / crushing gravity), which this fixture does
+    // not stage, so all three gates read as "no competing cast".
+    Object cocoonBeam, crushingGravityBounds;
+    boolean isKaguneRingCastActive(){return false;}
     // Production cadence is keyed by a String event id; this probe keys
     // ownership by UUID. The wrapper keeps both sides honest.
     static final class Cadence {

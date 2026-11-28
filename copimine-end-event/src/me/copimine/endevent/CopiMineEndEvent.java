@@ -1887,6 +1887,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * or a repeated check from replaying the descent or the landing.
      */
     private long cocoonFallGeneration = Long.MIN_VALUE;
+    private Location cocoonFallTeleportDestination;
     private boolean cocoonFallStarted;
     private boolean cocoonLandingPlayed;
     private CocoonFallPolicy.Stage cocoonFallStage = CocoonFallPolicy.Stage.COCOONED;
@@ -1994,6 +1995,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final RealitySplitChamberController realitySplitChamberController = new RealitySplitChamberController();
     private final RealitySplitTrialController realitySplitTrialController = new RealitySplitTrialController();
     private Map<String, String> wave7RecoveryCheckpoint = Map.of();
+    private final Map<Integer, Set<Integer>> wave7DefeatedMarksmanSlots = new HashMap<>();
+    private static final String WAVE7_MARKSMAN_DEFEATS_PREFIX = "marksman-defeats.";
     private boolean namedWave7InitialActorCreation;
     private boolean namedWave7RuntimeRestorePending;
     /** ECHO-002: the frozen realm split of the running Echo stage (always ordinary). */
@@ -5680,6 +5683,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 }
                 realitySplitTrialController.restoreNamed(UUID.fromString(eventId), generation,
                         wave7.assignment(), trialSnapshot);
+                restoreMarksmanDefeats(snapshot.objectiveProgress(),
+                        persistedDisposableWave7 ? 0 : snapshot.officialRewardRoster().size());
                 namedWave7RuntimeRestorePending = true;
                 getLogger().info("END_RIFT_WAVE7_SNAPSHOT_RESTORED event=" + eventId
                         + " generation=" + generation + " test=" + persistedDisposableWave7
@@ -5884,6 +5889,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         realitySplitChamberController.openingPassages()));
         if (realitySplitTrialController.ownsNamed(parseUuidOrNull(eventId), generation)) {
             encoded.putAll(RealitySplitTrialSnapshot.encodeNamed(realitySplitTrialController.namedSnapshot()));
+            for (var entry : wave7DefeatedMarksmanSlots.entrySet()) {
+                String slots = entry.getValue().stream().sorted().map(String::valueOf)
+                        .collect(java.util.stream.Collectors.joining(","));
+                encoded.put(WAVE7_MARKSMAN_DEFEATS_PREFIX + entry.getKey(), slots);
+            }
         } else if (realitySplitTrialController.owns(generation)
                 && !realitySplitTrialController.snapshot().isEmpty()) {
             encoded.putAll(RealitySplitTrialSnapshot.encode(
@@ -27126,7 +27136,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 if (spawn == null) return false;
                 actor = spawnRealitySplitTrialEntity(world, spawn, EntityType.WARDEN,
                         trial.chamber(), trial.trial().name(), -1, true, true);
-                if (actor == null) return false;
+                if (!(actor instanceof LivingEntity warden)) return false;
+                AttributeInstance maximum = warden.getAttribute(Attribute.GENERIC_MAX_HEALTH);
+                if (maximum == null) return false;
+                double maxHealth = Wave7NamedTrialActorPolicy.wardenProfile(wave7FrozenRosterSize()).maxHealth();
+                maximum.setBaseValue(maxHealth);
+                warden.setHealth(maxHealth);
                 applyWave7BodyScale(actor,
                         Wave7NamedTrialActorPolicy.bodyScale(RealitySplitTrialController.NamedTrial.WARDEN));
                 // The Warden ARRIVES: it rises out of the floor with its own
@@ -27146,6 +27161,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return true;
         }
 
+        if (isNamedMarksmanSquadTrial(trial) && wasMarksmanSlotDefeated(trial.chamber(), -1)) {
+            return ensureNamedMarksmanSquad(world, core, trial, profile);
+        }
         Entity actor = findRealitySplitTrialEntity(trial.chamber(), trial.trial().name(), -1);
         if (actor != null && !isNamedRealitySplitActor(actor)) return false;
         boolean createdActor = false;
@@ -27259,6 +27277,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         List<Integer> partners = Wave7MarksmanSquadPolicy.partnerIndices(squadSize);
         for (int index : partners) {
+            if (wasMarksmanSlotDefeated(trial.chamber(), index)) continue;
             Entity existing = findRealitySplitTrialEntity(trial.chamber(), trial.trial().name(), index);
             if (existing != null) {
                 if (!isNamedRealitySplitActor(existing)
@@ -27343,6 +27362,31 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * a partner whose chunk is unloaded is not silently counted as already dead
      * and used as permission to complete the trial.</p>
      */
+    private boolean wasMarksmanSlotDefeated(int chamber, int index) {
+        return wave7DefeatedMarksmanSlots.getOrDefault(chamber, Set.of()).contains(index);
+    }
+
+    private void restoreMarksmanDefeats(Map<String, String> progress, int frozenRosterSize) {
+        List<Integer> partnerSlots = Wave7MarksmanSquadPolicy.partnerIndices(
+                Wave7MarksmanSquadPolicy.squadSize(frozenRosterSize));
+        wave7DefeatedMarksmanSlots.clear();
+        for (var entry : progress.entrySet()) {
+            if (!entry.getKey().startsWith(WAVE7_MARKSMAN_DEFEATS_PREFIX)) continue;
+            int chamber = Integer.parseInt(entry.getKey().substring(WAVE7_MARKSMAN_DEFEATS_PREFIX.length()));
+            if (!isNamedMarksmanSquadTrial(realitySplitTrialController.namedTrial(chamber))) {
+                throw new IllegalArgumentException("Marksman defeat outside assigned trial");
+            }
+            Set<Integer> slots = new HashSet<>();
+            for (String value : entry.getValue().split(",", -1)) {
+                int slot = Integer.parseInt(value);
+                if ((slot != -1 && !partnerSlots.contains(slot)) || !slots.add(slot)) {
+                    throw new IllegalArgumentException("Invalid Marksman defeat slot");
+                }
+            }
+            wave7DefeatedMarksmanSlots.put(chamber, slots);
+        }
+    }
+
     private int countLiveNamedMarksmanSquad(RealitySplitTrialController.NamedTrialState trial) {
         if (trial == null) return 0;
         int live = 0;
@@ -28483,6 +28527,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void clearRealitySplitTrialEntities(String reason) {
+        wave7DefeatedMarksmanSlots.clear();
         for (UUID actorId : new ArrayList<>(namedEchoCombatPairs.keySet())) {
             removeNamedEchoRuntime(actorId, false);
         }
@@ -38644,8 +38689,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             // rest of the squad orphaned in a room the party had "already
             // cleared" — and the player reported exactly that.
             int squadSize = Wave7MarksmanSquadPolicy.squadSize(wave7FrozenRosterSize());
+            int slot = readInt(entity, keyTrialIndex, -2);
+            if (!namedMarksmanSquadIndices().contains(slot)) {
+                enterNamedRealitySplitRecovery("WAVE7_MARKSMAN_DEATH_SLOT_INVALID");
+                return;
+            }
+            Set<Integer> defeated = wave7DefeatedMarksmanSlots.computeIfAbsent(chamber, ignored -> new HashSet<>());
+            if (!defeated.add(slot)) return;
             int live = countLiveNamedMarksmanSquad(trial);
-            if (!Wave7MarksmanSquadPolicy.completesTrial(squadSize, live)) {
+            if (defeated.size() != squadSize) {
                 getLogger().info("WAVE7_MARKSMAN_SQUAD_MEMBER_DOWN event=" + eventId
                         + " generation=" + generation + " chamber=" + chamber
                         + " actor=" + entity.getUniqueId()
@@ -38654,7 +38706,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         + " completes_trial=false");
                 realitySplitTrialRuntimeStates.remove(entity.getUniqueId());
                 realitySplitTrialEntityUuids.remove(entity.getUniqueId());
-                saveStateAsync();
+                if (!saveStateSync()) enterNamedRealitySplitRecovery("WAVE7_MARKSMAN_DEFEAT_SAVE_FAILED");
                 return;
             }
             accepted = realitySplitTrialController.completeNamedActor(parseUuidOrNull(eventId), generation,
@@ -38840,11 +38892,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     for (int squadIndex : squadIndices) {
                         Entity member = squadIndex == -1 ? actor
                                 : findRealitySplitTrialEntity(trial.chamber(), trial.trial().name(), squadIndex);
-                        if (squadIndex != -1 && member == null) {
-                            // A partner that is simply dead and cleared is not a
-                            // runtime failure; the death handler removes it.
-                            continue;
-                        }
+                        if (isNamedMarksmanSquadTrial(trial)
+                                && wasMarksmanSlotDefeated(trial.chamber(), squadIndex)) continue;
                         if (!(member instanceof LivingEntity living)
                                 || !tickNamedTrialActor(living, trial)) {
                             enterNamedRealitySplitRecovery("WAVE7_NAMED_ACTOR_RUNTIME_FAILED:" + trial.trial());
@@ -49664,6 +49713,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             // obelisks, the ritual sphere and the shields are placed and moved
             // exclusively by the objective controller.
             event.setTo(target);
+            return;
+        }
+        if (internalTeleport && finalSealBoss && entityId.equals(bossUuid)
+                && cocoonFallGeneration == generation && cocoonFallTeleportDestination != null
+                && cocoonFallTeleportDestination.getWorld().equals(target.getWorld())
+                && cocoonFallTeleportDestination.distanceSquared(target) <= 1e-8D) {
+            // The fall must reach the top of the core even though ordinary boss
+            // movement deliberately steers away from that same block.
+            event.setTo(cocoonFallTeleportDestination.clone());
             return;
         }
         double radius = EVENT_KIND_BOSS.equals(kind) ? bossArenaRadius() : waveMovementRadius();
@@ -60867,7 +60925,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             public double combatRadius(Location origin) {
                 var arena = lastSealArena == null ? null : lastSealArena.opened(generation);
                 return arena == null ? KaguneRingGapPolicy.ROW_EMERGE_RADIUS[0] + KaguneRingGapPolicy.ROW_TRAVEL_BLOCKS
-                        : arena.radius() - .8D;
+                        : arena.radius() - 2D;
             }
             public List<Player> participants() {
                 return activeBossParticipants().stream().filter(player -> !isPlayerUnderTentacleControl(player)).toList();
@@ -60905,6 +60963,26 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 double radius = frame.radius();
                 double margin = KaguneRingGapPolicy.halfWidthRad(radius);
                 var glow = new Particle.DustOptions(Color.fromRGB(116, 225, 202), .72F);
+                // Keep the moving front visible even before the client carrier is bound.
+                var front = new Particle.DustOptions(Color.fromRGB(150, 70, 223), 1.25F);
+                int samples = Math.min(80, Math.max(16, (int) Math.ceil(radius * 1.4D)));
+                for (int sample = 0; sample < samples; sample++) {
+                    double angle = sample * Math.PI * 2D / samples;
+                    boolean opening = false;
+                    for (double gap : frame.gaps()) {
+                        double delta = Math.IEEEremainder(angle - gap, Math.PI * 2D);
+                        if (Math.abs(delta) <= margin) {
+                            opening = true;
+                            break;
+                        }
+                    }
+                    if (opening) continue;
+                    Location mark = origin.clone().add(Math.cos(angle) * radius, .12D, Math.sin(angle) * radius);
+                    if (!traversable(mark)) continue;
+                    spawnEventParticle(mark, Particle.DUST, 1, 0D, 0D, 0D, 0D, front);
+                    if ((sample & 3) == 0)
+                        spawnEventParticle(mark.add(0, .55D, 0), Particle.REVERSE_PORTAL, 2, .08D, .22D, .08D, .015D);
+                }
                 for (double gap : frame.gaps()) {
                     for (double side : new double[]{-margin, margin}) {
                         double angle = gap + side;
@@ -61295,7 +61373,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         double height = CocoonFallPolicy.heightDuringFall(
                 BossFinalSealAnchorPolicy.HOVER_HEIGHT, cocoonFallElapsedTicks);
         next.setY(Math.max(landing.getY(), landing.getY() + height));
-        if (!teleportCombatEntity(boss, next)
+        boolean relocated;
+        cocoonFallTeleportDestination = next.clone();
+        try {
+            relocated = next.getBlock().isPassable() && teleportCombatEntity(boss, next);
+        } finally {
+            cocoonFallTeleportDestination = null;
+        }
+        if (!relocated
                 || !BossFinalSealAnchorPolicy.isAtCore(boss.getX(), boss.getY(), boss.getZ(),
                         next.getX(), next.getY(), next.getZ(),
                         BossFinalSealAnchorPolicy.DEFAULT_TOLERANCE)) {
@@ -64042,7 +64127,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void updateGeyserCluster(List<Player> participants) {
-        if (lastSuperGeyserTick < 0L) lastSuperGeyserTick = eventTickCounter;
+        if (lastSuperGeyserTick == -1L) {
+            // Make the first supergeyser reachable within a regular solo phase.
+            // Subsequent eruptions still use the normal 60-second interval.
+            lastSuperGeyserTick = eventTickCounter - RiftFractureEruptionPolicy.SUPER_INTERVAL_TICKS / 2L;
+            if (lastSuperGeyserTick == -1L) lastSuperGeyserTick = -2L;
+        }
         Set<UUID> pair = Set.of();
         for (int a = 0; a < participants.size(); a++) {
             Player first = participants.get(a);
@@ -68291,6 +68381,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // terminal path own every transient combat object.
         releaseFinalSealBarriers("victory");
         clearWaveCombatEntities("official-boss-defeat");
+        cancelBossCastTask();
+        clearKaguneRingCast("victory");
+        clearTentacles("victory");
+        clearBossSpellModels();
+        clearArenaInferno();
         cancelBossFinalStrike();
         clearVoidMarkZones();
         clearClientEffects();

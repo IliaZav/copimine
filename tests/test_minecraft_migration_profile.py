@@ -342,10 +342,10 @@ def test_profile_lock_matches_the_repeatable_current_client_build():
     # source. Repinned from two clean cold builds of the merged tree that agreed
     # byte for byte and matched the clean CI build (30 706 521 B); README updated
     # in the same commit.
-    assert artifact['size'] == 30_706_521
+    assert artifact['size'] == 30_706_540
     assert artifact['sha512'] == (
-        '4886667becd7d516b9cfec96b9cb3a93e4f986cc0f25544062110f2f64526b24'
-        'de74fd24156e6102d62374dcc7ddc64fc69ba402cdc2bd21ca2c0ad30ac29124'
+        '5119f8f8f0f1b547621cc562f8ab2ea2500533794f4d73f56f922ce1b08227d1'
+        'cfa9be7bb025aa3b5d6204af84edbf0416a0dba26914ded2c3c3da8ee5f94696'
     )
 
 

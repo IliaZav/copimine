@@ -18,6 +18,24 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class BridgeBodyCodecTest {
     @Test
+    void publishedSquareAndRoundArenaContextsSurviveTheWireCodec() {
+        UUID event = UUID.fromString("12345678-1234-1234-1234-123456789012");
+        for (int radius : new int[]{34, 62}) {
+            int min = 2048 - radius;
+            int max = 2048 + radius;
+            var context = new EndEventBridgeBodyCodec.Body(EndEventBridgeBodyCodec.Type.CONTEXT_BIND,
+                    15L, 1000L, event, "", "", "", 0, 0, 0, 0,
+                    "overworld|" + min + ",10," + min + "|" + max + ",134," + max,
+                    "", "", "", "");
+            var decoded = EndEventBridgeBodyCodec.decode(EndEventBridgeBodyCodec.encode(context));
+            assertEquals(context, decoded);
+            assertEquals(max, EndEventBridgeBodyCodec.arenaBoundsFromContextBind(decoded).maxX());
+        }
+        assertThrows(IllegalArgumentException.class, () -> EndEventBridgeBodyCodec.validateBounds(
+                new EndEventBridgeBodyCodec.ArenaBounds(event, 15L, "overworld", 0, 0, 0, 193, 124, 192)));
+    }
+
+    @Test
     void authoredCocoonStagesUseTheStrictBossCatalogueAndKeepRemainingDuration() {
         for (String cue : List.of("COCOON_FALL", "COCOON_LAND")) {
             var body = body(EndEventBridgeBodyCodec.Type.END_BOSS_PHASE, "boss.1", "", cue,
@@ -254,10 +272,10 @@ class BridgeBodyCodecTest {
         assertFalse(EndEventBridgeBodyCodec.beamWithinBounds(outsideBeam, bounds));
 
         EndEventBridgeBodyCodec.Body maximumVolume = body(EndEventBridgeBodyCodec.Type.CONTEXT_BIND,
-                "", "", "", 0, 0, 0, 0, "the_end|0,0,0|63,63,63", "", "");
+                "", "", "", 0, 0, 0, 0, "the_end|0,0,0|192,255,192", "", "");
         EndEventBridgeBodyCodec.arenaBoundsFromContextBind(maximumVolume);
         EndEventBridgeBodyCodec.Body excessiveVolume = copy(maximumVolume, "", "", "", 0, 0, 0, 0,
-                "the_end|0,0,0|63,64,63", "", "");
+                "the_end|0,0,0|192,256,192", "", "");
         assertThrows(IllegalArgumentException.class, () -> EndEventBridgeBodyCodec.encode(excessiveVolume));
     }
 

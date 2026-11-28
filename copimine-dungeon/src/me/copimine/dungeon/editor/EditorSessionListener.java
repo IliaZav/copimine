@@ -578,9 +578,23 @@ public final class EditorSessionListener implements Listener {
         double range = session.overlayRangeBlocks();
         var entries = new ArrayList<Inspect>();
         var catalog = store.catalog();
-        if (world.equals(session.world()) && session.selection() != null)
-            entries.add(new Inspect(OverlayType.DRAFT, "выделение", session.selectedRoomId(),
-                    session.selection(), session.mode().label(), true));
+        if (world.equals(session.world())) {
+            Cuboid selection = session.selection();
+            if (selection != null) {
+                entries.add(new Inspect(OverlayType.DRAFT, "выделение", session.selectedRoomId(),
+                        selection, session.mode().label(), true));
+            } else {
+                int[] start = session.corner1();
+                boolean first = start != null;
+                if (!first) start = session.corner2();
+                if (start != null) {
+                    Cuboid corner = Cuboid.fromCorners(start, start);
+                    entries.add(new Inspect(OverlayType.DRAFT, first ? "точка 1" : "точка 2",
+                            session.selectedRoomId(), corner,
+                            first ? "ПКМ по блоку — установить точку 2" : "ЛКМ по блоку — установить точку 1", true));
+                }
+            }
+        }
         for (var room : catalog.rooms().values()) {
             if (!world.equals(room.world())) continue;
             boolean selected = room.id().equals(session.selectedRoomId());

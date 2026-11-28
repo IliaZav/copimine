@@ -57,7 +57,8 @@ public final class RiftFractureEruptionPolicy {
 
         public double radius(long seed) {
             if (this == SUPER) return 3.6D;
-            return 1.4D + Math.floorMod(seed >>> 7, 4) * .24D;
+            double minimum = this == SQUARE ? 1.5D : 2.15D;
+            return minimum + Math.floorMod(seed >>> 7, 4) * .16D;
         }
 
         public boolean contains(double dx, double dz, double radius) {
@@ -75,7 +76,7 @@ public final class RiftFractureEruptionPolicy {
     }
 
     public static int rapidBatchGap(int players) {
-        return 60 + 3 * batchSizeForPlayers(players);
+        return 25 + batchSizeForPlayers(players);
     }
 
     public static boolean superDue(long tick, long lastSuper, long clusterSince) {

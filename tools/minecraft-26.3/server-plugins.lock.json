@@ -893,13 +893,13 @@
       "candidate": {
         "filename": "CopiMineDungeon-26.3.jar",
         "runtimeFilename": "CopiMineDungeon.jar",
-        "sha256": "c57187ce1cf0c738d52811cdbb8730d36e12c4896ecb51fbf5f402244b45d93b",
+        "sha256": "d17bb17f2a57653c561cf336dc67565a7b6380b969d8440fb6a7f6a1b9a158f0",
         "apiVersion": "26.3",
         "buildArtifact": "build/minecraft-26.3/plugins/jars/CopiMineDungeon-26.3.jar",
         "compatibilityStatus": "requires-runtime-validation",
         "nativeVerified": false,
-        "sha512": "600f67b065875d40132eb86f9c7192016c2d706b9ee2abe0f2df65e7c63a9efc2478e2506125618a106d08b9ccca77841f50f7a563bea887fc73fa4c6b8d484b",
-        "size": 289243,
+        "sha512": "75e520351e89b5c8fd880ab5b616ca1f67500523285a9fe534a96356be2990e40f082e680e4ce9cf666d65b8ccbbe9cee049eadf08018506cca1feac0435f672",
+        "size": 289537,
         "runtimeEligible": true,
         "replaceSha256": [
           "8789376707c12b157e7bd32fa9a419352f5a78f7498cb2e82d33c08a3ab93276",
@@ -914,7 +914,8 @@
           "998f3c2e34c29d64ccdd3b7606c3ac7a8ad008a5f00fb95964acc2c0d36a9012",
           "356577f8062917bd75709d9da71fcd4ef2193d81a19a5f99e3664bdc7cc63b7b",
           "0020ee863bc54f5448610fdcb8507b9481115b2dd368d9b71e212cead219d854",
-          "1f65cf4c3bccbdef456050c84f8950c9dce71aeb44185c535f437b56be6cf04a"
+          "1f65cf4c3bccbdef456050c84f8950c9dce71aeb44185c535f437b56be6cf04a",
+          "c57187ce1cf0c738d52811cdbb8730d36e12c4896ecb51fbf5f402244b45d93b"
         ]
       },
       "nativeVerified": false,
@@ -1039,13 +1040,13 @@
       "candidate": {
         "filename": "CopiMineEndEvent-26.3.jar",
         "runtimeFilename": "CopiMineEndEvent.jar",
-        "sha256": "af6c44efa0e2eeb46656f3c03134b071f887c95aa9fa379aed81c5baf6afa498",
+        "sha256": "a60c168ad16476c7b1b12119570cd04f2a9791c8c1518b224ddda3312774c89b",
         "apiVersion": "26.3",
         "buildArtifact": "build/minecraft-26.3/plugins/jars/CopiMineEndEvent-26.3.jar",
         "compatibilityStatus": "requires-runtime-validation",
         "nativeVerified": false,
-        "size": 3036601,
-        "sha512": "fc608f41c448a1e50551e067f6611558dc36f66f559d156e810ca854c55043524d4a27dd01cac850ffa1b559fc323d09d2256525f23fa36f217837b485ba8bd0",
+        "size": 3038415,
+        "sha512": "148d4a24e3e2484994fc8ca0b0de11cc75290aadeeda4b429bcdb6a2db9f0b2513f3fd777e0e90f5f9ec094f8724631cbd765c3b6484ef6237532303a2dd9e10",
         "runtimeEligible": true,
         "replaceSha256": [
           "888a547fdc4b8f78fc7d4e5510d9c8d16b51aa6cbb23248bc8fef89fe6914ff6",
@@ -1330,7 +1331,8 @@
           "e94eb4cbc3a29cea8c776c1dcd156c434a34f748c84a9fbb2f8499cbe18043e2",
           "5bdd63e61a72d1cb2d50191e14bdb26edabe9481013cf6da51d487149ed6bd90",
           "d6917dd46ae9ea80c2eefd7e8a1928091993c44def49e85f58f712cd14979f87",
-          "73357343f4b35da96a534a24145af123e43d22ef30266b5b280cd14dae47de91"
+          "73357343f4b35da96a534a24145af123e43d22ef30266b5b280cd14dae47de91",
+          "af6c44efa0e2eeb46656f3c03134b071f887c95aa9fa379aed81c5baf6afa498"
         ]
       },
       "nativeVerified": false
@@ -1356,13 +1358,13 @@
       "candidate": {
         "filename": "CopiMineNarcotics-26.3.jar",
         "runtimeFilename": "CopiMineNarcotics.jar",
-        "sha256": "f85402bd47ec8f0ebeadfd5b50aaa4cf9d7d9b6d925c602bb29da6048999faba",
+        "sha256": "b4d026b229bddd46fd09f95c2e3d404997e752958e7f7d6c73a6093a4b734d9e",
         "apiVersion": "26.3",
         "buildArtifact": "build/minecraft-26.3/plugins/jars/CopiMineNarcotics-26.3.jar",
         "compatibilityStatus": "requires-runtime-validation",
         "nativeVerified": false,
-        "size": 379551,
-        "sha512": "2b6e0240935ddeabace71deda9b4ed4ebcdcc88e74a5898f58ca99525cdd0e9b8931cb583d3f589a8cf68e2185714a15a3b9353a21c406e3bf397b3da4a82431",
+        "size": 379628,
+        "sha512": "83be604b7d19ee30fd522c9ef507948f6e772d64b2ebe42b484123bb787b27989bcc611fe9ab8fde3acc40c7a778424a281e2c3489e7703c02d3a42fb9ecf66f",
         "runtimeEligible": true,
         "replaceSha256": [
           "ec2ef8d50c780d2faf52469bd52d20724d8be9c5f8c23a76c5c9d459782e35a6",
@@ -1384,7 +1386,8 @@
           "5bf3a9fa04492019340edb67934dd9a3dc280b9aa7d0337c41ee21e41f548873",
           "bea72432491f7afa0a0cbd23b608654b56899b8e463720f98dbfef0f39f2ef0d",
           "396fa4055ae7f71b05f5133d6bad62e67c44377f7054654af269ab69a876dcf7",
-          "0b44338f0e5f59be1d2691bfc7e62e91008bc7c15e8de4eebe4f9fbb730235a0"
+          "0b44338f0e5f59be1d2691bfc7e62e91008bc7c15e8de4eebe4f9fbb730235a0",
+          "f85402bd47ec8f0ebeadfd5b50aaa4cf9d7d9b6d925c602bb29da6048999faba"
         ]
       },
       "nativeVerified": false,

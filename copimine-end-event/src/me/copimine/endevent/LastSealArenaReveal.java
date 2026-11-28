@@ -46,16 +46,17 @@ final class LastSealArenaReveal {
     // the four authored inner-square wall partitions (a 67x60 face pair on each
     // side is ~16.3k cells). The V6/V7 audit requires "the exact mask" be honoured
     // in bounded batches, never that a real mask be rejected for exceeding a
-    // guess. The per-tick BATCH below still bounds world writes (64 cells/tick,
-    // the ceiling the reveal contract test pins), the 64-chunk span guard still
+    // guess. BATCH bounds world writes per five-tick invocation, and the
+    // 64-chunk span guard still
     // bounds chunk spread (the square alone spans 36 chunks), and MAX_BYTES
     // below bounds the journal/plan one atomic recovery can carry.
     static final int MAX_CELLS = 20_000;
     static final int MAX_BYTES = 3_000_000;
     private static final String VERSION = "last-seal-v1";
     private static final String VERSION_V2 = "last-seal-v2";
-    private static final int BATCH = 64;
+    private static final int BATCH = 512;
     private static final int FALL_TICKS = 22;
+    private static final int ASCENT_TICKS = 76;
 
     record Square(int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
         boolean horizontal(int x, int z) { return x >= minX && x <= maxX && z >= minZ && z <= maxZ; }
@@ -93,7 +94,7 @@ final class LastSealArenaReveal {
     private int next;
     private int lastBeat = -1;
     private boolean open;
-    private boolean ascended;
+    private long ascentStartTick = Long.MIN_VALUE;
 
     LastSealArenaReveal(Path directory) {
         planPath = directory.resolve("last-seal-arena.tsv");
@@ -233,21 +234,26 @@ final class LastSealArenaReveal {
         startTick = tick;
         next = 0;
         lastBeat = -1;
-        ascended = false;
+        ascentStartTick = Long.MIN_VALUE;
     }
 
     boolean active(long generation) { return plan != null && owner == generation; }
-    boolean playing(long generation, long tick) { return active(generation) && tick - startTick < DURATION_TICKS; }
+    boolean playing(long generation, long tick) {
+        return active(generation) && (!open || !ascensionStarted(generation)
+                || tick - ascentStartTick < ASCENT_TICKS || tick - startTick < DURATION_TICKS);
+    }
     Plan opened(long generation) { return active(generation) && open ? plan : null; }
-    boolean ascensionStarted(long generation) { return active(generation) && ascended; }
+    boolean ascensionStarted(long generation) {
+        return active(generation) && ascentStartTick != Long.MIN_VALUE;
+    }
 
     double ascentProgress(long generation, long tick) {
-        return ascensionStarted(generation) ? Math.clamp((tick - startTick - 140) / 76.0D, 0, 1) : 0;
+        return ascensionStarted(generation) ? Math.clamp((tick - ascentStartTick) / (double) ASCENT_TICKS, 0, 1) : 0;
     }
 
     boolean takeAscension(long generation, long tick) {
-        if (!active(generation) || !open || ascended || tick - startTick < 140) return false;
-        ascended = true;
+        if (!active(generation) || !open || ascensionStarted(generation) || tick - startTick < 140) return false;
+        ascentStartTick = tick;
         return true;
     }
 
@@ -290,9 +296,9 @@ final class LastSealArenaReveal {
                 Block block = cell.block(world);
                 if (!block.getBlockData().getAsString().equals(change.original()) || block.getState(false) instanceof TileState)
                     throw new IOException("site was modified during reveal at " + cell);
-                if (i == 0 || i == BATCH / 2)
+                if (i % 96 == 0)
                     crumble(world, cell.at(world).add(0, .55, 0), change.wall(), true);
-                if (fragments.size() < 40 && ((next & 3) == 0 || !change.wall() && (next & 1) == 0))
+                if (fragments.size() < 56 && ((next & 3) == 0 || !change.wall() && (next & 1) == 0))
                     animate(world, block, change.wall(), now);
                 block.setType(Material.AIR, false);
                 next++;

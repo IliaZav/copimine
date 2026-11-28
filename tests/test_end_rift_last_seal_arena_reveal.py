@@ -42,7 +42,8 @@ def test_plan_parser_accepts_masks_larger_than_the_old_320_ceiling(tmp_path):
     batch = _constant(source, "BATCH")
     assert max_cells > 320, (
         "the reveal must support an authored mask larger than 320 cells")
-    assert batch > 0 and batch <= 64, "the per-tick world write batch must stay bounded"
+    assert 0 < batch <= 512, "each five-tick world-write batch must stay bounded"
+    assert batch * 38 >= 16_736, "the full production collapse must fit in 38 invocations"
 
     parse = _method(source, "private static List<Change> parseChanges(")
     number = _method(source, "private static int number(")

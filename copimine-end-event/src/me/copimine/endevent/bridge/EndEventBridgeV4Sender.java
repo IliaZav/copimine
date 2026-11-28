@@ -1196,11 +1196,16 @@ public final class EndEventBridgeV4Sender implements EndEventBridgeV4Access, Plu
     }
 
     private static boolean validContext(EventContext context) {
-        return context != null && context.eventUuid() != null
-                && context.generation() > 0 && context.generation() < Long.MAX_VALUE
-                && Set.of("overworld", "the_nether", "the_end").contains(context.dimension())
-                && context.minX() <= context.maxX() && context.minY() <= context.maxY()
-                && context.minZ() <= context.maxZ();
+        if (context == null) return false;
+        try {
+            EndEventBridgeBodyCodec.validateBounds(new EndEventBridgeBodyCodec.ArenaBounds(
+                    context.eventUuid(), context.generation(), context.dimension(),
+                    context.minX(), context.minY(), context.minZ(),
+                    context.maxX(), context.maxY(), context.maxZ()));
+            return true;
+        } catch (IllegalArgumentException invalid) {
+            return false;
+        }
     }
 
     private boolean retireStream(PlayerState state) {

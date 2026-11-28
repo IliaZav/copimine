@@ -287,13 +287,14 @@ public class NamedWave7DeathProbe {
     int liveSquad;
     Set<UUID> ownerLethalReceipts=new HashSet<>();
     Map<UUID,Wave7NamedTrialActorPolicy.Checkpoint> actorCheckpoints=new HashMap<>();
-    Object keyChamberId=new Object(),keyTrialRole=new Object();
+    Object keyChamberId=new Object(),keyTrialRole=new Object(),keyTrialIndex=new Object();
+    Map<Integer,Set<Integer>> wave7DefeatedMarksmanSlots=new HashMap<>();
     RealitySplitTrialController realitySplitTrialController=new RealitySplitTrialController();
     Set<UUID> realitySplitTrialEntityUuids=new HashSet<>();
     Map<UUID,Object> realitySplitTrialRuntimeStates=new HashMap<>();
     static class NamespacedKey {NamespacedKey(Object plugin,String name){}}
     static class Entity {
-        UUID id=UUID.randomUUID(),owner;int room;String role;boolean named;
+        UUID id=UUID.randomUUID(),owner;int room;int index=-1;String role;boolean named;
         Entity(int room,String role,UUID owner,boolean named){this.room=room;this.role=role;this.owner=owner;this.named=named;}
         UUID getUniqueId(){return id;}
     }
@@ -303,7 +304,10 @@ public class NamedWave7DeathProbe {
     int countLiveNamedMarksmanSquad(RealitySplitTrialController.NamedTrialState trial){return liveSquad;}
     void saveStateAsync(){saves++;}
     boolean ownedBySession(Entity actor,String event,long gen){return true;}
-    int readInt(Entity actor,Object key,int fallback){return actor.room;}
+    int readInt(Entity actor,Object key,int fallback){return key==keyTrialIndex?actor.index:actor.room;}
+    List<Integer> namedMarksmanSquadIndices(){
+        return List.of(-1,Wave7MarksmanSquadPolicy.partnerIndices(Wave7MarksmanSquadPolicy.MIN_SQUAD).get(0));
+    }
     String readString(Entity actor,Object key){return key==keyTrialRole?actor.role:actor.owner==null?"":actor.owner.toString();}
     boolean isNamedRealitySplitActor(Entity actor){return actor.named&&realitySplitTrialEntityUuids.contains(actor.id);}
     void finishRealitySplitTrial(int room,String reason){throw new AssertionError("named completion reached historical adapter");}
@@ -353,6 +357,26 @@ public class NamedWave7DeathProbe {
                 "an unspawned deferred Echo remains active and has no completion receipt");
         require(!probe.realitySplitTrialController.allComplete(71),
                 "unavailable named trials cannot authorize the Wave 7 handoff");
+        var first=probe.actor(2,"MOBILE_MARKSMAN",null,true);
+        var second=probe.actor(2,"MOBILE_MARKSMAN",null,true);
+        second.index=probe.namedMarksmanSquadIndices().get(1);
+        for (var marksman : List.of(first,second)) {
+            probe.actorCheckpoints.put(marksman.id,new Wave7NamedTrialActorPolicy.Checkpoint(
+                    UUID.fromString(probe.eventId),probe.generation,2,
+                    RealitySplitTrialController.NamedTrial.MOBILE_MARKSMAN,marksman.id,
+                    0L,Wave7NamedTrialActorPolicy.Attack.NONE,0L,0L,null,false));
+        }
+        probe.liveSquad=1;
+        int savesBefore=probe.saves;
+        probe.handleRealitySplitTrialBossDeath(first);
+        probe.handleRealitySplitTrialBossDeath(first);
+        require(probe.finished==1 && probe.saves==savesBefore+1
+                        && probe.wave7DefeatedMarksmanSlots.get(2).equals(Set.of(-1))
+                        && probe.realitySplitTrialEntityUuids.contains(second.id),
+                "the first defeat must be saved once and leave the second actor active");
+        probe.liveSquad=0;
+        probe.handleRealitySplitTrialBossDeath(second);
+        require(probe.finished==2,"the final confirmed Marksman death must advance the trial");
     }
 }
 ''', encoding="utf-8")

@@ -189,6 +189,9 @@ public final class Wave7NamedTrialActorPolicy {
         if (trial == NamedTrial.RIFT_ARCHMAGE) {
             return 1200.0D;
         }
+        if (trial == NamedTrial.WARDEN) {
+            return 1_350.0D;
+        }
         return MIN_MINIBOSS_HEALTH;
     }
 

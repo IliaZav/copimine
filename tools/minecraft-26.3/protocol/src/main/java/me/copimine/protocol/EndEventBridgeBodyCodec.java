@@ -202,7 +202,7 @@ public final class EndEventBridgeBodyCodec {
                 && z >= bounds.minZ() && z <= bounds.maxZ();
     }
 
-    private static void validateBounds(ArenaBounds bounds) {
+    public static void validateBounds(ArenaBounds bounds) {
         if (bounds.eventUuid() == null || bounds.generation() <= 0 || bounds.generation() > MAX_GENERATION
                 || !END_DIMENSIONS.contains(bounds.dimension()) || bounds.minX() > bounds.maxX()
                 || bounds.minY() > bounds.maxY() || bounds.minZ() > bounds.maxZ()) {
@@ -391,8 +391,13 @@ public final class EndEventBridgeBodyCodec {
         } catch (ArithmeticException exception) {
             throw new IllegalArgumentException("End Event context span overflow", exception);
         }
-        final long maxVolume = 262_144L;
-        if (span[0] > maxVolume / span[1]) {
+        // Last Seal supports a radius of 96 inclusive. Keep the envelope bounded
+        // independently of absolute coordinates and reject thin world-spanning boxes.
+        final long maxHorizontalSpan = 193L;
+        final long maxVerticalSpan = 256L;
+        final long maxVolume = maxHorizontalSpan * maxHorizontalSpan * maxVerticalSpan;
+        if (span[0] > maxHorizontalSpan || span[2] > maxHorizontalSpan
+                || span[1] > maxVerticalSpan || span[0] > maxVolume / span[1]) {
             throw new IllegalArgumentException("End Event context volume exceeds limit");
         }
         long xy = span[0] * span[1];

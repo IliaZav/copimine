@@ -711,6 +711,7 @@ public final class RiftRamEncounter {
         }
         begin(Action.STUN);
         if(!host.checkpoint()) { fail("impact-checkpoint-failed"); return; }
+        presentPillarImpact(struck, spent, impacts == RiftRamPolicy.REQUIRED_IMPACTS);
         if (spent) {
             // A surviving marksman rides the falling pillar down rather than
             // being deleted with it: it lands and keeps fighting on the floor.
@@ -859,6 +860,29 @@ public final class RiftRamEncounter {
             }
         }
     }
+    private void presentPillarImpact(Location struck, boolean collapsed, boolean finalCollapse) {
+        double size = finalCollapse ? 5.5D : collapsed ? 3.7D : 2.25D;
+        int facets = finalCollapse ? 24 : 16;
+        var color = new Particle.DustOptions(Color.fromRGB(finalCollapse ? 0xFFD6FF : 0xC55EED), 1.5F);
+        List<Player> nearby = host.players().stream()
+                .filter(player -> player.getWorld().equals(struck.getWorld()))
+                .filter(player -> player.getLocation().distanceSquared(struck) < 48 * 48)
+                .toList();
+        for (int index = 0; index < facets; index++) {
+            double phi = 2 * Math.PI * index / facets;
+            double edge = size * (.78D + .22D * Math.cos(phi * 4D));
+            Location seam = struck.clone().add(Math.cos(phi) * edge, .16D, Math.sin(phi) * edge);
+            if (!host.inArena(seam)) continue;
+            Location debris = seam.clone().add(0, (index % 3 + 1) * (collapsed ? .44D : .22D), 0);
+            for (Player viewer : nearby) {
+                viewer.spawnParticle(Particle.DUST, seam, 2, .08D, .04D, .08D, 0D, color);
+                viewer.spawnParticle(Particle.ELECTRIC_SPARK, debris, 2, .18D, .23D, .18D, .04D);
+            }
+        }
+        struck.getWorld().playSound(struck, finalCollapse ? Sound.ENTITY_WARDEN_SONIC_BOOM
+                : Sound.BLOCK_AMETHYST_CLUSTER_BREAK, finalCollapse ? 2.1F : 1.15F, collapsed ? .53F : .88F);
+    }
+
     private void dust(Location at,int count,double spread,double height) {
         for(Player viewer:host.players()) if(viewer.getWorld().equals(at.getWorld()) && viewer.getLocation().distanceSquared(at)<48*48)
             viewer.spawnParticle(Particle.BLOCK,at,count,spread,height,spread,0,Material.DEEPSLATE.createBlockData());

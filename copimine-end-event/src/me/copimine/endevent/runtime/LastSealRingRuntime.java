@@ -92,7 +92,7 @@ public final class LastSealRingRuntime {
         double outerRadius = host.combatRadius(at);
         if (!Double.isFinite(outerRadius) || outerRadius <= innerRadius || outerRadius > KaguneRingFrame.MAX_RADIUS) return false;
         travelBlocks = outerRadius - innerRadius;
-        travelTicks = Math.max(TRAVEL_TICKS, (int) Math.ceil(travelBlocks / .275D));
+        travelTicks = Math.max(TRAVEL_TICKS, (int) Math.ceil(travelBlocks / .42D));
         rowTicks = EMERGE_TICKS + travelTicks + RETRACT_TICKS + GAP_TICKS;
         for (int step = 0; step < 96; step++) {
             double angle = Math.PI * 2D * step / 96;

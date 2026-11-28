@@ -40,7 +40,7 @@ import java.util.function.Predicate;
 
 /** Changes only the cells pinned by a site plan. The journal also owns recovery without that plan. */
 final class LastSealArenaReveal {
-    static final int DURATION_TICKS = 320;
+    static final int DURATION_TICKS = 238;
     // The approved site mask is authored, not generated, so the ceiling has to
     // cover the full square->circle transformation: the concealed corridor plus
     // the four authored inner-square wall partitions (a 67x60 face pair on each
@@ -56,7 +56,7 @@ final class LastSealArenaReveal {
     private static final String VERSION_V2 = "last-seal-v2";
     private static final int BATCH = 512;
     private static final int FALL_TICKS = 22;
-    private static final int ASCENT_TICKS = 76;
+    private static final int ASCENT_TICKS = 54;
 
     record Square(int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
         boolean horizontal(int x, int z) { return x >= minX && x <= maxX && z >= minZ && z <= maxZ; }
@@ -252,7 +252,7 @@ final class LastSealArenaReveal {
     }
 
     boolean takeAscension(long generation, long tick) {
-        if (!active(generation) || !open || ascensionStarted(generation) || tick - startTick < 140) return false;
+        if (!active(generation) || !open || ascensionStarted(generation) || tick - startTick < 104) return false;
         ascentStartTick = tick;
         return true;
     }
@@ -304,7 +304,7 @@ final class LastSealArenaReveal {
                 next++;
             }
         }
-        open = next == collapse.size() && age >= 100;
+        open = next == collapse.size() && age >= 88;
         if (open && age % 12 == 0) renderOpenFissures(world, age);
         if (age >= 100) {
             for (Player player : world.getPlayers()) {
@@ -344,12 +344,12 @@ final class LastSealArenaReveal {
         Cell cell = change.cell();
         if (!change.wall()) {
             double distance = Math.hypot(cell.x() - plan.x(), cell.z() - plan.z());
-            return 100 + (int) (25 * Math.min(1, distance / plan.radius()));
+            return 78 + (int) (22 * Math.min(1, distance / plan.radius()));
         }
         double angle = Math.atan2(cell.z() - plan.z(), cell.x() - plan.x());
         double sweep = (angle + Math.PI) / (2 * Math.PI);
         int verticalDelay = Math.clamp(plan.floor() + 12 - cell.y(), 0, 12);
-        return 38 + (int) (42 * sweep) + verticalDelay;
+        return 24 + (int) (38 * sweep) + verticalDelay;
     }
 
     private static void crumble(World world, Location center, boolean wall, boolean impact) {
@@ -359,8 +359,13 @@ final class LastSealArenaReveal {
                 impact ? .9 : .4, .3, impact ? .9 : .4, .035);
         world.spawnParticle(Particle.DUST, center, impact ? 16 : 7, .7, wall ? .6 : .24, .7, 0,
                 new Particle.DustOptions(Color.fromRGB(wall ? 0x946680 : 0xca68ff), impact ? 1.35f : .85f));
-        if (impact) world.playSound(center, Sound.ENTITY_GENERIC_EXPLODE, SoundCategory.BLOCKS,
-                wall ? .8f : .55f, wall ? .65f : .82f);
+        if (impact) {
+            world.playSound(center, Sound.ENTITY_GENERIC_EXPLODE, SoundCategory.BLOCKS,
+                    wall ? .9f : .65f, wall ? .58f : .82f);
+            world.spawnParticle(Particle.ELECTRIC_SPARK, center.clone().add(0, wall ? 1.2 : .38, 0),
+                    wall ? 11 : 7, .55, wall ? .85 : .18, .55, .075);
+            if (!wall) world.spawnParticle(Particle.REVERSE_PORTAL, center, 5, .48, .14, .48, .026);
+        }
     }
 
     private static Sound collapseSound(boolean wall, boolean impact) {
@@ -369,7 +374,7 @@ final class LastSealArenaReveal {
     }
 
     private void beat(World world, Location core, long age) {
-        int beat = age >= 240 ? 4 : age >= 160 ? 3 : age >= 100 ? 2 : age >= 40 ? 1 : 0;
+        int beat = open && age >= 202 ? 4 : open ? 3 : age >= 82 ? 2 : age >= 24 ? 1 : 0;
         if (beat <= lastBeat) return;
         lastBeat = beat;
         Sound cue = switch (beat) {

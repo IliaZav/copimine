@@ -59241,6 +59241,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         if (heading.lengthSquared() > .0001D)
                             display.setRotation(display.getLocation().setDirection(heading).getYaw(),0F);
                         boolean grab = Math.floorMod(eventTickCounter / 20L + state.slot(), 4L) == 0
+                                && cocoonBeam == null && !isKaguneRingCastActive()
+                                && crushingGravityBounds == null
                                 && tentacleController.states().values().stream().noneMatch(other ->
                                         other.state() == TentacleAnimationPolicy.State.TELEGRAPH_GRAB
                                         || other.state() == TentacleAnimationPolicy.State.GRAB_SUCCESS
@@ -61013,6 +61015,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             public boolean active(LivingEntity boss) {
                 return bossPhase == BossPhase.LAST_SEAL && isBossCombatRuntimeActive(boss)
+                        && lastSealArena != null && lastSealArena.opened(generation) != null
                         && !guardianDeaths.cocoonBroken();
             }
             public Location floorOrigin(LivingEntity boss) {
@@ -62360,6 +62363,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             case PERMANENT -> TentacleAnimationPolicy.initialSpawnState(tentacleKind,
                     localTextureShowcase);
         };
+        if (tentacleKind == TentacleAnimationPolicy.Kind.PERMANENT && anchor != null) {
+            Vector outward = location.toVector().subtract(anchor.toVector()).setY(0D);
+            if (outward.lengthSquared() > .001D) location.setDirection(outward);
+            else location.setYaw(slot * 45F);
+        }
         boolean smallKagune = tentacleKind == TentacleAnimationPolicy.Kind.SMALL;
         float roleScale = smallKagune ? (float) smallKaguneTuning().scale() : 1.0F;
         float displayWidth = TENTACLE_DISPLAY_WIDTH * roleScale;
@@ -63196,7 +63204,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         UUID heldByDisplay = tentacleHeldPlayers.get(displayId);
         if (heldByDisplay != null && !heldByDisplay.equals(playerId)
                 || heldByDisplay == null && tentacleHeldPlayers.containsValue(playerId)) return false;
-        Location socket = display.getLocation().clone().add(0.0D, TENTACLE_GRAB_SOCKET_HEIGHT, 0.0D);
+        Location root = display.getLocation();
+        Location socket = root.clone().add(0.0D, TENTACLE_GRAB_SOCKET_HEIGHT, 0.0D);
+        if (heldByDisplay == null) {
+            var state = tentacleController.state(displayId);
+            boolean reachable = state != null && (state.temporary()
+                    ? withinTentacleGrabRange(root, target.getLocation()) : guardianContact(root, target, false));
+            if (!reachable || !hasProjectileBlockLineOfSight(target.getEyeLocation(), socket)) return false;
+        }
         if (!isArenaLocation(socket) || !isSafeTentacleHoldLocation(socket, target)
                 || !target.teleport(socket)) return false;
         tentacleHeldPlayers.put(display.getUniqueId(), target.getUniqueId());
@@ -63389,8 +63404,19 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (display == null || launch == null || !launch.isFinite()) {
             return null;
         }
-        return TentacleThrowPolicy.strongestSafeLaunch(launch,
-                candidate -> tentacleThrowLandingIsSafe(display, target, candidate), 0.85D);
+        // Prefer the warned direction. A near-wall defender can still throw
+        // sideways or back into the arena if the outward lane is obstructed.
+        double[] alternatives = {0D, Math.PI / 3D, -Math.PI / 3D, Math.PI};
+        for (double yaw : alternatives) {
+            double cos = Math.cos(yaw), sin = Math.sin(yaw);
+            var aim = new TentacleThrowPolicy.Launch(
+                    launch.x() * cos - launch.z() * sin, launch.y(),
+                    launch.x() * sin + launch.z() * cos);
+            var safe = TentacleThrowPolicy.strongestSafeLaunch(aim,
+                    candidate -> tentacleThrowLandingIsSafe(display, target, candidate), 0.85D);
+            if (safe != null) return safe;
+        }
+        return null;
     }
 
     private boolean tentacleThrowLandingIsSafe(ItemDisplay display, Player target,

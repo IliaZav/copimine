@@ -152,7 +152,7 @@ public final class EndRiftTentacleRenderer {
                 }
                 if (isRingCarrier(display)) {
                     KaguneRingFrame frame = ringFrame(display);
-                    if (frame != null) renderRing(matrices, buffer, display, frame, tickDelta, world);
+                    if (frame != null) renderRing(matrices, buffer, display, frame, tickDelta);
                     continue;
                 }
                 String uuid = entityUuid.toString();
@@ -172,12 +172,13 @@ public final class EndRiftTentacleRenderer {
                         || ClientBridgeProtocol.endEventState().tentacleHurtFlashAt(uuid, nowMillis);
                 matrices.pushPose();
                 matrices.translate(position.x, position.y, position.z);
-                Entity target = targetEntity(world, uuid);
-                Vec3 targetPosition = target == null ? null : target.getPosition(tickDelta);
-                float yaw = "SMALL".equals(ClientBridgeProtocol.endEventState()
-                        .tentacleRoleForEntity(uuid))
-                        ? (float) Math.toRadians(-entity.getYRot())
-                        : facingYaw(entityUuid, animation, position, targetPosition, nowMillis);
+                String role = ClientBridgeProtocol.endEventState().tentacleRoleForEntity(uuid);
+                float yaw = (float) Math.toRadians(-entity.getYRot());
+                if ("UNDER_PLAYER".equals(role) || "TEMPORARY".equals(role)) {
+                    Entity target = targetEntity(world, uuid);
+                    Vec3 targetPosition = target == null ? null : target.getPosition(tickDelta);
+                    yaw = facingYaw(entityUuid, animation, position, targetPosition, nowMillis);
+                }
                 matrices.rotate(Axis.YP, yaw);
                 matrices.scale(EndRiftTentacleWorldScalePolicy.rendererScaleForRig(pose.rigScale()),
                         EndRiftTentacleWorldScalePolicy.rendererLengthScaleForRig(pose.rigScale()),
@@ -299,7 +300,7 @@ public final class EndRiftTentacleRenderer {
             KaguneRingFrame frame = ringFrame(display);
             Vec3 origin = display.getPosition(partialTick);
             if (frame == null || !finite(origin)
-                    || Math.abs(origin.distanceTo(camera) - frame.radius()) > 44D) continue;
+                    || Math.abs(Math.hypot(origin.x - camera.x, origin.z - camera.z) - frame.radius()) > 44D) continue;
             EndRiftRenderSubmission.submit(context, camera, SpellVisualRenderer.layer(), (matrices, buffer) -> {
                 var section = SpellVisualRenderer.profile(SpellVisualGeometry.Quality.REDUCED, false);
                 int count = frame.instances();
@@ -339,7 +340,7 @@ public final class EndRiftTentacleRenderer {
 
     /** All repeated rigs share one geometry submission, skin and sampled pose. */
     private static void renderRing(PoseStack matrices, VertexConsumer vertices, Display.ItemDisplay display,
-                                   KaguneRingFrame frame, float partialTick, ClientLevel world) {
+                                   KaguneRingFrame frame, float partialTick) {
         double renderRise=frame.renderRise(partialTick);
         if (renderRise <= 0D) return;
         Vec3 origin = display.getPosition(partialTick);
@@ -347,7 +348,9 @@ public final class EndRiftTentacleRenderer {
         float width = EndRiftTentacleWorldScalePolicy.rendererScaleForRig((float) KaguneRingFrame.RIG_SCALE);
         float height = EndRiftTentacleWorldScalePolicy.rendererLengthScaleForRig((float) KaguneRingFrame.RIG_SCALE);
         double radius = frame.previousRadius() + (frame.radius() - frame.previousRadius()) * Math.max(0F, Math.min(1F, partialTick));
-        int light = net.minecraft.util.LightCoordsUtil.getLightCoords(world, display.blockPosition());
+        // The stems emerge from the rift. Sampling the carrier's dark floor
+        // block lit every instance as if it were buried in that same block.
+        int light = 0x00F000F0;
         int count = frame.instances();
         for (int i = 0; i < count; i++) {
             if (!frame.drawsInstance(i)) continue;

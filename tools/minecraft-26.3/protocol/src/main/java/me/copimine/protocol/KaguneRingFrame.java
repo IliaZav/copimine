@@ -11,7 +11,7 @@ public record KaguneRingFrame(int row, int stage, double radius, double previous
     public static final int EMERGE = 0, TRAVEL = 1, RETRACT = 2;
     public static final int EMERGE_TICKS = 20, TRAVEL_TICKS = 40, RETRACT_TICKS = 18, GAP_TICKS = 8;
     public static final double GAP_WIDTH = 2.0D;
-    public static final double RIG_SCALE = .65D;
+    public static final double RIG_SCALE = 1.0D;
     public static final double HEIGHT = 7.8681D * .62D * RIG_SCALE;
     public static final double CONTACT_RADIUS = .62D;
     public static final int MAX_INSTANCES = 192;
@@ -79,37 +79,26 @@ public record KaguneRingFrame(int row, int stage, double radius, double previous
             low=Math.max(low,Math.min(a,b)); high=Math.min(high,Math.max(a,b));
             if (low>high) return false;
         }
-        double contact=.32D+halfWidth;
-        int count=instances();
-        for (int i=0;i<count;i++) {
-            if (!drawsInstance(i)) continue;
-            double angle=direction(i),cos=Math.cos(angle),sin=Math.sin(angle);
-            double sx=bx-cos*previousRadius,sz=bz-sin*previousRadius;
-            double vx=x-cos*radius-sx,vz=z-sin*radius-sz;
-            double a=vx*vx+vz*vz,b=2D*(sx*vx+sz*vz),c=sx*sx+sz*sz-contact*contact;
-            double lo=low,hi=high;
-            if (a<1E-9D) { if (c>0D) continue; }
-            else {
-                double d=b*b-4D*a*c;
-                if (d<0D) continue;
-                double root=Math.sqrt(d);
-                lo=Math.max(lo,(-b-root)/(2D*a)); hi=Math.min(hi,(-b+root)/(2D*a));
-                if (lo>hi) continue;
-            }
-            double closest=a<1E-9D ? lo : Math.max(lo,Math.min(hi,-b/(2D*a)));
-            // Evaluate gaps at contact time, not at the player's final position.
-            // Newly exposed boundary stems cannot sweep an earlier invisible interval.
-            for (int sample=0;sample<3;sample++) {
-                double t=sample==0 ? closest : sample==1 ? lo : hi;
-                double atRadius=previousRadius+(radius-previousRadius)*t;
-                boolean visible=true,safe=false;
-                double playerAngle=Math.atan2(bz+(z-bz)*t,bx+(x-bx)*t);
-                for (double gap:gaps) {
-                    if (Math.abs(wrap(angle-gap))*atRadius<=GAP_WIDTH/2D+.25D) visible=false;
-                    if (Math.abs(wrap(playerAngle-gap))*atRadius<=GAP_WIDTH/2D) safe=true;
+        // Sample the relative sweep at a fixed spatial resolution. The
+        // decorative stem budget must not open accidental holes in the front.
+        double dx = x - bx, dz = z - bz, dr = radius - previousRadius;
+        double motion = Math.hypot(dx, dz) + Math.abs(dr);
+        int steps = Math.clamp((int) Math.ceil(motion / .14D), 1, 64);
+        double contact = CONTACT_RADIUS + halfWidth;
+        for (int sample = 0; sample <= steps; sample++) {
+            double t = low + (high - low) * sample / steps;
+            double px = bx + dx * t, pz = bz + dz * t;
+            double front = previousRadius + dr * t;
+            if (Math.abs(Math.hypot(px, pz) - front) > contact) continue;
+            double angle = Math.atan2(pz, px);
+            boolean inPassage = false;
+            for (double gap : gaps) {
+                if (Math.abs(wrap(angle - gap)) * front <= GAP_WIDTH / 2D) {
+                    inPassage = true;
+                    break;
                 }
-                if (visible && !safe) return true;
             }
+            if (!inPassage) return true;
         }
         return false;
     }

@@ -16,6 +16,18 @@ class EndRiftRingWaveTest {
     private static final int COUNT = 112;
 
     @Test
+    void wideArenaHasContinuousContactExceptForItsAuthoredPassages() {
+        var frame = new KaguneRingFrame(0, KaguneRingFrame.TRAVEL, 60D, 59D, 1D, .5D,
+                java.util.List.of(0D, Math.PI));
+        double betweenStems = frame.direction(30) + Math.PI / frame.instances();
+        double x = 59.5D * Math.cos(betweenStems);
+        double z = 59.5D * Math.sin(betweenStems);
+        assertTrue(frame.contacts(x, 3.6D, z, x, 3.6D, z, .3D, 1.8D));
+        org.junit.jupiter.api.Assertions.assertFalse(
+                frame.contacts(59.5D, 0D, 0D, 59.5D, 0D, 0D, .3D, 1.8D));
+    }
+
+    @Test
     void travellingRowHasNeighboursOutOfPhase() {
         // The renderer hands the row a full-height base, so the wave shows as a
         // moving dip: one stem descends while its neighbour is still up.

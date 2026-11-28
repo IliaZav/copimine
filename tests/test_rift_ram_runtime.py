@@ -127,6 +127,10 @@ public class RamRuntimeProbe {
   boolean pillarSiteSafe(Location at,int impacts){return true;}
   boolean buildPillar(){pillarDisplays.add(new BlockDisplay());return true;}
   void createArmor(){armor.clear();for(int i=impacts+1;i<=RiftRamPolicy.ARMOUR_PLATES;i++)armor.add(new Piece(new BlockDisplay(),i));}
+  int impactsPresented, finalImpactsPresented;
+  void presentPillarImpact(Location at,boolean collapsed,boolean finalCollapse){
+    impactsPresented++;if(finalCollapse)finalImpactsPresented++;
+  }
   void dust(Location at,int n,double a,double b){}
   BlockDisplay block(Location at,Material m,Vector3f size){return new BlockDisplay();}
   Object nearest(Location at,List<Object> players){return null;}
@@ -174,6 +178,8 @@ public class RamRuntimeProbe {
       check(p.armor.size()==plates-i,"one 3D armor section retired");
       check(p.mites.size()<=6,"living Endermite cap");
       p.impact();check(p.impacts==i,"duplicate callback ignored");
+      check(p.impactsPresented==i,"impact effect was lost or duplicated");
+      check(p.finalImpactsPresented==(i==plates?1:0),"final effect emitted on the wrong impact");
       if(i<plates)check(!p.completed,"impact is not completion");
       if(i<plates){
         if(p.pillarId==null) p.raiseTestPillar();

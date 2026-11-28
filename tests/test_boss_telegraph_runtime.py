@@ -40,9 +40,9 @@ public class BossTelegraphRuntimeProbe {
         Location add(Vector v){x+=v.x;y+=v.y;z+=v.z;return this;}
         Vector toVector(){return new Vector(x,y,z);}}
     static class LivingEntity {final UUID id=UUID.randomUUID();UUID getUniqueId(){return id;}boolean isValid(){return true;}boolean isDead(){return false;}Location getLocation(){return new Location();}
-        final World world=new World();World getWorld(){return world;}}
+        final World world=World.SHARED_WORLD;World getWorld(){return world;}}
     static class Player {final UUID id=UUID.randomUUID();UUID getUniqueId(){return id;}Location getLocation(){return new Location();}
-        final World world=new World();World getWorld(){return world;}boolean isOnline(){return true;}
+        final World world=World.SHARED_WORLD;World getWorld(){return world;}boolean isOnline(){return true;}
         void playSound(Location l,Sound s,SoundCategory c,float v,float pitch){}
         Player p(){return this;}
         void spawnParticle(Particle p,Location l,int count,double x,double y,double z,double extra){}
@@ -53,7 +53,7 @@ public class BossTelegraphRuntimeProbe {
         BukkitTask runTaskTimer(Object plugin,Runnable r,long delay,long period){task=new BukkitTask(r,delay,period);return task;}
         void advance(){tick++;long first=Math.max(1,task.delay);if(!task.cancelled&&tick>=first&&(tick-first)%task.period==0)task.callback.run();}}
     static class Bukkit {static Scheduler scheduler;static Scheduler getScheduler(){return scheduler;}}
-    static class World {}
+    static class World {static final World SHARED_WORLD=new World();}
     enum Sound {ENTITY_WARDEN_NEARBY_CLOSE,ENTITY_EVOKER_PREPARE_ATTACK}
     static class BossSpellPresentationEffects {static void frame(Location at,Vector axis,List<BossSpellGeometryPolicy.Point> points,int rgb,List<Player> viewers,java.util.function.BiPredicate<Player,Location> allowed){}
         static void frame(Location at,Vector axis,List<BossSpellGeometryPolicy.Point> points,int rgb,BossSpellVisualCompositionPolicy.Composition composition,double progress,List<Player> viewers,java.util.function.BiPredicate<Player,Location> allowed){}}
@@ -105,6 +105,14 @@ public class BossTelegraphRuntimeProbe {
     void renderChestBeamLaneRails(Location chest,java.util.List<ChestBeamPolicy.Aim> aims,int hue,int tick){}
     void playBossSpellModel(LivingEntity b,String id,Location at,int ticks,boolean follow){}
     void aimBossCastAt(LivingEntity b,Location l){}
+    // Physical-delivery spells freeze their aim at the authored lock tick. The
+    // probe measures the release marker, so the target is accepted and the
+    // muzzle/torso helpers resolve to the caster/target positions; the real
+    // snapshot geometry is covered by its own static guard.
+    boolean isCombatTarget(Player p){return true;}
+    Location cocoonBeamTorso(Player p){return p.getLocation();}
+    Location bossProjectileMuzzle(LivingEntity b,EndRiftAiPolicy.BossSpell s){return b.getLocation();}
+    void renderBossProjectileAim(LivingEntity b,EndRiftAiPolicy.BossSpell s,Location aim){}
     String bossTelegraphAnimation(EndRiftAiPolicy.BossSpell s){return s.id();}
     String bossCueId(String s,BossVisualCuePolicy.CueStage stage){return s;}
     void sendBossAnimationVisualUpdate(LivingEntity b,String s){}

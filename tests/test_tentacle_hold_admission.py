@@ -14,7 +14,13 @@ def test_hold_preserves_controls_when_protection_or_geometry_refuses_it(tmp_path
     java.write_text('''import java.util.*;
 public class HoldProbe {
  static final double TENTACLE_GRAB_SOCKET_HEIGHT=2;
- String eventId="event";long generation=1;boolean geometry=true,arena=true;
+ String eventId="event";long generation=1;boolean geometry=true,arena=true,reachable=true,clear=true;
+ record State(boolean temporary){}
+ static class Controller{State state(UUID id){return new State(true);}}
+ Controller tentacleController=new Controller();
+ boolean withinTentacleGrabRange(Location a,Location b){return reachable;}
+ boolean guardianContact(Location a,Player p,boolean aiming){return reachable;}
+ boolean hasProjectileBlockLineOfSight(Location a,Location b){return clear;}
  static final Object WORLD=new Object();
  static class Vector{}
  static class Location {public Location clone(){return this;} Location add(double x,double y,double z){return this;}}
@@ -25,6 +31,7 @@ public class HoldProbe {
  static class Player {boolean online=true,dead,immune,accepted;int teleports,velocityWrites,fallWrites;
   final UUID id=UUID.randomUUID(); UUID getUniqueId(){return id;}
   boolean isOnline(){return online;} boolean isDead(){return dead;} boolean isInvulnerable(){return immune;}
+  Location getLocation(){return new Location();} Location getEyeLocation(){return new Location();}
   Object getWorld(){return WORLD;}boolean teleport(Location p){teleports++;return accepted;}
   void setVelocity(Vector v){velocityWrites++;}void setFallDistance(float v){fallWrites++;}}
  final Map<UUID,UUID> tentacleHeldPlayers=new HashMap<>();
@@ -34,7 +41,11 @@ public class HoldProbe {
  boolean isSafeTentacleHoldLocation(Location p,Player player){return geometry;}
  public static void main(String[]args){
   var p=new HoldProbe();var display=new ItemDisplay();var player=new Player();
-  p.lockTentaclePlayer(display,player);
+  p.reachable=false;p.lockTentaclePlayer(display,player);
+  if(player.teleports!=0)throw new AssertionError("escaped target was captured");
+  p.reachable=true;p.clear=false;p.lockTentaclePlayer(display,player);
+  if(player.teleports!=0)throw new AssertionError("captured through a wall");
+  p.clear=true;p.lockTentaclePlayer(display,player);
   if(player.teleports!=1 || player.velocityWrites!=0 || player.fallWrites!=0)
    throw new AssertionError("rejected teleport still seized player physics");
   player.accepted=true;p.geometry=false;p.lockTentaclePlayer(display,player);

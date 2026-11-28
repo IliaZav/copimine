@@ -25,7 +25,7 @@ public final class ArenaMergeCinematicPolicy {
     /** The scene is bounded to the master's directed 12–16 s window. */
     public static final long MIN_TOTAL_MILLIS = 12_000L;
     public static final long MAX_TOTAL_MILLIS = 16_000L;
-    public static final long TOTAL_MILLIS = 16_000L;
+    public static final long TOTAL_MILLIS = 14_000L;
 
     /** World-space geometry signatures the merge rig understands. */
     public static final String SIGNATURE_MERGE_FRACTURE = "merge-fracture";
@@ -44,7 +44,7 @@ public final class ArenaMergeCinematicPolicy {
         TWO_WORLDS,
         /** 8–12 s: the Guardian actually rises above the Core as the cocoon assembles. */
         GUARDIAN_ASCENDS,
-        /** 12–16 s: the overhead sigil ignites and the new arena becomes active. */
+        /** 12–14 s: the overhead sigil ignites as the physical reveal finishes. */
         LAST_SEAL_IGNITES
     }
 
